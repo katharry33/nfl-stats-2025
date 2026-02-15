@@ -1,0 +1,5 @@
+node_modules/
+.next/
+.env*
+functions/node_modules/
+functions/lib/

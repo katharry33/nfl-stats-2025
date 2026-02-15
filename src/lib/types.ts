@@ -208,3 +208,8 @@ export interface SearchCriteria {
   league?: string;
   [key: string]: any;
 }
+
+export type BetStatus = 'pending' | 'won' | 'lost' | 'void' | 'push' | 'hit' | 'miss';
+export interface BetRecord extends Bet {
+  // This allows BetRecord to be used interchangeably with Bet
+}
