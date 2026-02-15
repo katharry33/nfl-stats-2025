@@ -1,0 +1,9 @@
+[
+    {
+      "id": "sample-1",
+      "name": "Sample Bet",
+      "odds": 2.5,
+      "market": "Match Winner",
+      "selection": "Team A"
+    }
+  ]

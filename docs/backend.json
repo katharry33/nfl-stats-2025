@@ -1,0 +1,310 @@
+
+{
+  "entities": {
+    "UserProfile": {
+      "title": "User Profile",
+      "description": "Represents a user's profile information.",
+      "type": "object",
+      "properties": {
+        "displayName": {
+          "type": "string",
+          "description": "The user's display name."
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "The user's email address."
+        }
+      },
+      "required": [
+        "displayName",
+        "email"
+      ]
+    },
+    "Bonus": {
+      "title": "Bonus",
+      "description": "Represents a weekly sportsbook bonus.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the bonus."
+        },
+        "eligibleBets": {
+          "type": "string",
+          "description": "Comma-separated list of eligible bet types (e.g., SGP, Parlay)."
+        },
+        "boost": {
+          "type": "string",
+          "description": "The percentage boost (e.g., '50%')."
+        },
+        "maxBet": {
+          "type": "string",
+          "description": "The maximum bet amount (e.g., '$25')."
+        },
+        "minOdds": {
+          "type": "string",
+          "description": "The minimum odds required (e.g., '-200')."
+        },
+        "expiration": {
+          "type": "string",
+          "format": "date",
+          "description": "The expiration date of the bonus."
+        },
+        "expirationTime": {
+          "type": "string",
+          "format": "time",
+          "description": "The expiration time of the bonus."
+        },
+        "legs": {
+            "type": "number",
+            "description": "The number of legs required for the bonus."
+        }
+      },
+      "required": ["name", "boost", "maxBet"]
+    },
+    "Parlay": {
+      "title": "Parlay",
+      "description": "A constructed parlay with multiple legs and an optional bonus.",
+      "type": "object",
+      "properties": {
+        "legs": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          },
+          "description": "An array of prop bets that make up the parlay."
+        },
+        "bonus": {
+          "type": "object",
+          "description": "The bonus applied to the parlay, if any."
+        },
+        "createdAt": {
+          "type": "number",
+          "description": "The timestamp when the parlay was created."
+        }
+      },
+      "required": ["legs"]
+    },
+    "WeeklyProp": {
+        "title": "Weekly Prop",
+        "description": "Represents a weekly prop bet with detailed analytics.",
+        "type": "object",
+        "properties": {
+            "week": {"type": "number"},
+            "gameDate": {"type": "string", "format": "date"},
+            "gameTime": {"type": "string", "format": "time"},
+            "matchup": {"type": "string"},
+            "player": {"type": "string"},
+            "team": {"type": "string"},
+            "prop": {"type": "string"},
+            "line": {"type": "number"},
+            "overUnder": {"type": "string", "enum": ["Over", "Under"]},
+            "odds": {"type": "string"},
+            "scoreDiff": {"type": "number"},
+            "edgePct": {"type": "string"},
+            "confidenceScore": {"type": "string"},
+            "projWinPct": {"type": "string"},
+            "playerAvg": {"type": "number"},
+            "opponentRank": {"type": "number"},
+            "opponentAvgVsStat": {"type": "number"},
+            "yardsScore": {"type": "number"},
+            "rankScore": {"type": "number"},
+            "totalScore": {"type": "number"},
+            "adjustedScore": {"type": "number"},
+            "expFunction": {"type": "number"},
+            "seasonHitPct": {"type": "string"},
+            "avgWinProb": {"type": "string"},
+            "bestEdgePct": {"type": "string"},
+            "impliedProb": {"type": "string"},
+            "expectedValue": {"type": "string"},
+            "valueIcon": {"type": "string"},
+            "gameStats": {"type": "string"},
+            "actualResult": {"type": "string"},
+            "betAmount": {"type": "number"},
+            "profitLoss": {"type": "number"},
+            "betStatus": {"type": "string"},
+            "parlayId": {"type": "string"},
+            "notes": {"type": "string"}
+        }
+    },
+    "Bet": {
+      "title": "Bet",
+      "description": "Represents a single bet.",
+      "type": "object",
+      "properties": {
+        "week": { "type": "number" },
+        "player": { "type": "string" },
+        "team": { "type": "string" },
+        "prop": { "type": "string" },
+        "line": { "type": "number" },
+        "overUnder": { "type": "string", "enum": ["Over", "Under"] },
+        "odds": { "type": "string" },
+        "stake": { "type": "number" },
+        "createdAt": { "type": "number" },
+        "status": { "type": "string", "enum": ["Pending", "Won", "Lost", "Void"] },
+        "parlayId": { "type": "string" }
+      },
+      "required": ["week", "player", "prop", "line", "overUnder", "stake", "status", "createdAt"]
+    },
+    "PlayerTeamMap": {
+      "title": "Player Team Map",
+      "description": "Maps a player's name to their team.",
+      "type": "object",
+      "properties": {
+        "player": {
+          "type": "string",
+          "description": "The player's full name."
+        },
+        "team": {
+          "type": "string",
+          "description": "The player's team abbreviation (e.g., 'PHI')."
+        }
+      },
+      "required": ["player", "team"]
+    },
+    "PfrIdMap": {
+      "title": "PFR ID Map",
+      "description": "Maps a player's name to their Pro-Football-Reference ID.",
+      "type": "object",
+      "properties": {
+        "player": {
+          "type": "string",
+          "description": "The player's full name."
+        },
+        "pfrId": {
+          "type": "string",
+          "description": "The player's Pro-Football-Reference ID."
+        }
+      },
+      "required": ["player", "pfrId"]
+    },
+    "Schedule": {
+        "title": "Schedule",
+        "description": "Represents the game schedule for a season.",
+        "type": "object",
+        "properties": {
+            "week": {"type": "number"},
+            "gameDate": {"type": "string", "format": "date"},
+            "gameTime": {"type": "string", "format": "time"},
+            "matchup": {"type": "string"}
+        },
+        "required": ["week", "gameDate", "gameTime", "matchup"]
+    },
+    "PipelineStatus": {
+        "title": "Pipeline Status",
+        "description": "Tracks the status of data processing pipelines.",
+        "type": "object",
+        "properties": {
+            "pipelineName": {
+                "type": "string"
+            },
+            "status": {
+                "type": "string",
+                "enum": ["running", "completed", "failed"]
+            },
+            "lastRun": {
+                "type": "number"
+            },
+            "week": {
+                "type": "number"
+            },
+            "message": {
+                "type": "string"
+            }
+        }
+    },
+    "GameStat": {
+        "title": "Game Stat",
+        "description": "Stores final, individual player game statistics.",
+        "type": "object",
+        "properties": {
+            "player": {
+                "type": "string"
+            },
+            "week": {
+                "type": "number"
+            },
+            "statName": {
+                "type": "string"
+            },
+            "statValue": {
+                "type": "number"
+            }
+        }
+    }
+  },
+  "auth": {
+    "providers": [
+      "google.com"
+    ]
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserProfile"
+      },
+      "description": "Stores public profile information for each user."
+    },
+    "/2025 weekly bonuses": {
+        "schema": {
+            "$ref": "#/entities/Bonus"
+        },
+        "description": "Stores weekly sportsbook bonuses."
+    },
+    "/2025 parlays": {
+      "schema": {
+        "$ref": "#/entities/Parlay"
+      },
+      "description": "Stores user-constructed parlays."
+    },
+    "/2025 weekly props": {
+        "schema": {
+            "$ref": "#/entities/WeeklyProp"
+        },
+        "description": "Stores weekly prop bets available for building parlays."
+    },
+    "/2025 bets": {
+      "schema": {
+        "$ref": "#/entities/Bet"
+      },
+      "description": "Stores individual user bets."
+    },
+    "/player-team-map": {
+        "schema": {
+            "$ref": "#/entities/PlayerTeamMap"
+        },
+        "description": "Stores the mapping of players to their respective teams."
+    },
+    "/pfr-id-map": {
+        "schema": {
+            "$ref": "#/entities/PfrIdMap"
+        },
+        "description": "Stores the mapping of players to their Pro-Football-Reference IDs."
+    },
+    "/2025 schedule": {
+        "schema": {
+            "$ref": "#/entities/Schedule"
+        },
+        "description": "Stores the game schedule for the 2025 season."
+    },
+    "/2025 bet data": {
+        "schema": {
+            "$ref": "#/entities/WeeklyProp"
+        },
+        "description": "Stores historical, settled prop bets for long-term analysis."
+    },
+    "/pipeline_status": {
+        "schema": {
+            "$ref": "#/entities/PipelineStatus"
+        },
+        "description": "Tracks the status of data processing pipelines."
+    },
+    "/game_stats": {
+        "schema": {
+            "$ref": "#/entities/GameStat"
+        },
+        "description": "Stores final, individual player game statistics."
+    }
+  }
+}
