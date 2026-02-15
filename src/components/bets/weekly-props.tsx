@@ -4,8 +4,7 @@ import { useBetSlip } from "../../context/betslip-context";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
 import { Plus, Trash2 } from "lucide-react";
-import { BetLeg, WeeklyProp } from "../../lib/types";
-import { toast } from "sonner";
+import { BetLeg, WeeklyProp } from "../../lib/types"; 
 
 interface WeeklyPropsProps {
   props: WeeklyProp[];
@@ -13,31 +12,28 @@ interface WeeklyPropsProps {
 }
 
 export function WeeklyProps({ props, loading }: WeeklyPropsProps) {
-  const { addLeg, removeLeg, selections } = useBetSlip();
+  const { addLeg, removeLeg, legs } = useBetSlip();
 
-  const isInBetSlip = (propId: string) => selections.some((leg: BetLeg) => leg.propId === propId);
+  const isInBetSlip = (propId: string) => legs.some((leg: BetLeg) => leg.propId === propId);
 
   const handleToggleBet = (prop: WeeklyProp) => {
-    const existingLeg = selections.find(leg => leg.propId === prop.id);
-
-    if (existingLeg) {
-      removeLeg(existingLeg.id);
-      toast.info(`${prop.player || prop.Player} removed from bet slip`);
+    if (isInBetSlip(prop.id)) {
+      removeLeg(prop.id);
     } else {
-      addLeg({
-        id: `weekly-${prop.id}`,
+      const leg: BetLeg = {
+        id: crypto.randomUUID(), // <-- Add this
         propId: prop.id,
-        player: prop.player || prop.Player || 'Unknown',
-        prop: prop.prop || prop.Prop || 'Unknown',
-        line: prop.line || prop.Line || 0,
-        odds: prop.odds || prop.Odds || -110,
-        selection: (prop['Over/Under?'] || prop.overunder || 'Over') as 'Over' | 'Under',
-        week: prop.week || prop.Week || 0,
-        team: prop.team || prop.Team || '',
-        matchup: prop.matchup || prop.Matchup || '',
+        player: prop.Player,
+        prop: prop.Prop,
+        line: prop.Line,
+        odds: prop.Odds,
+        selection: prop.overunder as 'Over' | 'Under', 
+        week: prop.Week,  // Also add lowercase for compatibility
+        team: prop.Team,
+        matchup: prop.Matchup || '', // Use fallback to empty string
         source: 'weekly',
-      });
-      toast.success(`${prop.player || prop.Player} added to bet slip`);
+      };
+      addLeg(leg);
     }
   };
 
@@ -62,22 +58,23 @@ export function WeeklyProps({ props, loading }: WeeklyPropsProps) {
       {props.map(prop => (
         <Card key={prop.id} className="bg-[#161b22] border-[#30363d] text-white">
           <CardContent className="p-4 flex justify-between items-center">
-            <div className="space-y-2">
-              <p className="font-bold text-blue-400">{prop.player || prop.Player}</p>
-              <p className="text-xs text-slate-400">
-                {prop.prop || prop.Prop} {prop.line || prop.Line}
+            <div>
+              <p className="font-bold text-blue-400">{prop.Player}</p>
+              <p className="text-sm">
+                {prop.Prop} {prop.Line} 
+                <span className="ml-2 px-2 py-0.5 bg-slate-800 rounded text-xs uppercase text-slate-300">
+                  {prop.overunder}
+                </span>
               </p>
-              <p className="text-xs text-emerald-400 font-mono">
-                {prop['Over/Under?'] || prop.overunder || 'Over'}
-              </p>
-              <p className="text-xs text-slate-500 font-mono">
-                {prop.matchup || prop.Matchup || 'Matchup N/A'} • Week {prop.week || prop.Week}
+              {/* Optional chaining prevents crashes if Matchup is missing */}
+              <p className="text-xs text-slate-500 mt-1">
+                {prop.Matchup || 'Matchup N/A'} • Week {prop.Week}
               </p>
             </div>
-            <div className="flex flex-col items-end justify-between gap-2">
-              <p className="text-sm font-mono text-emerald-400 font-bold">
-                {(prop.odds || prop.Odds || -110) > 0 ? `+${prop.odds || prop.Odds}` : (prop.odds || prop.Odds || -110)}
-              </p>
+            <div className="flex items-center gap-4">
+               <span className="font-mono font-bold text-green-500">
+                {prop.Odds > 0 ? `+${prop.Odds}` : prop.Odds}
+              </span>
               <Button
                 size="sm"
                 variant={isInBetSlip(prop.id) ? "destructive" : "default"}

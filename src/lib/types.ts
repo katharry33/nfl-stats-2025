@@ -1,174 +1,210 @@
+import { Timestamp } from "firebase/firestore";
 
-// src/lib/types.ts - Add missing fields and fix types
-export interface BetLeg {
+// ============================================================================
+// CORE BETTING TYPES
+// ============================================================================
+
+export type BetStatus = 'pending' | 'won' | 'lost' | 'cashed' | 'push' | 'void';
+
+export type BetType = 
+  | 'straight' 
+  | 'parlay' 
+  | 'sgp' 
+  | 'sgpx' 
+  | 'moneyline' 
+  | 'anytime_td' 
+  | 'round_robin'
+  | 'teaser';
+
+export type BonusStatus = 'active' | 'used' | 'expired';
+
+// ============================================================================
+// PROP TYPES
+// ============================================================================
+
+export interface Prop {
+  id: string;
+  externalId?: string;
+  playerName: string;
+  team: string;
+  opponent: string;
+  category: string;
+  line: number;
+  overOdds: number;
+  underOdds: number;
+  gameTime: any;
+  league: 'NFL' | 'NBA' | 'MLB' | 'NHL'; 
+  status: 'active' | 'settled' | 'suspended';
+  lastUpdated: any;
+  week?: number;
+}
+
+export interface PropRow {
   id: string;
   player: string;
+  team: string;
   prop: string;
   line: number;
-  selection?: 'Over' | 'Under';
   odds: number;
-  matchup?: string;
-  team?: string;
-  week?: number;
-  propId?: string;
-  status?: 'won' | 'lost' | 'pending';
-  source?: string;
-}
-
-export interface Bet {
-  id: string;
-  userId: string;
-  stake: number;
-  odds: number;
-  betType: string;
-  status: string;
-  legs: BetLeg[];
-  createdAt?: any;
-  updatedAt?: any;
-  boost?: boolean;
-  boostPercentage?: number;
-  isBonus?: boolean;
-  isLive?: boolean;
-  potentialPayout?: number;
-  date?: string;
-}
-
-export interface Bonus {
-  id: string;
-  name: string;
-  amount: number;
-  expirationDate: Date | any;
-  minOdds?: number;
-  maxStake?: number;
-  betTypes?: BetType[];
-  isActive: boolean;
-  used: boolean; // ADDED
-  // Additional fields
-  status?: string;
-  boost?: number;
-  betType?: BetType | 'any';
-  maxWager?: number;
-  description?: string;
-  usedAt?: any;
-  isExpired?: boolean;
-  startDate?: any;
-  endDate?: any;
-  createdAt?: any;
-  updatedAt?: any;
-}
-
-export type BetType = 'straight' | 'parlay' | 'sgp' | 'sgpx' | 'moneyline' | 'spread' | 'anytime_td' | 'teaser' | 'any';
-
-export interface BetResult {
-  date: string;
-  won: number;
-  lost: number;
-  profit: number;
-  status?: 'won' | 'lost' | 'push' | 'void' | 'pending'; // ADDED status
+  overunder: 'Over' | 'Under';
+  gameDate?: string;
+  [key: string]: any; 
 }
 
 export interface PropData {
   id: string;
   player: string;
   team: string;
+  opponent?: string;
   prop: string;
   line: number;
-  odds: number;
+  overOdds: number;
+  underOdds: number;
+  gameTime?: any;
   week?: number;
   matchup?: string;
-  Player?: string;
-  Team?: string;
-  Prop?: string;
-  Line?: number;
-  Odds?: number;
-  Week?: number;
-  Matchup?: string;
-  GameDate?: string; // ADDED
-  GameTime?: string;
-  overOdds?: number;
-  underOdds?: number;
-  'Over/Under?'?: string;
+  [key: string]: any;
 }
 
-export interface WeeklyProp {
-  id: string;
-  player: string;
-  team: string;
-  prop: string;
-  line: number;
-  week: number;
-  odds?: number;
-  matchup?: string;
-  Player?: string;
-  Team?: string;
-  Prop?: string;
-  Line?: number;
-  Week?: number;
-  Odds?: number;
-  Matchup?: string;
-  overunder?: string;
-  'Over/Under?'?: string;
-}
-
-export interface Prop {
-  id: string;
-  player: string;
-  team: string;
-  prop: string;
-  line: number;
-  odds: number;
-  week?: number;
-  matchup?: string;
+export interface WeeklyProp extends PropData {
+  Week: number; 
+  week?: number; 
   gameDate?: string;
-  Player?: string;
-  Team?: string;
-  Prop?: string;
-  Line?: number;
-  Odds?: number;
-  Week?: number;
-  Matchup?: string;
-  GameDate?: string;
 }
+
+// ============================================================================
+// BET TYPES
+// ============================================================================
+
+export interface BetLeg {
+  id: string;
+  player: string;
+  prop: string;
+  line: number;
+  selection?: 'Over' | 'Under' | ''; // Make it optional and allow empty string
+  odds: number;
+  matchup?: string;
+  team?: string;
+  week?: number;
+  Week?: number;
+  propId?: string;
+  status?: 'won' | 'lost' | 'pending';
+}
+
+export interface Bet {
+  id: string;
+  uid?: string;      // Added for auth mapping
+  userId?: string;   // Added to fix API route errors
+  createdAt: any; 
+  updatedAt?: any;
+  _source?: any;
+  status: BetStatus; // Updated to use the full BetStatus union
+  stake: number;
+  odds: number;
+  potentialPayout?: number;
+  legs: BetLeg[];
+  betType: BetType;  // Updated to include 'straight', 'sgp', etc.
+  boost: boolean; 
+  boostPercentage: number; 
+  isLive: boolean; 
+  date?: string | Date;
+
+  // Legacy fields for backwards compatibility
+  selection?: 'Over' | 'Under';
+  overUnder?: 'Over' | 'Under';
+  player?: string;
+  line?: number;
+  prop?: string;
+}
+
+// Submission helper for when ID/CreatedAt aren't generated yet
+export interface BetSubmission {
+  status: BetStatus;
+  stake: number;
+  odds: number;
+  legs: BetLeg[];
+  betType: BetType;
+  boost: boolean;
+  boostPercentage: number;
+  isLive: boolean;
+  userId?: string;
+}
+
+// BetResult type (used in performance page and charts)
+export interface BetResult {
+  id: string;
+  userId: string;
+  betId: string;
+  result: 'won' | 'lost' | 'push' | 'void';
+  status?: BetStatus;
+  stake: number;
+  payout: number;
+  profit: number;
+  date: any;
+  betType: BetType; // Synced with global BetType
+  legs?: BetLeg[];
+}
+
+// ============================================================================
+// WALLET & BONUS TYPES
+// ============================================================================
+
+export interface Wallet {
+  id?: string;
+  userId: string;
+  balance: number;
+  updatedAt: any;
+  lastUpdated?: any; 
+}
+
+export interface Bonus {
+  id: string;
+  name: string;
+  boost: number;
+  betType: BetType | 'any';
+  maxWager: number;          // Existing
+  maxBet?: number;           // Add for compatibility (fixes hook error)
+  minOdds?: number;          // Add for compatibility
+  expirationDate: Date | any;
+  expiresAt?: any;           // Add for compatibility
+  description?: string;
+  status: BonusStatus;
+  isExpired?: boolean;       // Add this (fixes utils.ts and firebase/bonuses.tsx)
+  usedAt?: Date | any;
+  usedInBetId?: string;
+  createdAt: Date | any;
+  updatedAt?: Date | any;
+  [key: string]: any;        // Add index signature to handle any other fields
+}
+
+// ============================================================================
+// SCHEDULE TYPES
+// ============================================================================
 
 export interface ScheduleEntry {
   id: string;
-  week: number;
   homeTeam: string;
   awayTeam: string;
-  gameDate: string;
-  gameTime: string;
+  gameTime: any;
+  week?: number;
+  league?: string;
+  status?: 'scheduled' | 'in_progress' | 'completed' | 'postponed';
+  homeScore?: number;
+  awayScore?: number;
 }
+
+// ============================================================================
+// SEARCH & FILTER TYPES
+// ============================================================================
 
 export interface SearchCriteria {
-  week?: number;
-  team?: string;
   player?: string;
   prop?: string;
+  gamedate?: string;
   matchup?: string;
-}
-
-export interface Wallet {
-  id: string;
-  userId: string;
-  balance: number;
-  bonusBalance: number;
-  updatedAt?: any;
-  lastUpdated?: any;
-}
-
-export interface PropRow {
-  player: string;
-  team: string;
-  prop: string;
-  line: number;
-  odds: number;
-  matchup?: string;
+  team?: string;
   week?: number;
-  Player?: string;
-  Team?: string;
-  Prop?: string;
-  Line?: number;
-  Odds?: number;
-  Week?: number;
-  Matchup?: string;
+  position?: string;
+  league?: string;
+  [key: string]: any;
 }
