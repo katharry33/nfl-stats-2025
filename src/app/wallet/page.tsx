@@ -31,8 +31,9 @@ export default function WalletPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
 
-  const userId = auth?.currentUser?.uid;
-
+  const { user } = useAuth();
+  const userId = user?.uid;
+  
   useEffect(() => {
     if (!firestore || !userId) {
         if (!userId) setLoading(false);
