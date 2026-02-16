@@ -14,8 +14,9 @@ export async function GET(request: NextRequest) {
     const playerParam = searchParams.get('player');
     const propParam = searchParams.get('prop');
     const gamedateParam = searchParams.get('gamedate');
+    const matchupParam = searchParams.get('matchup');
     
-    console.log('All-props filters:', { weekParam, teamParam, playerParam, propParam, gamedateParam });
+    console.log('All-props filters:', { weekParam, teamParam, playerParam, propParam, gamedateParam, matchupParam });
 
     // Test both uppercase and lowercase field names
     const testLower = await adminDb.collection(collectionName)
@@ -44,12 +45,7 @@ export async function GET(request: NextRequest) {
       console.log(`Filtering: ${weekField} == ${weekNum}`);
     }
 
-    // Team filter (exact match, case-insensitive handled in client)
-    if (teamParam) {
-      const teamField = useUppercase ? 'Team' : 'team';
-      query = query.where(teamField, '==', teamParam.toUpperCase()) as any;
-      console.log(`Filtering: ${teamField} == ${teamParam.toUpperCase()}`);
-    }
+    // Note: Team filter moved to client-side for case-insensitive matching
 
     // Execute query
     const snapshot = await query.limit(500).get();
@@ -80,7 +76,14 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // Client-side filters (player, prop, gamedate)
+    // Client-side filters (team, player, prop, gamedate, matchup)
+    if (teamParam) {
+      const teamLower = teamParam.toLowerCase();
+      props = props.filter(p => 
+        (p.Team || p.team || '').toLowerCase().includes(teamLower)
+      );
+    }
+
     if (playerParam) {
       const playerLower = playerParam.toLowerCase();
       props = props.filter(p => 
@@ -97,6 +100,13 @@ export async function GET(request: NextRequest) {
     if (gamedateParam) {
       props = props.filter(p => 
         (p.GameDate || p.gameDate || '').includes(gamedateParam)
+      );
+    }
+
+    if (matchupParam) {
+      const matchupLower = matchupParam.toLowerCase();
+      props = props.filter(p => 
+        (p.Matchup || p.matchup || '').toLowerCase().includes(matchupLower)
       );
     }
 
