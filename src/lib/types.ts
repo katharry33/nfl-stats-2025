@@ -1,8 +1,12 @@
-import { Timestamp } from "firebase/firestore";
+import type { Timestamp as AdminTimestamp } from 'firebase-admin/firestore';
+import type { Timestamp as ClientTimestamp } from 'firebase/firestore';
 
 // ============================================================================
 // CORE BETTING TYPES
 // ============================================================================
+
+// A flexible timestamp type that accounts for server, client, and serialization differences.
+export type FlexibleTimestamp = AdminTimestamp | ClientTimestamp | Date | string;
 
 export type BetStatus = 'pending' | 'won' | 'lost' | 'void' | 'push' | 'hit' | 'miss';
 
@@ -22,35 +26,7 @@ export type BonusStatus = 'active' | 'used' | 'expired';
 // PROP TYPES
 // ============================================================================
 
-export interface Prop {
-  id: string;
-  externalId?: string;
-  playerName: string;
-  team: string;
-  opponent: string;
-  category: string;
-  line: number;
-  overOdds: number;
-  underOdds: number;
-  gameTime: any;
-  league: 'NFL' | 'NBA' | 'MLB' | 'NHL'; 
-  status: 'active' | 'settled' | 'suspended';
-  lastUpdated: any;
-  week?: number;
-}
-
-export interface PropRow {
-  id: string;
-  player: string;
-  team: string;
-  prop: string;
-  line: number;
-  odds: number;
-  overunder: 'Over' | 'Under';
-  gameDate?: string;
-  [key: string]: any; 
-}
-
+// This interface is used for raw prop data, allowing for flexibility with dynamic keys.
 export interface PropData {
   id: string;
   player: string;
@@ -66,11 +42,39 @@ export interface PropData {
   [key: string]: any;
 }
 
-export interface WeeklyProp extends PropData {
-  Week: number; 
-  week?: number; 
+// Represents the clean, normalized data structure for a prop.
+export interface Prop {
+  id: string;
+  player: string;
+  team: string;
+  opponent?: string;
+  prop: string;
+  line: number;
+  overOdds: number;
+  underOdds: number;
+  gameTime?: FlexibleTimestamp;
   gameDate?: string;
+  week?: number;
+  matchup?: string;
+  league?: 'NFL' | 'NBA' | 'MLB' | 'NHL';
+  status?: 'active' | 'settled' | 'suspended';
+  source?: string; 
 }
+
+// Represents the raw data structure for props as they come from a specific weekly source.
+export interface WeeklyProp {
+  id: string;
+  Player: string;
+  Prop: string;
+  Line: number;
+  Odds: number;
+  overunder: 'Over' | 'Under' | string;
+  Week: number;
+  Team: string;
+  Matchup: string;
+  GameDate: FlexibleTimestamp;
+}
+
 
 // ============================================================================
 // BET TYPES
@@ -85,35 +89,33 @@ export interface BetLeg {
   selection: 'Over' | 'Under';
   odds: number;
   status: 'won' | 'lost' | 'pending' | 'void';
-  source?: 'manual' | 'betting-log' | 'api' | 'weekly-props' | 'weekly';
+  source?: 'manual' | 'betting-log' | 'api' | 'weekly-props' | 'weekly' | 'historical-props';
   week?: number | string;
-  gameDate?: string;
+  gameDate?: FlexibleTimestamp;
   matchup?: string;
   team?: string;
 }
 
 export interface Bet {
   id: string;
-  uid?: string;      // Added for auth mapping
-  userId?: string;   // Added to fix API route errors
-  createdAt: any; 
-  updatedAt?: any;
+  uid?: string;
+  userId?: string;
+  createdAt: FlexibleTimestamp;
+  updatedAt?: FlexibleTimestamp;
   _source?: any;
-  status: BetStatus; // Updated to use the full BetStatus union
+  status: BetStatus;
   stake: number;
   odds: number;
-  payout?: number; // Added for historical bets
+  payout?: number;
   potentialPayout?: number;
-  settledAt?: any; // Added for historical bets
+  settledAt?: FlexibleTimestamp;
   legs: BetLeg[];
-  betType: BetType;  // Updated to include 'straight', 'sgp', etc.
-  boost: boolean; 
-  boostPercentage: number; 
+  betType: BetType;
+  boost: boolean;
+  boostPercentage: number;
   isLive: boolean;
-  isBonus?: boolean; // Added to track bonus bets
-  date?: string | Date;
-
-  // Legacy fields for backwards compatibility
+  isBonus?: boolean;
+  date?: FlexibleTimestamp;
   selection?: 'Over' | 'Under';
   overUnder?: 'Over' | 'Under';
   player?: string;
@@ -121,23 +123,17 @@ export interface Bet {
   prop?: string;
 }
 
-// Submission helper for when ID/CreatedAt aren't generated yet
+// Represents the lean object sent from the client to the server for creation.
 export interface BetSubmission {
+  userId: string;
   status: BetStatus;
+  betType: BetType;
   stake: number;
   odds: number;
-  payout?: number; // Added for historical bets
-  settledAt?: any; // Added for historical bets
   legs: BetLeg[];
-  betType: BetType;
-  boost: boolean;
-  boostPercentage: number;
-  isLive: boolean;
-  isBonus?: boolean; // Added to track bonus bets
-  userId?: string;
+  createdAt: FlexibleTimestamp;
 }
 
-// BetResult type (used in performance page and charts)
 export interface BetResult {
   id: string;
   userId: string;
@@ -147,25 +143,25 @@ export interface BetResult {
   stake: number;
   payout: number;
   profit: number;
-  date: any;
-  betType: BetType; // Synced with global BetType
-  isBonus?: boolean; // Added to track bonus bets
+  date: FlexibleTimestamp;
+  betType: BetType;
+  isBonus?: boolean;
   legs?: BetLeg[];
 }
 
-export interface BetRecord extends Bet {
-  // This satisfies the import in parlay-studio
-}
+export interface BetRecord extends Bet {}
 
 // ============================================================================
 // CONTEXT TYPES
 // ============================================================================
 
-export interface BetslipContextType {
-  legs: BetLeg[];
+export interface BetSlipContextType {
+  selections: BetLeg[];
   addLeg: (leg: BetLeg) => void;
   removeLeg: (id: string) => void;
-  clearLegs: () => void;
+  updateLeg: (id: string, updates: Partial<BetLeg>) => void;
+  clearSelections: () => void;
+  submitBet: () => Promise<void>;
 }
 
 // ============================================================================
@@ -177,8 +173,8 @@ export interface Wallet {
   userId: string;
   balance: number;
   bonusBalance: number;
-  lastUpdated: any;
-  updatedAt?: any;
+  lastUpdated: FlexibleTimestamp;
+  updatedAt?: FlexibleTimestamp;
 }
 
 export interface Bonus {
@@ -186,19 +182,19 @@ export interface Bonus {
   name: string;
   boost: number;
   betType: BetType | 'any';
-  maxWager: number;          // Existing
-  maxBet?: number;           // Add for compatibility (fixes hook error)
-  minOdds?: number;          // Add for compatibility
-  expirationDate: Date | any;
-  expiresAt?: any;           // Add for compatibility
+  maxWager: number;
+  maxBet?: number;
+  minOdds?: number;
+  expirationDate: FlexibleTimestamp;
+  expiresAt?: FlexibleTimestamp;
   description?: string;
   status: BonusStatus;
-  isExpired?: boolean;       // Add this (fixes utils.ts and firebase/bonuses.tsx)
-  usedAt?: Date | any;
+  isExpired?: boolean;
+  usedAt?: FlexibleTimestamp;
   usedInBetId?: string;
-  createdAt: Date | any;
-  updatedAt?: Date | any;
-  [key: string]: any;        // Add index signature to handle any other fields
+  createdAt: FlexibleTimestamp;
+  updatedAt?: FlexibleTimestamp;
+  [key: string]: any;
 }
 
 // ============================================================================
@@ -209,7 +205,7 @@ export interface ScheduleEntry {
   id: string;
   homeTeam: string;
   awayTeam: string;
-  gameTime: any;
+  gameTime: FlexibleTimestamp;
   week?: number;
   league?: string;
   status?: 'scheduled' | 'in_progress' | 'completed' | 'postponed';

@@ -1,102 +1,80 @@
 'use client';
 
-import { createContext, useContext, useState, ReactNode } from 'react';
-import type { BetLeg, Bet } from '../lib/types';
-import { addBet } from '../lib/actions/bet-actions';
-import { useAuth } from '@/lib/firebase/provider';
-import { toast } from 'sonner';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { BetLeg, BetSlipContextType } from '@/lib/types';
 
-export interface BetslipContextType {
-  selections: BetLeg[];
-  addLeg: (leg: BetLeg) => void;
-  removeLeg: (legId: string) => void;
-  clearSelections: () => void;
-  updateLeg: (legId: string, updates: Partial<BetLeg>) => void;
-  submitBet: (betData: Partial<Bet>) => Promise<void>;
-}
+const BetSlipContext = createContext<BetSlipContextType | undefined>(undefined);
 
-const BetslipContext = createContext<BetslipContextType | undefined>(undefined);
-
-export function BetslipProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
+export function BetSlipProvider({ children }: { children: React.ReactNode }) {
   const [selections, setSelections] = useState<BetLeg[]>([]);
 
+  // 1. Add or Toggle a Leg
   const addLeg = (leg: BetLeg) => {
-    setSelections(prev => {
-      const exists = prev.some(l => l.propId === leg.propId);
-      if (exists) {
-        toast.warning("Prop already in slip");
-        return prev;
+    setSelections((prev) => {
+      const exists = prev.find((i) => i.id === leg.id);
+      
+      // If user clicks the exact same side, remove it (toggle off)
+      if (exists?.selection === leg.selection) {
+        return prev.filter((i) => i.id !== leg.id);
       }
-      toast.success("Added to Bet Slip");
-      return [...prev, leg];
+      
+      // If user clicks the other side (e.g., switches Over to Under), replace it
+      return [...prev.filter((i) => i.id !== leg.id), leg];
     });
   };
 
-  const removeLeg = (legId: string) => {
-    setSelections(prev => prev.filter(l => l.id !== legId));
-    toast.error("Removed from Bet Slip");
+  // 2. Remove a specific leg
+  const removeLeg = (id: string) => {
+    setSelections((prev) => prev.filter((i) => i.id !== id));
   };
 
-  const clearSelections = () => setSelections([]);
-
-  const updateLeg = (legId: string, updates: Partial<BetLeg>) => {
-    setSelections(prev =>
-      prev.map(leg =>
-        leg.id === legId
-          ? { ...leg, ...updates }
-          : leg
-      )
+  // 3. Update a leg (useful for Parlay Studio adjusting lines)
+  const updateLeg = (id: string, updates: Partial<BetLeg>) => {
+    setSelections((prev) => 
+      prev.map((i) => (i.id === id ? { ...i, ...updates } : i))
     );
   };
 
-  const submitBet = async (betData: Partial<Bet>) => {
-    if (!user) {
-      toast.error("You must be logged in to place a bet.");
-      return;
-    }
+  // 4. Clear everything
+  const clearSelections = () => setSelections([]);
 
+  // 5. Submit to Firebase (Placeholder for your API route)
+  const submitBet = async () => {
+    if (selections.length === 0) return;
+    
     try {
-      // Merge selections and defaults with the provided data
-      const payload = {
-        ...betData,
-        legs: selections,
-        userId: user.uid,
-        // If no date is provided, addBet action will handle serverTimestamp
-      };
-
-      const result = await addBet(user.uid, payload);
+      const response = await fetch('/api/bets/place', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ legs: selections }),
+      });
       
-      if (result.success) {
-        toast.success("Bet saved successfully!");
+      if (response.ok) {
         clearSelections();
-      } else {
-        throw new Error(result.error);
       }
     } catch (error) {
-      console.error("Failed to submit bet:", error);
-      toast.error("Failed to save bet.");
+      console.error("Failed to place bet:", error);
     }
   };
 
   return (
-    <BetslipContext.Provider value={{
-      selections,
-      addLeg,
-      removeLeg,
-      updateLeg,
-      clearSelections,
-      submitBet
+    <BetSlipContext.Provider value={{ 
+      selections, 
+      addLeg, 
+      removeLeg, 
+      updateLeg, 
+      clearSelections, 
+      submitBet 
     }}>
       {children}
-    </BetslipContext.Provider>
+    </BetSlipContext.Provider>
   );
 }
 
 export const useBetSlip = () => {
-  const context = useContext(BetslipContext);
+  const context = useContext(BetSlipContext);
   if (!context) {
-    throw new Error('useBetSlip must be used within a BetslipProvider');
+    throw new Error('useBetSlip must be used within a BetSlipProvider');
   }
   return context;
 };

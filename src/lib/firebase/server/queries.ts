@@ -1,5 +1,5 @@
-import { adminDb } from "../admin"; // Using the exported adminDb from your admin.ts
-import { Prop, Bet, ScheduleEntry, SearchCriteria } from "../../types";
+import { adminDb } from "../admin";
+import { Prop, Bet, ScheduleEntry, SearchCriteria, PropData } from "../../types";
 import type { Query, QueryDocumentSnapshot } from 'firebase-admin/firestore';
 
 // ============================================================================
@@ -9,53 +9,61 @@ import type { Query, QueryDocumentSnapshot } from 'firebase-admin/firestore';
 export async function getAllPropsFlexible(
   criteria?: SearchCriteria, 
   limitSize: number = 100
-): Promise<Prop[]> {
-  // Use adminDb.collection (not db.collection)
+): Promise<PropData[]> {
   let query: Query = adminDb.collection('allProps_2025');
 
   if (criteria) {
-    // 1. Fix Week Filter: Avoid "number vs string" comparison error
-    if (criteria.week !== undefined && criteria.week !== null) {
+    if (criteria.week !== undefined && criteria.week !== null && criteria.week !== 'all') {
       const weekVal = typeof criteria.week === 'string' ? parseInt(criteria.week, 10) : criteria.week;
       if (!isNaN(weekVal)) {
         query = query.where('week', '==', weekVal);
       }
     }
-
-    // 2. Fix Loop: Explicitly cast keys to string to satisfy Firestore where()
-    const filterKeys: Array<keyof SearchCriteria> = ['player', 'prop', 'team', 'matchup'];
-    
-    for (const key of filterKeys) {
-      const value = criteria[key];
-      // Convert key to string to avoid "Type number is not assignable to string" error
-      const fieldName = String(key);
-
-      if (value && value !== '') {
-        if (fieldName === 'player') {
-          query = query.where('player', '>=', value).where('player', '<=', value + '\uf8ff');
-        } else if (fieldName !== 'week') { // week handled separately above
-          query = query.where(fieldName, '==', value);
-        }
-      }
+    if (criteria.player) {
+      query = query
+        .where('player', '>=', criteria.player)
+        .where('player', '<=', criteria.player + '\uf8ff')
+        .orderBy('player');
     }
+    if (criteria.team) query = query.where('team', '==', criteria.team);
+    if (criteria.prop) query = query.where('prop', '==', criteria.prop);
+    if (criteria.matchup) query = query.where('matchup', '==', criteria.matchup);
   }
 
   try {
-    // Requires composite index for 7000+ docs when filtering and ordering
-    const snapshot = await query
-      .orderBy('week', 'desc')
-      .limit(limitSize)
-      .get();
+    if (!criteria?.player) {
+      query = query.orderBy('week', 'desc');
+    }
+
+    const snapshot = await query.limit(limitSize).get();
 
     return snapshot.docs.map((doc: QueryDocumentSnapshot) => ({
       id: doc.id,
       ...(doc.data() as any)
-    })) as Prop[];
+    })) as PropData[];
   } catch (error: any) {
     console.error("❌ Firestore Query Error:", error.message);
     return [];
   }
 }
+
+// Alias the function to satisfy the page's import.
+export const fetchProps = getAllPropsFlexible;
+
+// The function now fetches its own data and correctly filters the week values.
+export async function getFilterOptions() {
+  const props = await getAllPropsFlexible({}, 1000);
+  
+  return {
+    teams: Array.from(new Set(props.map(p => p.team))).sort(),
+    propTypes: Array.from(new Set(props.map(p => p.prop))).sort(),
+    // .filter((w): w is number => typeof w === 'number') ensures undefined is removed
+    weeks: Array.from(new Set(props.map(p => p.week)))
+      .filter((w): w is number => typeof w === 'number') 
+      .sort((a, b) => a - b)
+  };
+}
+
 
 // ============================================================================
 // BETTING LOG QUERIES
@@ -64,9 +72,9 @@ export async function getAllPropsFlexible(
 export async function getBettingLog(userId: string, limit: number = 50): Promise<Bet[]> {
   try {
     const snapshot = await adminDb
-      .collection('bettingLog')
+      .collection('user_bets')
       .where('userId', '==', userId)
-      .orderBy('createdAt', 'desc')
+      .orderBy('placedAt', 'desc')
       .limit(limit)
       .get();
     
@@ -74,8 +82,8 @@ export async function getBettingLog(userId: string, limit: number = 50): Promise
       id: doc.id,
       ...(doc.data() as any)
     })) as Bet[];
-  } catch (error) {
-    console.error('Error fetching betting log:', error);
+  } catch (error: any) {
+    console.error('Error fetching betting log:', error.message);
     return [];
   }
 }
@@ -93,10 +101,13 @@ export async function getStaticSchedule(criteria?: {
     let query: Query = adminDb.collection('static_schedule');
 
     if (criteria?.season) query = query.where('season', '==', criteria.season);
-    if (criteria?.week) query = query.where('week', '==', Number(criteria.week));
+    if (criteria?.week) {
+        const weekNum = Number(criteria.week);
+        if (!isNaN(weekNum)) query = query.where('week', '==', weekNum);
+    }
     if (criteria?.league) query = query.where('league', '==', criteria.league);
 
-    query = query.orderBy('week').orderBy('gameTime', 'asc');
+    query = query.orderBy('week', 'asc').orderBy('gameTime', 'asc');
 
     const snapshot = await query.get();
 
@@ -104,8 +115,33 @@ export async function getStaticSchedule(criteria?: {
       id: doc.id,
       ...(doc.data() as any)
     })) as ScheduleEntry[];
-  } catch (error) {
-    console.error('Error fetching schedule:', error);
+  } catch (error: any) {
+    console.error('Error fetching schedule:', error.message);
     return [];
+  }
+}
+
+// ============================================================================
+// UTILITIES
+// ============================================================================
+
+export function getWeekFromParams(weekParam: string | undefined): number {
+  const currentNFLWeek = 1; 
+  if (!weekParam || weekParam === 'all') return currentNFLWeek;
+  
+  const week = parseInt(weekParam, 10);
+  return (isNaN(week) || week < 1 || week > 22) ? currentNFLWeek : week;
+}
+
+export async function fetchWeeklyProps(week: number): Promise<Prop[]> {
+  try {
+      const snapshot = await adminDb.collection('allProps_2025')
+        .where('week', '==', week)
+        .limit(1000)
+        .get();
+        
+      return snapshot.docs.map(doc => ({ id: doc.id, ...(doc.data() as any) })) as Prop[];
+  } catch (e) {
+      return [];
   }
 }

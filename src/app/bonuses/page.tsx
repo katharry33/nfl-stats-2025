@@ -16,6 +16,17 @@ import { format } from "date-fns";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { Bonus } from "@/lib/types";
 
+// Bulletproof helper to safely convert a flexible timestamp to a Date object.
+const ensureDate = (ts: any): Date => {
+  if (!ts) return new Date();
+  // Check if it's a Firebase Timestamp (has toDate method)
+  if (ts && typeof ts.toDate === 'function') {
+    return ts.toDate();
+  }
+  // Fallback for strings or already-existing Date objects
+  return new Date(ts);
+};
+
 export default function BonusesPage() {
   const [bonuses, setBonuses] = useState<Bonus[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -29,14 +40,13 @@ export default function BonusesPage() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const updatedBonuses = snapshot.docs.map((doc) => {
         const data = doc.data();
-        const expiration = data.expirationDate?.toDate?.() || new Date(data.expirationDate);
+        // Use the helper to process the date from Firestore
+        const expiration = ensureDate(data.expirationDate);
         const now = new Date();
         
-        // Auto-update status if expired
         let status = data.status || 'active';
         if (status === 'active' && expiration < now) {
           status = 'expired';
-          // Update in Firestore
           updateDoc(doc.ref, { status: 'expired' });
         }
         
@@ -44,7 +54,9 @@ export default function BonusesPage() {
           id: doc.id,
           ...data,
           status,
+          // Ensure dates are consistently Date objects within the state
           expirationDate: expiration,
+          usedAt: data.usedAt ? ensureDate(data.usedAt) : undefined,
         } as Bonus;
       });
 
@@ -59,7 +71,7 @@ export default function BonusesPage() {
     return () => unsubscribe();
   }, []);
 
-  const handleSave = (bonus: Bonus) => {
+  const handleSave = () => {
     setIsFormOpen(false);
     setSelectedBonus(null);
   };
@@ -86,12 +98,15 @@ export default function BonusesPage() {
   const expiredBonuses = bonuses.filter(b => b.status === 'expired');
 
   const BonusCard = ({ bonus, showActions = true }: { bonus: Bonus; showActions?: boolean }) => {
-    const expirationDate = bonus.expirationDate instanceof Date 
-      ? bonus.expirationDate 
-      : bonus.expirationDate?.toDate?.() || new Date(bonus.expirationDate);
+    // The bonus object from state already has Date objects, but using ensureDate here is safest
+    const expirationDate = ensureDate(bonus.expirationDate);
 
     return (
-      <div className="p-4 border rounded-lg bg-gradient-to-r from-green-50 to-emerald-50 border-green-200 hover:shadow-md transition-shadow">
+      <div className={`p-4 border rounded-lg transition-shadow {
+        ${bonus.status === 'active' ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-200 hover:shadow-md' : ''}
+        ${bonus.status === 'used' ? 'bg-blue-50 border-blue-200' : ''}
+        ${bonus.status === 'expired' ? 'bg-slate-50 border-slate-200 opacity-60' : ''}
+      }`}>
         <div className="flex items-start justify-between">
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-2">
@@ -124,26 +139,24 @@ export default function BonusesPage() {
 
             {bonus.usedAt && (
               <div className="text-xs text-slate-500 mt-2">
-                Used: {format(bonus.usedAt.toDate?.() || bonus.usedAt, "MMM d, yyyy")}
+                Used: {format(ensureDate(bonus.usedAt), "MMM d, yyyy")}
               </div>
             )}
           </div>
 
-          {showActions && (
+          {showActions && bonus.status === 'active' && (
             <div className="flex gap-2">
               <Button variant="ghost" size="icon" onClick={() => openForm(bonus)}>
                 <Edit className="h-4 w-4" />
               </Button>
-              {bonus.status === 'active' && (
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={() => handleMarkAsUsed(bonus.id)}
-                  className="text-green-600 border-green-600"
-                >
-                  Mark as Used
-                </Button>
-              )}
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => handleMarkAsUsed(bonus.id)}
+                className="text-green-600 border-green-600"
+              >
+                Mark as Used
+              </Button>
             </div>
           )}
         </div>
@@ -164,7 +177,6 @@ export default function BonusesPage() {
           Add New Bonus
         </Button>
 
-        {/* Bonus Form Dialog */}
         <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
           <DialogContent className="max-w-md">
             <DialogHeader>
@@ -176,7 +188,6 @@ export default function BonusesPage() {
           </DialogContent>
         </Dialog>
 
-        {/* Active Bonuses */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -200,7 +211,6 @@ export default function BonusesPage() {
           </CardContent>
         </Card>
 
-        {/* Bonuses Used */}
         {usedBonuses.length > 0 && (
           <Card>
             <CardHeader>
@@ -211,18 +221,15 @@ export default function BonusesPage() {
               <CardDescription>Bonuses that have been applied to bets</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
-                {usedBonuses.map((bonus) => (
-                  <div key={bonus.id} className="p-4 border rounded-lg bg-blue-50 border-blue-200">
-                    <BonusCard bonus={bonus} showActions={false} />
-                  </div>
-                ))}
-              </div>
+                <div className="space-y-3">
+                  {usedBonuses.map((bonus) => (
+                      <BonusCard key={bonus.id} bonus={bonus} showActions={false} />
+                  ))}
+                </div>
             </CardContent>
           </Card>
         )}
 
-        {/* Expired Bonuses */}
         {expiredBonuses.length > 0 && (
           <Card>
             <CardHeader>
@@ -233,13 +240,11 @@ export default function BonusesPage() {
               <CardDescription>Past bonuses that are no longer active</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-3">
-                {expiredBonuses.map((bonus) => (
-                  <div key={bonus.id} className="p-4 border rounded-lg bg-slate-50 border-slate-200 opacity-60">
-                    <BonusCard bonus={bonus} showActions={false} />
-                  </div>
-                ))}
-              </div>
+                <div className="space-y-3">
+                  {expiredBonuses.map((bonus) => (
+                      <BonusCard key={bonus.id} bonus={bonus} showActions={false} />
+                  ))}
+                </div>
             </CardContent>
           </Card>
         )}

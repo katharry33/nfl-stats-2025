@@ -82,7 +82,8 @@ export default function ParlayStudioPage() {
                 <div className="flex justify-between items-center">
                   <CardTitle>Bet Legs ({selections.length})</CardTitle>
                   {selections.length > 0 && (
-                    <Button variant="ghost" size="sm" onClick={clearSelections}>
+                    // FIX: Wrap the function call in an arrow function to prevent passing the event object.
+                    <Button variant="ghost" size="sm" onClick={() => clearSelections()}>
                       Clear All
                     </Button>
                   )}

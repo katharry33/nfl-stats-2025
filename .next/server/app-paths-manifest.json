@@ -1,6 +1,7 @@
 {
   "/all-props/page": "app/all-props/page.js",
+  "/_not-found/page": "app/_not-found/page.js",
+  "/api/all-props/route": "app/api/all-props/route.js",
   "/favicon.ico/route": "app/favicon.ico/route.js",
-  "/api/all-props/options/route": "app/api/all-props/options/route.js",
-  "/api/all-props/route": "app/api/all-props/route.js"
+  "/api/all-props/options/route": "app/api/all-props/options/route.js"
 }

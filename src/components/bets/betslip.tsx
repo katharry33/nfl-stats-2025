@@ -1,67 +1,79 @@
 'use client';
 
-import React from 'react';
-import { useBetSlip } from '../../context/betslip-context';
-import { Button } from '../ui/button';
-import { Card, CardContent } from '../ui/card';
-import { Trash2 } from 'lucide-react';
+import { useBetSlip } from '@/context/betslip-context';
+import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { Trash2 } from 'lucide-react';
+import { BetLeg } from '@/lib/types';
 
-export function Betslip() {
-  const { selections, removeLeg, clearSelections } = useBetSlip();
+// The card now receives the remove function as a prop and does not call the hook itself.
+function BetLegCard({ leg, removeFromSlip }: { leg: BetLeg; removeFromSlip: (id: string) => void }) {
+  return (
+    <div className="bg-slate-800 p-3 rounded-lg text-sm">
+      <div className="flex justify-between items-start">
+        <div>
+          <p className="font-bold text-white">{leg.player}</p>
+          <p className="text-xs text-slate-400">{leg.prop}</p>
+        </div>
+        <button onClick={() => removeFromSlip(leg.id)} className="text-slate-500 hover:text-red-500">
+          <Trash2 size={16} />
+        </button>
+      </div>
+      <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-700/50">
+        <div className="font-mono text-xs bg-slate-900 px-2 py-1 rounded">
+          {leg.selection} {leg.line} 
+        </div>
+        <div className="font-bold text-yellow-400">
+          {Number(leg.odds) > 0 ? `+${leg.odds}` : leg.odds}
+        </div>
+      </div>
+    </div>
+  );
+}
 
-  const handlePlaceBet = () => {
-    // This is a placeholder for the actual bet placement logic.
-    toast.success('Bet placed successfully!');
-    clearSelections();
-  };
+// The main BetSlip component
+export function BetSlip() {
+  // Destructure and alias everything needed from the context in the parent.
+  const { 
+    selections: slip, 
+    removeLeg: removeFromSlip, 
+    clearSelections: clearSlip 
+  } = useBetSlip();
 
-  if (selections.length === 0) {
-    return (
-      <Card className="bg-[#161b22] border-[#30363d] text-white border-dashed">
-        <CardContent className="pt-6 text-center text-slate-500">
-          Your bet slip is empty.
-        </CardContent>
-      </Card>
-    );
+  if (slip.length === 0) {
+    return null;
   }
 
-  return (
-    <div className="space-y-4">
-      <div className="space-y-2">
-        {selections.map((leg) => (
-          <Card key={leg.id} className="bg-[#21262d] border-[#30363d] text-white">
-            <CardContent className="p-3 flex justify-between items-center">
-              <div className="space-y-1">
-                <p className="font-bold text-sm text-blue-400">{leg.player}</p>
-                <p className="text-xs text-slate-300">
-                  {leg.prop} {leg.line}
-                  <span className="ml-2 px-1.5 py-0.5 bg-slate-700 rounded text-xs uppercase">
-                    {leg.selection}
-                  </span>
-                </p>
-              </div>
-              <div className="flex items-center gap-4">
-                <span className="font-mono text-sm font-bold text-green-500">
-                  {leg.odds > 0 ? `+${leg.odds}` : leg.odds}
-                </span>
-                <Button onClick={() => removeLeg(leg.id)} variant="ghost" size="icon" className="text-slate-500 hover:text-red-500">
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+  const handlePlaceBet = () => {
+    toast.success(`Successfully placed bet with ${slip.length} leg(s)`);
+    clearSlip();
+  };
 
-      <div className="mt-4 space-y-2">
-        <Button onClick={handlePlaceBet} className="w-full bg-green-600 hover:bg-green-700">
-          Place Bet
-        </Button>
-        <Button onClick={() => clearSelections()} variant="outline" className="w-full border-red-500 text-red-500 hover:bg-red-500 hover:text-white">
+  return (
+    <aside className="w-80 bg-slate-950 border-l border-slate-800 flex flex-col p-4 animate-slide-in-from-right">
+      <div className="flex justify-between items-center pb-4 border-b border-slate-800">
+        <h2 className="text-xl font-bold text-white">Bet Slip</h2>
+        <Button variant="ghost" size="sm" onClick={clearSlip} className="text-slate-400 hover:bg-slate-800">
           Clear All
         </Button>
       </div>
-    </div>
+
+      <div className="flex-1 py-4 space-y-3 overflow-y-auto">
+        {/* Pass the remove function down to each card as a prop. */}
+        {slip.map(leg => (
+          <BetLegCard key={leg.id} leg={leg} removeFromSlip={removeFromSlip} />
+        ))}
+      </div>
+
+      <div className="pt-4 border-t border-slate-800">
+        <div className="flex justify-between items-center mb-4 text-sm">
+          <span className="text-slate-400">Total Legs</span>
+          <span className="font-bold text-white">{slip.length}</span>
+        </div>
+        <Button onClick={handlePlaceBet} className="w-full bg-yellow-400 text-black font-bold hover:bg-yellow-500">
+          Place Bet
+        </Button>
+      </div>
+    </aside>
   );
 }
