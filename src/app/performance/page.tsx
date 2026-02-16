@@ -6,7 +6,7 @@ import { Bet, BetResult } from '../../lib/types';
 import { PageHeader } from '../../components/layout/page-header';
 import { KpiCard } from '../../features/tracker/kpi-card';
 import { cn } from '../../lib/utils';
-import { useFirestore } from '@/context/AuthContext';
+import { useFirestore } from '@/lib/firebase/provider';
 import { collection, query, onSnapshot, where } from 'firebase/firestore';
 // Added missing icons
 import { BadgeDollarSign, Landmark, TrendingUp, TrendingDown, Loader2 } from 'lucide-react';

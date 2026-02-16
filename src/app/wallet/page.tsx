@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../..
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
-import { useFirestore, useAuth } from "@/context/AuthContext"; 
+import { useFirestore, useAuth } from "@/lib/firebase/provider"; 
 import { toast } from "sonner";
 import { Loader2, Wallet, ArrowUpCircle, ArrowDownCircle, History } from "lucide-react";
 import { collection, query, where, doc, serverTimestamp, onSnapshot, updateDoc, increment, addDoc } from "firebase/firestore";

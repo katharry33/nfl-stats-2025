@@ -4,7 +4,7 @@ import { Timestamp } from "firebase/firestore";
 // CORE BETTING TYPES
 // ============================================================================
 
-export type BetStatus = 'pending' | 'won' | 'lost' | 'cashed' | 'push' | 'void';
+export type BetStatus = 'pending' | 'won' | 'lost' | 'void' | 'push' | 'hit' | 'miss';
 
 export type BetType = 
   | 'straight' 
@@ -81,7 +81,7 @@ export interface BetLeg {
   player: string;
   prop: string;
   line: number;
-  selection?: 'Over' | 'Under' | ''; // Make it optional and allow empty string
+  selection: 'Over' | 'Under';
   odds: number;
   matchup?: string;
   team?: string;
@@ -89,6 +89,7 @@ export interface BetLeg {
   Week?: number;
   propId?: string;
   status?: 'won' | 'lost' | 'pending';
+  source?: string; 
 }
 
 export interface Bet {
@@ -145,16 +146,32 @@ export interface BetResult {
   legs?: BetLeg[];
 }
 
+export interface BetRecord extends Bet {
+  // This satisfies the import in parlay-studio
+}
+
+// ============================================================================
+// CONTEXT TYPES
+// ============================================================================
+
+export interface BetslipContextType {
+  legs: BetLeg[];
+  addLeg: (leg: BetLeg) => void;
+  removeLeg: (id: string) => void;
+  clearLegs: () => void;
+}
+
 // ============================================================================
 // WALLET & BONUS TYPES
 // ============================================================================
 
 export interface Wallet {
-  id?: string;
+  id: string;
   userId: string;
   balance: number;
-  updatedAt: any;
-  lastUpdated?: any; 
+  bonusBalance: number;
+  lastUpdated: any;
+  updatedAt?: any;
 }
 
 export interface Bonus {
@@ -203,13 +220,8 @@ export interface SearchCriteria {
   gamedate?: string;
   matchup?: string;
   team?: string;
-  week?: number;
+  week?: number | string;
   position?: string;
   league?: string;
   [key: string]: any;
-}
-
-export type BetStatus = 'pending' | 'won' | 'lost' | 'void' | 'push' | 'hit' | 'miss';
-export interface BetRecord extends Bet {
-  // This allows BetRecord to be used interchangeably with Bet
 }

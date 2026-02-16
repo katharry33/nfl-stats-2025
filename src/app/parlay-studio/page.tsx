@@ -15,7 +15,7 @@ import { toast } from 'sonner';
 import type { BetLeg } from '@/lib/types';
 
 export default function ParlayStudioPage() {
-  const { legs, removeLeg, clearLegs, updateLeg } = useBetSlip();
+  const { selections, removeLeg, clearSelections, updateLeg } = useBetSlip();
   const [stake, setStake] = useState('');
   const [boostPercent, setBoostPercent] = useState('0');
   const [isBonus, setIsBonus] = useState(false);
@@ -24,9 +24,9 @@ export default function ParlayStudioPage() {
   const [betType, setBetType] = useState('Parlay');
 
   const parlayOdds = useMemo(() => {
-    const legsWithOdds = legs.map((leg: BetLeg) => leg.odds || -110);
+    const legsWithOdds = selections.map((leg: BetLeg) => leg.odds || -110);
     return calculateParlayOdds(legsWithOdds);
-  }, [legs]);
+  }, [selections]);
 
   const potentialPayout = useMemo(() => {
     if (!stake) return 0;
@@ -34,19 +34,19 @@ export default function ParlayStudioPage() {
   }, [stake, parlayOdds, isBonus]);
 
   const overallStatus = useMemo(() => {
-    const results = legs.map((leg: BetLeg) => leg.status || 'pending');
+    const results = selections.map((leg: BetLeg) => leg.status || 'pending');
     if (results.every((r: string) => r === 'won')) return 'won';
     if (results.some((r: string) => r === 'lost')) return 'lost';
     return 'pending';
-  }, [legs]);
+  }, [selections]);
 
   const handleSave = async () => {
-    if (!stake || legs.length === 0) {
-      toast.error('Please add legs and enter stake');
+    if (!stake || selections.length === 0) {
+      toast.error('Please add selections and enter stake');
       return;
     }
 
-    const missingSelection = legs.some((leg: BetLeg) => !leg.selection);
+    const missingSelection = selections.some((leg: BetLeg) => !leg.selection);
     if (missingSelection) {
       toast.error('Please select Over or Under for all legs');
       return;
@@ -61,7 +61,7 @@ export default function ParlayStudioPage() {
       boostPercentage: Number(boostPercent),
       isBonus,
       isLive,
-      legs: legs.map((leg: BetLeg) => ({
+      legs: selections.map((leg: BetLeg) => ({
         ...leg,
         selection: leg.selection,
         odds: leg.odds,
@@ -79,7 +79,7 @@ export default function ParlayStudioPage() {
 
       if (res.ok) {
         toast.success('Bet saved to betting log!');
-        clearLegs();
+        clearSelections();
         setStake('');
         setBoostPercent('0');
         setIsBonus(false);
@@ -105,23 +105,23 @@ export default function ParlayStudioPage() {
           <Card className="bg-slate-950 border-slate-800">
             <CardHeader className="border-b border-slate-800">
               <div className="flex justify-between items-center">
-                <CardTitle>Bet Legs ({legs.length})</CardTitle>
-                {legs.length > 0 && (
-                  <Button variant="ghost" size="sm" onClick={clearLegs}>
+                <CardTitle>Bet Legs ({selections.length})</CardTitle>
+                {selections.length > 0 && (
+                  <Button variant="ghost" size="sm" onClick={clearSelections}>
                     Clear All
                   </Button>
                 )}
               </div>
             </CardHeader>
             <CardContent className="pt-4">
-              {legs.length === 0 ? (
+              {selections.length === 0 ? (
                 <div className="text-center py-12 text-slate-500">
                   <p>No legs added yet</p>
                   <p className="text-sm mt-2">Search for props and add them to your bet slip</p>
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {legs.map((leg: BetLeg) => (
+                  {selections.map((leg: BetLeg) => (
                     leg.id && <Card key={leg.id} className="bg-slate-900 border-slate-800">
                       <CardContent className="p-4">
                         <div className="flex justify-between items-start mb-3">
@@ -161,28 +161,7 @@ export default function ParlayStudioPage() {
                             >
                                 UNDER
                             </Button>
-                            Fixing Selection in ParlayStudio
-To make the "Over/Under" selectable in the studio, each leg needs a toggle. Update your leg rendering block:
-
-TypeScript
-// Inside ParlayStudio legs loop
-<div className="grid grid-cols-2 gap-2 mt-2">
-  <Button 
-    variant={leg.selection === 'Over' ? 'default' : 'outline'}
-    className={leg.selection === 'Over' ? 'bg-emerald-600' : 'border-slate-700'}
-    onClick={() => updateLeg(leg.id, { selection: 'Over' })}
-  >
-    OVER
-  </Button>
-  <Button 
-    variant={leg.selection === 'Under' ? 'default' : 'outline'}
-    className={leg.selection === 'Under' ? 'bg-red-600' : 'border-slate-700'}
-    onClick={() => updateLeg(leg.id, { selection: 'Under' })}
-  >
-    UNDER
-  </Button>
-</div>
-Next Steps                            </div>
+                          </div>
 
                           <div className="space-y-2">
                             <Label className="text-xs text-slate-400">Result</Label>
@@ -337,7 +316,7 @@ Next Steps                            </div>
 
               <Button
                 onClick={handleSave}
-                disabled={legs.length === 0 || !stake}
+                disabled={selections.length === 0 || !stake}
                 className="w-full bg-blue-600 hover:bg-blue-700 font-bold"
               >
                 Save to Betting Log
@@ -346,7 +325,7 @@ Next Steps                            </div>
               <div className="pt-4 border-t border-slate-800 space-y-1 text-xs text-slate-500">
                 <div className="flex justify-between">
                   <span>Legs:</span>
-                  <span className="text-white">{legs.length}</span>
+                  <span className="text-white">{selections.length}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Type:</span>

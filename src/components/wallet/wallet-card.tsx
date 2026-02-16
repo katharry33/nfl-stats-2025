@@ -1,6 +1,6 @@
 'use client';
 
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/lib/firebase/provider";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 
 export function WalletCard() {

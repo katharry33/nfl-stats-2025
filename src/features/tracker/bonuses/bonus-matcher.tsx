@@ -22,7 +22,7 @@ export function findBestBonus(
     if (!matchesType) return false;
     
     // Check if stake is within max wager
-    if (criteria.stake && criteria.stake > bonus.maxWager) return false;
+    if (criteria.stake && criteria.stake > (bonus.maxWager ?? 0)) return false;
     
     // Check if not expired
     const expirationDate = bonus.expirationDate instanceof Date 

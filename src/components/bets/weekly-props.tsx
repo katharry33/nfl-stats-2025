@@ -12,9 +12,9 @@ interface WeeklyPropsProps {
 }
 
 export function WeeklyProps({ props, loading }: WeeklyPropsProps) {
-  const { addLeg, removeLeg, legs } = useBetSlip();
+  const { selections, addLeg, removeLeg, clearSelections } = useBetSlip();
 
-  const isInBetSlip = (propId: string) => legs.some((leg: BetLeg) => leg.propId === propId);
+  const isInBetSlip = (propId: string) => selections.some((leg: BetLeg) => leg.propId === propId);
 
   const handleToggleBet = (prop: WeeklyProp) => {
     if (isInBetSlip(prop.id)) {

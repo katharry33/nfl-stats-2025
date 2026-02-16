@@ -9,7 +9,7 @@ import { useBetSlip } from "../../context/betslip-context";
 import { useRouter } from "next/navigation";
 
 export function HistoricalBetSlip() {
-  const { legs, removeLeg, clearLegs } = useBetSlip();
+  const { selections, removeLeg, clearSelections } = useBetSlip();
   const router = useRouter();
 
   const handleGoToParlayStudio = () => {
@@ -24,11 +24,11 @@ export function HistoricalBetSlip() {
             <Layers className="h-5 w-5 text-emerald-500" />
             <span>Bet Slip</span>
           </div>
-          {legs.length > 0 && (
+          {selections.length > 0 && (
             <Button 
               variant="ghost" 
               size="sm" 
-              onClick={clearLegs}
+              onClick={clearSelections}
               className="h-8 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10"
             >
               Clear
@@ -37,7 +37,7 @@ export function HistoricalBetSlip() {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {legs.length === 0 ? (
+        {selections.length === 0 ? (
           <div className="text-center py-10 px-4">
             <div className="h-12 w-12 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-3">
               <Layers className="h-6 w-6 text-slate-600" />
@@ -49,7 +49,7 @@ export function HistoricalBetSlip() {
         ) : (
           <>
             <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1 custom-scrollbar">
-              {legs.map((leg) => {
+              {selections.map((leg: any) => {
                 const numericOdds = Number(leg.odds);
                 // Use propId falling back to id if necessary for the key
                 const uniqueKey = leg.propId || leg.id || Math.random().toString();
@@ -90,7 +90,7 @@ export function HistoricalBetSlip() {
               <div className="flex items-center justify-between text-sm">
                 <span className="text-slate-400">Total Legs:</span>
                 <span className="font-mono font-bold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded">
-                  {legs.length}
+                  {selections.length}
                 </span>
               </div>
               

@@ -16,7 +16,7 @@ export default function AllPropsPage() {
   const router = useRouter();
   const [props, setProps] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const { legs: selections, addLeg, removeLeg, clearSelections } = useBetSlip();
+  const { selections, addLeg, removeLeg, clearSelections } = useBetSlip();
 
   // Filter states
   const [season, setSeason] = useState('2025-2026');
@@ -88,7 +88,7 @@ export default function AllPropsPage() {
       line: prop.Line || prop.line,
       matchup: prop.Matchup || prop.matchup,
       selection: 'Over', // Default selection so it's not empty
-      odds: -110 // Default odds
+      odds: -110, // Default odds
       source: 'all-props' // <-- Add this
     });
     toast.success("Added to slip");

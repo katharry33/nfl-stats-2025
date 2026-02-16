@@ -1,15 +1,18 @@
-import { FirebaseProvider } from '@/context/AuthContext';
-import { ClientProvider } from '@/lib/client-provider';
+// src/app/layout.tsx - Update imports
+import { FirebaseProvider } from '@/lib/firebase/provider';
+import { BetslipProvider } from '@/context/betslip-context'; // Note: lowercase 's'
+import { Toaster } from 'sonner';
+import './globals.css';
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <body>
-        {/* FirebaseProvider MUST be the outermost wrapper */}
         <FirebaseProvider>
-          <ClientProvider>
+          <BetslipProvider>
+            <Toaster position="top-right" />
             {children}
-          </ClientProvider>
+          </BetslipProvider>
         </FirebaseProvider>
       </body>
     </html>

@@ -5,7 +5,7 @@ import { SidebarNav } from './sidebar-nav';
 import { useFirebaseBets } from '../../hooks/useBets';
 import { useBankroll } from '../../hooks/use-bankroll';
 import { useActiveBonuses } from '../../hooks/use-active-bonuses';
-import { useFirestore, useAuth } from '@/context/AuthContext';
+import { useFirestore, useAuth } from '@/lib/firebase/provider';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const firestore = useFirestore();

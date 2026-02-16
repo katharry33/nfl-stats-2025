@@ -26,8 +26,8 @@ interface SidebarNavProps {
 
 export function SidebarNav({ bankroll, bonusBalance }: SidebarNavProps) {
   const pathname = usePathname();
-  const { legs } = useBetSlip();
-  const liveCount = legs?.length || 0;
+  const { selections } = useBetSlip();
+  const liveCount = selections?.length || 0;
 
   const safeBankroll = typeof bankroll === 'number' ? bankroll : 0;
   const safeBonus = typeof bonusBalance === 'number' ? bonusBalance : 0;

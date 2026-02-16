@@ -1,4 +1,3 @@
-// src/components/bet-slip/bet-slip.tsx
 'use client';
 
 import React, { useState } from 'react';
@@ -10,50 +9,48 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useBetSlip } from '@/context/betslip-context';
 import { calculateParlayOdds, getPayout } from '@/lib/utils';
-import { addBet } from '@/lib/actions/bet-actions';
 import { BetLeg } from '@/lib/types';
-import { useAuth } from '@/context/AuthContext';
+import { useAuth } from '@/lib/firebase/provider';
 
 export function BetSlip() {
   const { user } = useAuth();
-  const { legs, removeLeg, clearLegs } = useBetSlip();
+  const { selections, removeLeg, clearSelections, submitBet } = useBetSlip();
   const [stake, setStake] = useState<string>('');
   const [isBonus, setIsBonus] = useState(false);
   const [betDate, setBetDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const parlayOdds = calculateParlayOdds(legs.map((l: BetLeg) => Number(l.odds)));
+  const parlayOdds = calculateParlayOdds(selections.map((l: BetLeg) => Number(l.odds)));
   const potentialPayout = stake ? getPayout(Number(stake), parlayOdds.combinedOddsAmerican, isBonus) : 0;
 
   const handleSubmit = async () => {
-    if (!stake || legs.length === 0 || !user) return;
+    if (!stake || selections.length === 0 || !user) return;
     
     setIsSubmitting(true);
     try {
-      await addBet(user.uid, { // Use the real UID
+      await submitBet({
         stake: Number(stake),
         odds: parlayOdds.combinedOddsAmerican,
-        legs: legs,
-        betType: legs.length > 1 ? 'parlay' : 'straight',
+        betType: selections.length > 1 ? 'parlay' : 'straight',
         status: 'pending',
+        legs: selections,
         isLive: false,
-        boost: isBonus,
-        boostPercentage: 0, // Add logic to handle boost percentage
-        date: betDate,
+        boost: false,
+        boostPercentage: 0,
+        createdAt: new Date(),
       });
       
       setStake('');
       setIsBonus(false);
-      setBetDate(new Date().toISOString().split('T')[0]); // Reset to today
-      clearLegs();
+      setBetDate(new Date().toISOString().split('T')[0]);
     } catch (error) {
-      console.error('Failed to submit bet:', error);
+      console.error('Failed to submit bet from component:', error);
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  if (legs.length === 0) {
+  if (selections.length === 0) {
     return (
       <Card className="bg-slate-950 border-slate-800">
         <CardContent className="pt-6 text-center text-slate-500">
@@ -67,11 +64,11 @@ export function BetSlip() {
     <Card className="bg-slate-950 border-slate-800">
       <CardHeader className="border-b border-slate-800">
         <div className="flex justify-between items-center">
-          <CardTitle className="text-emerald-500">Bet Slip ({legs.length})</CardTitle>
+          <CardTitle className="text-emerald-500">Bet Slip ({selections.length})</CardTitle>
           <Button 
             variant="ghost" 
             size="sm" 
-            onClick={clearLegs}
+            onClick={clearSelections}
             className="text-slate-500 hover:text-white"
           >
             Clear All
@@ -82,7 +79,7 @@ export function BetSlip() {
       <CardContent className="pt-4 space-y-4">
         {/* Selections List */}
         <div className="space-y-2">
-          {legs.map((leg: BetLeg) => (
+          {selections.map((leg: BetLeg) => (
             <div 
               key={leg.id} 
               className="p-3 bg-slate-900 rounded-lg border border-slate-800 relative group"

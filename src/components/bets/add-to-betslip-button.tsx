@@ -35,7 +35,7 @@ export function AddToBetslipButton({ prop, selection }: AddToBetslipButtonProps)
             prop: prop.prop,
             line: prop.line,
             selection: selection,
-            odds: selection === "Over" ? prop.overOdds : prop.underOdds,
+            odds: (selection === "Over" ? prop.overOdds : prop.underOdds) ?? 0,
             matchup: prop.matchup,
             team: prop.team,
             week: prop.week,

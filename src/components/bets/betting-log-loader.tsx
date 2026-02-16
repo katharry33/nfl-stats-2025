@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { getBetsStream } from "../../lib/firebase/bets";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth } from "@/lib/firebase/provider";
 import type { Bet } from "../../lib/types";
 import { BetsTable } from './bets-table';
 
