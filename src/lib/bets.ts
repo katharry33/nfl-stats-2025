@@ -31,6 +31,7 @@ export const normalizeBetLeg = (leg: any): BetLeg => {
         selection,
         odds: prop.Odds ?? prop.odds ?? -110,
         week: prop.week, 
+        status: 'pending',
       };
     }
     throw new Error(`Invalid leg data received: ${JSON.stringify(leg)}`);
@@ -41,10 +42,10 @@ export const normalizeBetLeg = (leg: any): BetLeg => {
   if (selection !== 'Over' && selection !== 'Under') {
     const lowerSelection = typeof selection === 'string' ? selection.toLowerCase() : '';
     if (lowerSelection === 'over') {
-      return { ...leg, selection: 'Over', prop: propName };
+      return { ...leg, selection: 'Over', prop: propName, status: 'pending' };
     }
     if (lowerSelection === 'under') {
-      return { ...leg, selection: 'Under', prop: propName };
+      return { ...leg, selection: 'Under', prop: propName, status: 'pending' };
     }
     throw new Error(`Invalid selection value: \"${selection}\" in leg: ${JSON.stringify(leg)}`);
   }
@@ -60,6 +61,7 @@ export const normalizeBetLeg = (leg: any): BetLeg => {
     selection: selection,
     odds: leg.odds,
     week: leg.week,
+    status: 'pending',
   };
 
   return normalizedLeg;
@@ -77,6 +79,7 @@ export const createBetLegFromProp = (prop: PropData, selection: 'Over' | 'Under'
     selection: selection,
     odds: prop.Odds ?? prop.odds ?? -110,
     week: prop.week,
+    status: 'pending',
   };
 };
 

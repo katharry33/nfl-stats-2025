@@ -78,18 +78,18 @@ export interface WeeklyProp extends PropData {
 
 export interface BetLeg {
   id: string;
+  propId: string;
   player: string;
   prop: string;
   line: number;
   selection: 'Over' | 'Under';
   odds: number;
+  status: 'won' | 'lost' | 'pending' | 'void';
+  source?: 'manual' | 'betting-log' | 'api' | 'weekly-props' | 'weekly';
+  week?: number | string;
+  gameDate?: string;
   matchup?: string;
   team?: string;
-  week?: number;
-  Week?: number;
-  propId?: string;
-  status?: 'won' | 'lost' | 'pending';
-  source?: string; 
 }
 
 export interface Bet {
@@ -102,12 +102,15 @@ export interface Bet {
   status: BetStatus; // Updated to use the full BetStatus union
   stake: number;
   odds: number;
+  payout?: number; // Added for historical bets
   potentialPayout?: number;
+  settledAt?: any; // Added for historical bets
   legs: BetLeg[];
   betType: BetType;  // Updated to include 'straight', 'sgp', etc.
   boost: boolean; 
   boostPercentage: number; 
-  isLive: boolean; 
+  isLive: boolean;
+  isBonus?: boolean; // Added to track bonus bets
   date?: string | Date;
 
   // Legacy fields for backwards compatibility
@@ -123,11 +126,14 @@ export interface BetSubmission {
   status: BetStatus;
   stake: number;
   odds: number;
+  payout?: number; // Added for historical bets
+  settledAt?: any; // Added for historical bets
   legs: BetLeg[];
   betType: BetType;
   boost: boolean;
   boostPercentage: number;
   isLive: boolean;
+  isBonus?: boolean; // Added to track bonus bets
   userId?: string;
 }
 
@@ -143,6 +149,7 @@ export interface BetResult {
   profit: number;
   date: any;
   betType: BetType; // Synced with global BetType
+  isBonus?: boolean; // Added to track bonus bets
   legs?: BetLeg[];
 }
 

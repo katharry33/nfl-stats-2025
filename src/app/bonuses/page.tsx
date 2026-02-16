@@ -2,12 +2,13 @@
 'use client';
 
 import { useState, useEffect } from "react";
+import AppLayout from '@/components/layout/app-layout';
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { BonusForm } from "@/components/bonuses/bonus-form";
 import { Badge } from "@/components/ui/badge";
-import { db } from "@/lib/firebase";
+import { db } from "@/lib/firebase/client";
 import { collection, query, onSnapshot, orderBy, updateDoc, doc } from "firebase/firestore";
 import { toast } from "sonner";
 import { PlusCircle, Gift, Calendar, Percent, Edit, CheckCircle, XCircle } from "lucide-react";
@@ -151,96 +152,98 @@ export default function BonusesPage() {
   };
 
   return (
-    <div className="container mx-auto p-6 space-y-6 max-w-5xl">
-      <PageHeader
-        title="Manage Bonuses"
-        description="Track your sportsbook bonuses, boosts, and promotions."
-      />
+    <AppLayout>
+      <div className="container mx-auto p-6 space-y-6 max-w-5xl">
+        <PageHeader
+          title="Manage Bonuses"
+          description="Track your sportsbook bonuses, boosts, and promotions."
+        />
 
-      <Button onClick={() => openForm()} className="w-full md:w-auto">
-        <PlusCircle className="mr-2 h-4 w-4" />
-        Add New Bonus
-      </Button>
+        <Button onClick={() => openForm()} className="w-full md:w-auto">
+          <PlusCircle className="mr-2 h-4 w-4" />
+          Add New Bonus
+        </Button>
 
-      {/* Bonus Form Dialog */}
-      <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              {selectedBonus ? 'Edit Bonus' : 'Add New Bonus'}
-            </DialogTitle>
-          </DialogHeader>
-          <BonusForm onSave={handleSave} bonusToEdit={selectedBonus} />
-        </DialogContent>
-      </Dialog>
+        {/* Bonus Form Dialog */}
+        <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>
+                {selectedBonus ? 'Edit Bonus' : 'Add New Bonus'}
+              </DialogTitle>
+            </DialogHeader>
+            <BonusForm onSave={handleSave} bonusToEdit={selectedBonus} />
+          </DialogContent>
+        </Dialog>
 
-      {/* Active Bonuses */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Gift className="h-5 w-5 text-green-600" />
-            Active Bonuses ({activeBonuses.length})
-          </CardTitle>
-          <CardDescription>Available bonuses ready to use</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="text-center py-8 text-muted-foreground">Loading bonuses...</div>
-          ) : activeBonuses.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">No active bonuses.</div>
-          ) : (
-            <div className="space-y-3">
-              {activeBonuses.map((bonus) => (
-                <BonusCard key={bonus.id} bonus={bonus} />
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Bonuses Used */}
-      {usedBonuses.length > 0 && (
+        {/* Active Bonuses */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <CheckCircle className="h-5 w-5 text-blue-600" />
-              Bonuses Used ({usedBonuses.length})
+              <Gift className="h-5 w-5 text-green-600" />
+              Active Bonuses ({activeBonuses.length})
             </CardTitle>
-            <CardDescription>Bonuses that have been applied to bets</CardDescription>
+            <CardDescription>Available bonuses ready to use</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {usedBonuses.map((bonus) => (
-                <div key={bonus.id} className="p-4 border rounded-lg bg-blue-50 border-blue-200">
-                  <BonusCard bonus={bonus} showActions={false} />
-                </div>
-              ))}
-            </div>
+            {isLoading ? (
+              <div className="text-center py-8 text-muted-foreground">Loading bonuses...</div>
+            ) : activeBonuses.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">No active bonuses.</div>
+            ) : (
+              <div className="space-y-3">
+                {activeBonuses.map((bonus) => (
+                  <BonusCard key={bonus.id} bonus={bonus} />
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
-      )}
 
-      {/* Expired Bonuses */}
-      {expiredBonuses.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <XCircle className="h-5 w-5 text-slate-500" />
-              Expired Bonuses ({expiredBonuses.length})
-            </CardTitle>
-            <CardDescription>Past bonuses that are no longer active</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {expiredBonuses.map((bonus) => (
-                <div key={bonus.id} className="p-4 border rounded-lg bg-slate-50 border-slate-200 opacity-60">
-                  <BonusCard bonus={bonus} showActions={false} />
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-    </div>
+        {/* Bonuses Used */}
+        {usedBonuses.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CheckCircle className="h-5 w-5 text-blue-600" />
+                Bonuses Used ({usedBonuses.length})
+              </CardTitle>
+              <CardDescription>Bonuses that have been applied to bets</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {usedBonuses.map((bonus) => (
+                  <div key={bonus.id} className="p-4 border rounded-lg bg-blue-50 border-blue-200">
+                    <BonusCard bonus={bonus} showActions={false} />
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Expired Bonuses */}
+        {expiredBonuses.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <XCircle className="h-5 w-5 text-slate-500" />
+                Expired Bonuses ({expiredBonuses.length})
+              </CardTitle>
+              <CardDescription>Past bonuses that are no longer active</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {expiredBonuses.map((bonus) => (
+                  <div key={bonus.id} className="p-4 border rounded-lg bg-slate-50 border-slate-200 opacity-60">
+                    <BonusCard bonus={bonus} showActions={false} />
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </AppLayout>
   );
 }

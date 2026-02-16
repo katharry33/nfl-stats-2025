@@ -12,7 +12,7 @@ export interface BetslipContextType {
   removeLeg: (legId: string) => void;
   clearSelections: () => void;
   updateLeg: (legId: string, updates: Partial<BetLeg>) => void;
-  submitBet: (bet: Omit<Bet, 'id' | 'userId'>) => Promise<void>;
+  submitBet: (betData: Partial<Bet>) => Promise<void>;
 }
 
 const BetslipContext = createContext<BetslipContextType | undefined>(undefined);
@@ -50,18 +50,32 @@ export function BetslipProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  const submitBet = async (bet: Omit<Bet, 'id' | 'userId'>) => {
+  const submitBet = async (betData: Partial<Bet>) => {
     if (!user) {
       toast.error("You must be logged in to place a bet.");
       return;
     }
+
     try {
-      await addBet(user.uid, { ...bet, legs: selections });
-      toast.success("Bet placed successfully!");
-      clearSelections();
+      // Merge selections and defaults with the provided data
+      const payload = {
+        ...betData,
+        legs: selections,
+        userId: user.uid,
+        // If no date is provided, addBet action will handle serverTimestamp
+      };
+
+      const result = await addBet(user.uid, payload);
+      
+      if (result.success) {
+        toast.success("Bet saved successfully!");
+        clearSelections();
+      } else {
+        throw new Error(result.error);
+      }
     } catch (error) {
       console.error("Failed to submit bet:", error);
-      toast.error("Failed to place bet.");
+      toast.error("Failed to save bet.");
     }
   };
 

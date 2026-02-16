@@ -32,6 +32,7 @@ export function WeeklyProps({ props, loading }: WeeklyPropsProps) {
         team: prop.Team,
         matchup: prop.Matchup || '', // Use fallback to empty string
         source: 'weekly',
+        status: 'pending'
       };
       addLeg(leg);
     }

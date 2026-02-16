@@ -1,1 +1,6 @@
-{}
+{
+  "/all-props/page": "app/all-props/page.js",
+  "/favicon.ico/route": "app/favicon.ico/route.js",
+  "/api/all-props/options/route": "app/api/all-props/options/route.js",
+  "/api/all-props/route": "app/api/all-props/route.js"
+}

@@ -1,50 +1,31 @@
-// src/app/api/all-props/options/route.ts
-import { NextResponse } from 'next/server';
-import { getAdminDb } from '@/lib/firebase/admin';
+import { NextRequest, NextResponse } from 'next/server';
 
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
-
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const db = getAdminDb();
-    const COLLECTION_NAME = 'allProps_2025';
+    // Return static options for filters
+    const options = {
+      weeks: Array.from({ length: 22 }, (_, i) => i + 1), // Weeks 1-22
+      propTypes: [
+        'All Props',
+        'Passing Yards',
+        'Passing TDs',
+        'Rushing Yards',
+        'Rushing TDs',
+        'Receiving Yards',
+        'Receiving TDs',
+        'Receptions',
+        'Completions',
+        'Attempts',
+        'Interceptions',
+        'Longest Reception',
+        'Longest Rush',
+        'Longest Completion',
+      ],
+    };
 
-    // Fetch documents to extract unique values
-    // We limit this or use a specific metadata document in production for performance
-    const snapshot = await db.collection(COLLECTION_NAME).select('Prop', 'Week').get();
-
-    if (snapshot.empty) {
-      // Fallback defaults if the collection is empty
-      return NextResponse.json({
-        props: ["Passing Yards", "Rushing Yards", "Receiving Yards", "Touchdowns", "Receptions"],
-        weeks: Array.from({ length: 18 }, (_, i) => i + 1),
-      });
-    }
-
-    const uniqueProps = new Set<string>();
-    const uniqueWeeks = new Set<number>();
-
-    snapshot.forEach((doc) => {
-      const data = doc.data();
-      if (data.Prop) uniqueProps.add(data.Prop);
-      if (data.Week) uniqueWeeks.add(Number(data.Week));
-    });
-
-    return NextResponse.json({
-      // Convert sets to sorted arrays
-      props: Array.from(uniqueProps).sort(),
-      weeks: Array.from(uniqueWeeks).sort((a, b) => a - b),
-    });
-
+    return NextResponse.json(options);
   } catch (error: any) {
-    console.error("❌ Options API Error:", error.message);
-    
-    // Hard fallback so the UI doesn't break if Firebase is down
-    return NextResponse.json({
-      props: ["Passing Yards", "Rushing Yards", "Receiving Yards", "Touchdowns"],
-      weeks: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
-      error: "Using fallback values"
-    }, { status: 200 });
+    console.error('Options API error:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

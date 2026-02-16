@@ -40,7 +40,8 @@ export function AddToBetslipButton({ prop, selection }: AddToBetslipButtonProps)
             team: prop.team,
             week: prop.week,
             propId: prop.id,
-            source: 'weekly-props'
+            source: 'weekly-props',
+            status: 'pending'
         };
         addLeg(leg);
         toast.success(`${prop.player} added to bet slip`);

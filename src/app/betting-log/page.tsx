@@ -2,6 +2,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import AppLayout from '@/components/layout/app-layout'; // FIX: Changed to default import
 import { BetsTable, calculatePayout } from '@/components/bets/bets-table';
 import { EditBetModal } from '@/components/bets/edit-bet-modal';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -155,133 +156,135 @@ export default function BettingLogPage() {
   if (loading) return <div className="p-8 text-slate-400 font-mono">Loading betting logs...</div>;
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
-      <header className="flex justify-between items-end">
-        <div>
-          <h1 className="text-3xl font-black text-white tracking-tighter italic">BETTING LOG</h1>
-          <p className="text-slate-500 text-sm">
-            {filteredBets.length} of {bets.length} bets
-            {hasActiveFilters && ' (filtered)'}
-          </p>
+    <AppLayout>
+      <div className="p-6 max-w-7xl mx-auto space-y-6">
+        <header className="flex justify-between items-end">
+          <div>
+            <h1 className="text-3xl font-black text-white tracking-tighter italic">BETTING LOG</h1>
+            <p className="text-slate-500 text-sm">
+              {filteredBets.length} of {bets.length} bets
+              {hasActiveFilters && ' (filtered)'}
+            </p>
+          </div>
+        </header>
+
+        {/* Filters */}
+        <Card className="bg-slate-900/50 border-slate-800">
+          <CardHeader>
+            <div className="flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <Filter className="h-4 w-4 text-slate-400" />
+                <CardTitle className="text-sm font-bold text-slate-400 uppercase">Filters</CardTitle>
+              </div>
+              {hasActiveFilters && (
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={clearFilters}
+                  className="text-xs text-slate-500 hover:text-slate-300"
+                >
+                  <X className="h-3 w-3 mr-1" />
+                  Clear All
+                </Button>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+              <div className="space-y-2">
+                <Label className="text-xs text-slate-400">Status</Label>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="bg-slate-950 border-slate-800">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="won">Won</SelectItem>
+                    <SelectItem value="lost">Lost</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-xs text-slate-400">Bet Type</Label>
+                <Select value={betTypeFilter} onValueChange={setBetTypeFilter}>
+                  <SelectTrigger className="bg-slate-950 border-slate-800">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Types</SelectItem>
+                    <SelectItem value="parlay">Parlays</SelectItem>
+                    <SelectItem value="straight">Straight</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-xs text-slate-400">Player Search</Label>
+                <Input
+                  placeholder="Search player..."
+                  value={playerSearch}
+                  onChange={(e) => setPlayerSearch(e.target.value)}
+                  className="bg-slate-950 border-slate-800"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-xs text-slate-400">Date From</Label>
+                <Input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  className="bg-slate-950 border-slate-800"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-xs text-slate-400">Date To</Label>
+                <Input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  className="bg-slate-950 border-slate-800"
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        
+        {/* Stats Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <StatCard title="Total Bets" value={stats.total} icon={<Ticket className="h-4 w-4" />} />
+          <StatCard title="Won" value={stats.won} icon={<TrendingUp className="h-4 w-4" />} color="text-emerald-400" />
+          <StatCard title="Lost" value={stats.lost} icon={<TrendingDown className="h-4 w-4" />} color="text-red-400" />
+          <StatCard 
+            title="Net P/L" 
+            value={`$${stats.profit.toFixed(2)}`} 
+            color={stats.profit >= 0 ? 'text-emerald-400' : 'text-red-400'}
+            icon={<DollarSign className="h-4 w-4" />} 
+          />
+          <StatCard 
+            title="ROI" 
+            value={`${stats.roi.toFixed(1)}%`} 
+            color={stats.roi >= 0 ? 'text-emerald-400' : 'text-red-400'}
+            icon={<TrendingUp className="h-4 w-4" />} 
+          />
         </div>
-      </header>
 
-      {/* Filters */}
-      <Card className="bg-slate-900/50 border-slate-800">
-        <CardHeader>
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-slate-400" />
-              <CardTitle className="text-sm font-bold text-slate-400 uppercase">Filters</CardTitle>
-            </div>
-            {hasActiveFilters && (
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={clearFilters}
-                className="text-xs text-slate-500 hover:text-slate-300"
-              >
-                <X className="h-3 w-3 mr-1" />
-                Clear All
-              </Button>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-            <div className="space-y-2">
-              <Label className="text-xs text-slate-400">Status</Label>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="bg-slate-950 border-slate-800">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="won">Won</SelectItem>
-                  <SelectItem value="lost">Lost</SelectItem>
-                  <SelectItem value="pending">Pending</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+        {/* Table */}
+        <div className="bg-slate-950 border border-slate-800 rounded-xl shadow-2xl overflow-hidden">
+          <BetsTable bets={filteredBets} onEdit={handleEdit} />
+        </div>
 
-            <div className="space-y-2">
-              <Label className="text-xs text-slate-400">Bet Type</Label>
-              <Select value={betTypeFilter} onValueChange={setBetTypeFilter}>
-                <SelectTrigger className="bg-slate-950 border-slate-800">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  <SelectItem value="parlay">Parlays</SelectItem>
-                  <SelectItem value="straight">Straight</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-xs text-slate-400">Player Search</Label>
-              <Input
-                placeholder="Search player..."
-                value={playerSearch}
-                onChange={(e) => setPlayerSearch(e.target.value)}
-                className="bg-slate-950 border-slate-800"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-xs text-slate-400">Date From</Label>
-              <Input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                className="bg-slate-950 border-slate-800"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-xs text-slate-400">Date To</Label>
-              <Input
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                className="bg-slate-950 border-slate-800"
-              />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-      
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <StatCard title="Total Bets" value={stats.total} icon={<Ticket className="h-4 w-4" />} />
-        <StatCard title="Won" value={stats.won} icon={<TrendingUp className="h-4 w-4" />} color="text-emerald-400" />
-        <StatCard title="Lost" value={stats.lost} icon={<TrendingDown className="h-4 w-4" />} color="text-red-400" />
-        <StatCard 
-          title="Net P/L" 
-          value={`$${stats.profit.toFixed(2)}`} 
-          color={stats.profit >= 0 ? 'text-emerald-400' : 'text-red-400'}
-          icon={<DollarSign className="h-4 w-4" />} 
-        />
-        <StatCard 
-          title="ROI" 
-          value={`${stats.roi.toFixed(1)}%`} 
-          color={stats.roi >= 0 ? 'text-emerald-400' : 'text-red-400'}
-          icon={<TrendingUp className="h-4 w-4" />} 
+        <EditBetModal 
+          bet={selectedBet} 
+          isOpen={isEditOpen} 
+          onClose={() => setIsEditOpen(false)} 
+          onSave={handleSave} 
         />
       </div>
-
-      {/* Table */}
-      <div className="bg-slate-950 border border-slate-800 rounded-xl shadow-2xl overflow-hidden">
-        <BetsTable bets={filteredBets} onEdit={handleEdit} />
-      </div>
-
-      <EditBetModal 
-        bet={selectedBet} 
-        isOpen={isEditOpen} 
-        onClose={() => setIsEditOpen(false)} 
-        onSave={handleSave} 
-      />
-    </div>
+    </AppLayout>
   );
 }
 

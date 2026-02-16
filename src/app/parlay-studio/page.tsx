@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
+import AppLayout from '@/components/layout/app-layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,7 +16,7 @@ import { toast } from 'sonner';
 import type { BetLeg } from '@/lib/types';
 
 export default function ParlayStudioPage() {
-  const { selections, removeLeg, clearSelections, updateLeg } = useBetSlip();
+  const { selections, removeLeg, clearSelections, updateLeg, submitBet } = useBetSlip();
   const [stake, setStake] = useState('');
   const [boostPercent, setBoostPercent] = useState('0');
   const [isBonus, setIsBonus] = useState(false);
@@ -46,298 +47,273 @@ export default function ParlayStudioPage() {
       return;
     }
 
-    const missingSelection = selections.some((leg: BetLeg) => !leg.selection);
-    if (missingSelection) {
-      toast.error('Please select Over or Under for all legs');
-      return;
-    }
-
-    const betData = {
+    await submitBet({
       stake: Number(stake),
       odds: parlayOdds,
-      betType,
-      status: overallStatus,
+      betType: betType as any,
+      status: overallStatus as any,
       boost: Number(boostPercent) > 0,
       boostPercentage: Number(boostPercent),
       isBonus,
       isLive,
-      legs: selections.map((leg: BetLeg) => ({
-        ...leg,
-        selection: leg.selection,
-        odds: leg.odds,
-        status: leg.status,
-      })),
-      date: betDate,
-    };
+      date: betDate, // Pass the string date; addBet action handles the Timestamp conversion
+    });
 
-    try {
-      const res = await fetch('/api/betting-log', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(betData),
-      });
-
-      if (res.ok) {
-        toast.success('Bet saved to betting log!');
-        clearSelections();
-        setStake('');
-        setBoostPercent('0');
-        setIsBonus(false);
-        setIsLive(false);
-        setBetDate(new Date().toISOString().split('T')[0]);
-      } else {
-        throw new Error('Failed to save bet');
-      }
-    } catch (error) {
-      toast.error('Failed to save bet');
-    }
+    // Reset local page state (context state is handled in submitBet)
+    setStake('');
+    setBoostPercent('0');
+    setIsBonus(false);
+    setIsLive(false);
+    setBetDate(new Date().toISOString().split('T')[0]);
   };
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-3xl font-black text-white tracking-tighter italic">PARLAY STUDIO</h1>
-        <p className="text-slate-500 text-sm">Build and record your custom parlays, SGPs, and straight bets.</p>
-      </div>
+    <AppLayout>
+      <div className="p-6 max-w-7xl mx-auto">
+        <div className="mb-6">
+          <h1 className="text-3xl font-black text-white tracking-tighter italic">PARLAY STUDIO</h1>
+          <p className="text-slate-500 text-sm">Build and record your custom parlays, SGPs, and straight bets.</p>
+        </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
-          <Card className="bg-slate-950 border-slate-800">
-            <CardHeader className="border-b border-slate-800">
-              <div className="flex justify-between items-center">
-                <CardTitle>Bet Legs ({selections.length})</CardTitle>
-                {selections.length > 0 && (
-                  <Button variant="ghost" size="sm" onClick={clearSelections}>
-                    Clear All
-                  </Button>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent className="pt-4">
-              {selections.length === 0 ? (
-                <div className="text-center py-12 text-slate-500">
-                  <p>No legs added yet</p>
-                  <p className="text-sm mt-2">Search for props and add them to your bet slip</p>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2">
+            <Card className="bg-slate-950 border-slate-800">
+              <CardHeader className="border-b border-slate-800">
+                <div className="flex justify-between items-center">
+                  <CardTitle>Bet Legs ({selections.length})</CardTitle>
+                  {selections.length > 0 && (
+                    <Button variant="ghost" size="sm" onClick={clearSelections}>
+                      Clear All
+                    </Button>
+                  )}
                 </div>
-              ) : (
-                <div className="space-y-4">
-                  {selections.map((leg: BetLeg) => (
-                    leg.id && <Card key={leg.id} className="bg-slate-900 border-slate-800">
-                      <CardContent className="p-4">
-                        <div className="flex justify-between items-start mb-3">
-                          <div className="flex-1">
-                            <h3 className="font-bold text-white">{leg.player}</h3>
-                            <p className="text-sm text-slate-400">{leg.team}</p>
-                            <p className="text-xs text-slate-500 font-mono">{leg.matchup}</p>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => removeLeg(leg.id!)}
-                            className="text-red-500 hover:text-red-400"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-
-                        <div className="space-y-3">
-                          <div className="p-3 bg-slate-950 rounded border border-slate-800">
-                            <p className="text-xs text-slate-500">{leg.prop}</p>
-                            <p className="text-lg font-bold text-emerald-400 font-mono">{leg.line}</p>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-2 mt-2">
-                            <Button 
-                                variant={leg.selection === 'Over' ? 'default' : 'outline'}
-                                className={leg.selection === 'Over' ? 'bg-emerald-600' : 'border-slate-700'}
-                                onClick={() => updateLeg(leg.id, { selection: 'Over' })}
+              </CardHeader>
+              <CardContent className="pt-4">
+                {selections.length === 0 ? (
+                  <div className="text-center py-12 text-slate-500">
+                    <p>No legs added yet</p>
+                    <p className="text-sm mt-2">Search for props and add them to your bet slip</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {selections.map((leg: BetLeg) => (
+                      leg.id && <Card key={leg.id} className="bg-slate-900 border-slate-800">
+                        <CardContent className="p-4">
+                          <div className="flex justify-between items-start mb-3">
+                            <div className="flex-1">
+                              <h3 className="font-bold text-white">{leg.player}</h3>
+                              <p className="text-sm text-slate-400">{leg.team}</p>
+                              <p className="text-xs text-slate-500 font-mono">{leg.matchup}</p>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => removeLeg(leg.id!)}
+                              className="text-red-500 hover:text-red-400"
                             >
-                                OVER
-                            </Button>
-                            <Button 
-                                variant={leg.selection === 'Under' ? 'default' : 'outline'}
-                                className={leg.selection === 'Under' ? 'bg-red-600' : 'border-slate-700'}
-                                onClick={() => updateLeg(leg.id, { selection: 'Under' })}
-                            >
-                                UNDER
+                              <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
 
-                          <div className="space-y-2">
-                            <Label className="text-xs text-slate-400">Result</Label>
-                            <div className="flex gap-2">
-                              <Button
-                                variant={leg.status === 'won' ? 'default' : 'outline'}
-                                size="sm"
-                                onClick={() => updateLeg(leg.id!, { status: 'won' })}
-                                className={leg.status === 'won' ? 'bg-green-600 hover:bg-green-700' : ''}
+                          <div className="space-y-3">
+                            <div className="p-3 bg-slate-950 rounded border border-slate-800">
+                              <p className="text-xs text-slate-500">{leg.prop}</p>
+                              <p className="text-lg font-bold text-emerald-400 font-mono">{leg.line}</p>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2 mt-2">
+                              <Button 
+                                  variant={leg.selection === 'Over' ? 'default' : 'outline'}
+                                  className={leg.selection === 'Over' ? 'bg-emerald-600' : 'border-slate-700'}
+                                  onClick={() => updateLeg(leg.id, { selection: 'Over' })}
                               >
-                                Win
+                                  OVER
                               </Button>
-                              <Button
-                                variant={leg.status === 'lost' ? 'default' : 'outline'}
-                                size="sm"
-                                onClick={() => updateLeg(leg.id!, { status: 'lost' })}
-                                className={leg.status === 'lost' ? 'bg-red-600 hover:bg-red-700' : ''}
+                              <Button 
+                                  variant={leg.selection === 'Under' ? 'default' : 'outline'}
+                                  className={leg.selection === 'Under' ? 'bg-red-600' : 'border-slate-700'}
+                                  onClick={() => updateLeg(leg.id, { selection: 'Under' })}
                               >
-                                Loss
-                              </Button>
-                              <Button
-                                variant={leg.status === 'pending' ? 'default' : 'outline'}
-                                size="sm"
-                                onClick={() => updateLeg(leg.id!, { status: 'pending' })}
-                                className={leg.status === 'pending' ? 'bg-amber-600 hover:bg-amber-700' : ''}
-                              >
-                                Pending
+                                  UNDER
                               </Button>
                             </div>
+
+                            <div className="space-y-2">
+                              <Label className="text-xs text-slate-400">Result</Label>
+                              <div className="flex gap-2">
+                                <Button
+                                  variant={leg.status === 'won' ? 'default' : 'outline'}
+                                  size="sm"
+                                  onClick={() => updateLeg(leg.id!, { status: 'won' })}
+                                  className={leg.status === 'won' ? 'bg-green-600 hover:bg-green-700' : ''}
+                                >
+                                  Win
+                                </Button>
+                                <Button
+                                  variant={leg.status === 'lost' ? 'default' : 'outline'}
+                                  size="sm"
+                                  onClick={() => updateLeg(leg.id!, { status: 'lost' })}
+                                  className={leg.status === 'lost' ? 'bg-red-600 hover:bg-red-700' : ''}
+                                >
+                                  Loss
+                                </Button>
+                                <Button
+                                  variant={leg.status === 'pending' ? 'default' : 'outline'}
+                                  size="sm"
+                                  onClick={() => updateLeg(leg.id!, { status: 'pending' })}
+                                  className={leg.status === 'pending' ? 'bg-amber-600 hover:bg-amber-700' : ''}
+                                >
+                                  Pending
+                                </Button>
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <div>
+            <Card className="bg-slate-950 border-slate-800 sticky top-6">
+              <CardHeader className="border-b border-slate-800">
+                <CardTitle>Bet Details</CardTitle>
+              </CardHeader>
+              <CardContent className="pt-4 space-y-4">
+                <div className="space-y-2">
+                  <Label className="text-xs text-slate-400 flex items-center gap-2">
+                    <Calendar className="h-3 w-3" />
+                    Game Date
+                  </Label>
+                  <Input
+                    type="date"
+                    value={betDate}
+                    onChange={(e) => setBetDate(e.target.value)}
+                    className="bg-slate-900 border-slate-800"
+                  />
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
 
-        <div>
-          <Card className="bg-slate-950 border-slate-800 sticky top-6">
-            <CardHeader className="border-b border-slate-800">
-              <CardTitle>Bet Details</CardTitle>
-            </CardHeader>
-            <CardContent className="pt-4 space-y-4">
-              <div className="space-y-2">
-                <Label className="text-xs text-slate-400 flex items-center gap-2">
-                  <Calendar className="h-3 w-3" />
-                  Game Date
-                </Label>
-                <Input
-                  type="date"
-                  value={betDate}
-                  onChange={(e) => setBetDate(e.target.value)}
-                  className="bg-slate-900 border-slate-800"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-xs text-slate-400">Bet Type</Label>
-                <Select value={betType} onValueChange={setBetType}>
-                    <SelectTrigger className="w-[180px] bg-emerald-500/10 border-emerald-500/20 text-emerald-500 font-bold">
-                        <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="Straight">Straight</SelectItem>
-                        <SelectItem value="Parlay">Parlay</SelectItem>
-                        <SelectItem value="Teaser">Teaser</SelectItem>
-                    </SelectContent>
-                </Select>
-              </div>
-
-              <div className="flex items-center space-x-3 p-3 bg-slate-900/50 border border-slate-800 rounded-lg">
-                <Checkbox
-                  id="live-bet"
-                  checked={isLive}
-                  onCheckedChange={(checked: boolean) => setIsLive(!!checked)}
-                />
-                <Label htmlFor="live-bet" className="text-sm cursor-pointer">Live Bet</Label>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-xs text-slate-400">Stake ($)</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  placeholder="0.00"
-                  value={stake}
-                  onChange={(e) => setStake(e.target.value)}
-                  className="bg-slate-900 border-slate-800"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-xs text-slate-400">Total Odds (+/-)</Label>
-                <Input
-                  type="number"
-                  value={parlayOdds}
-                  disabled
-                  className="bg-slate-900 border-slate-800 font-mono font-bold text-emerald-400"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-xs text-slate-400">Boost %</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  max="100"
-                  placeholder="0"
-                  value={boostPercent}
-                  onChange={(e) => setBoostPercent(e.target.value)}
-                  className="bg-slate-900 border-slate-800"
-                />
-                <p className="text-[9px] text-slate-500">Enter percentage (e.g., 25 for 25% boost)</p>
-              </div>
-
-              <div className="flex items-center space-x-3 p-3 bg-slate-900/50 border border-slate-800 rounded-lg">
-                <Checkbox
-                  id="bonus-bet"
-                  checked={isBonus}
-                  onCheckedChange={(checked: boolean) => setIsBonus(!!checked)}
-                  className="border-slate-600 data-[state=checked]:bg-purple-600"
-                />
-                <div className="grid gap-1 leading-none">
-                  <Label htmlFor="bonus-bet" className="text-sm cursor-pointer">Bonus Bet</Label>
-                  <p className="text-[9px] text-slate-500">Profit only</p>
+                <div className="space-y-2">
+                  <Label className="text-xs text-slate-400">Bet Type</Label>
+                  <Select value={betType} onValueChange={setBetType}>
+                      <SelectTrigger className="w-[180px] bg-emerald-500/10 border-emerald-500/20 text-emerald-500 font-bold">
+                          <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                          <SelectItem value="Straight">Straight</SelectItem>
+                          <SelectItem value="Parlay">Parlay</SelectItem>
+                          <SelectItem value="Teaser">Teaser</SelectItem>
+                      </SelectContent>
+                  </Select>
                 </div>
-              </div>
 
-              {stake && (
-                <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-lg space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-400">Potential Payout:</span>
-                    <span className="font-mono font-bold text-emerald-400">
-                      ${potentialPayout.toFixed(2)}
+                <div className="flex items-center space-x-3 p-3 bg-slate-900/50 border border-slate-800 rounded-lg">
+                  <Checkbox
+                    id="live-bet"
+                    checked={isLive}
+                    onCheckedChange={(checked: boolean) => setIsLive(!!checked)}
+                  />
+                  <Label htmlFor="live-bet" className="text-sm cursor-pointer">Live Bet</Label>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs text-slate-400">Stake ($)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={stake}
+                    onChange={(e) => setStake(e.target.value)}
+                    className="bg-slate-900 border-slate-800"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs text-slate-400">Total Odds (+/-)</Label>
+                  <Input
+                    type="number"
+                    value={parlayOdds}
+                    disabled
+                    className="bg-slate-900 border-slate-800 font-mono font-bold text-emerald-400"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs text-slate-400">Boost %</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    max="100"
+                    placeholder="0"
+                    value={boostPercent}
+                    onChange={(e) => setBoostPercent(e.target.value)}
+                    className="bg-slate-900 border-slate-800"
+                  />
+                  <p className="text-[9px] text-slate-500">Enter percentage (e.g., 25 for 25% boost)</p>
+                </div>
+
+                <div className="flex items-center space-x-3 p-3 bg-slate-900/50 border border-slate-800 rounded-lg">
+                  <Checkbox
+                    id="bonus-bet"
+                    checked={isBonus}
+                    onCheckedChange={(checked: boolean) => setIsBonus(!!checked)}
+                    className="border-slate-600 data-[state=checked]:bg-purple-600"
+                  />
+                  <div className="grid gap-1 leading-none">
+                    <Label htmlFor="bonus-bet" className="text-sm cursor-pointer">Bonus Bet</Label>
+                    <p className="text-[9px] text-slate-500">Profit only</p>
+                  </div>
+                </div>
+
+                {stake && (
+                  <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-lg space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-400">Potential Payout:</span>
+                      <span className="font-mono font-bold text-emerald-400">
+                        ${potentialPayout.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-slate-500">Status:</span>
+                      <Badge className={
+                        overallStatus === 'won' ? 'bg-green-500' :
+                        overallStatus === 'lost' ? 'bg-red-500' :
+                        'bg-amber-500'
+                      }>
+                        {overallStatus}
+                      </Badge>
+                    </div>
+                  </div>
+                )}
+
+                <Button
+                  onClick={handleSave}
+                  disabled={selections.length === 0 || !stake}
+                  className="w-full bg-blue-600 hover:bg-blue-700 font-bold"
+                >
+                  Save to Betting Log
+                </Button>
+
+                <div className="pt-4 border-t border-slate-800 space-y-1 text-xs text-slate-500">
+                  <div className="flex justify-between">
+                    <span>Legs:</span>
+                    <span className="text-white">{selections.length}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Type:</span>
+                    <span className="text-white">
+                      {betType}
                     </span>
                   </div>
-                  <div className="flex justify-between text-xs">
-                    <span className="text-slate-500">Status:</span>
-                    <Badge className={
-                      overallStatus === 'won' ? 'bg-green-500' :
-                      overallStatus === 'lost' ? 'bg-red-500' :
-                      'bg-amber-500'
-                    }>
-                      {overallStatus}
-                    </Badge>
-                  </div>
                 </div>
-              )}
-
-              <Button
-                onClick={handleSave}
-                disabled={selections.length === 0 || !stake}
-                className="w-full bg-blue-600 hover:bg-blue-700 font-bold"
-              >
-                Save to Betting Log
-              </Button>
-
-              <div className="pt-4 border-t border-slate-800 space-y-1 text-xs text-slate-500">
-                <div className="flex justify-between">
-                  <span>Legs:</span>
-                  <span className="text-white">{selections.length}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Type:</span>
-                  <span className="text-white">
-                    {betType}
-                  </span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
-    </div>
+    </AppLayout>
   );
 }

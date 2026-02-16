@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import AppLayout from '@/components/layout/app-layout';
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { db } from "@/lib/firebase";
+import { db } from "@/lib/firebase/client";
 import { collection, query, onSnapshot } from "firebase/firestore";
 import { TrendingUp, Target, Award, Clock, BarChart3, Lightbulb } from "lucide-react";
 import {
@@ -234,382 +235,388 @@ export default function InsightsPage() {
 
   if (isLoading) {
     return (
-      <div className="container mx-auto p-6">
-        <PageHeader title="Market Intelligence Insights" description="Loading analysis..." />
-        <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+      <AppLayout>
+        <div className="container mx-auto p-6">
+          <PageHeader title="Market Intelligence Insights" description="Loading analysis..." />
+          <div className="flex justify-center items-center h-64">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+          </div>
         </div>
-      </div>
+      </AppLayout>
     );
   }
 
   if (!insights) {
     return (
-      <div className="container mx-auto p-6">
-        <PageHeader title="Market Intelligence Insights" description="No data available for analysis" />
-      </div>
+      <AppLayout>
+        <div className="container mx-auto p-6">
+          <PageHeader title="Market Intelligence Insights" description="No data available for analysis" />
+        </div>
+      </AppLayout>
     );
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6 max-w-7xl">
-      <PageHeader
-        title="Market Intelligence Insights"
-        description={`Data-driven analysis of ${insights.totalProps} available props from all data`}
-      />
+    <AppLayout>
+      <div className="container mx-auto p-6 space-y-6 max-w-7xl">
+        <PageHeader
+          title="Market Intelligence Insights"
+          description={`Data-driven analysis of ${insights.totalProps} available props from all data`}
+        />
 
-      {/* Sweet Spots Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        {insights.sweetSpots.scoreDiff && (
-          <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm text-purple-900 flex items-center gap-2">
-                <Target className="h-4 w-4" />
-                Best Score Diff
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold text-purple-900">{insights.sweetSpots.scoreDiff.range}</p>
-              <p className="text-xs text-purple-700 mt-1">
-                {insights.sweetSpots.scoreDiff.hitRate.toFixed(1)}% hit rate
-              </p>
-            </CardContent>
-          </Card>
-        )}
-        
-        {insights.sweetSpots.winProb && (
-          <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm text-blue-900 flex items-center gap-2">
-                <TrendingUp className="h-4 w-4" />
-                Best Win Prob
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold text-blue-900">{insights.sweetSpots.winProb.range}</p>
-              <p className="text-xs text-blue-700 mt-1">
-                {insights.sweetSpots.winProb.hitRate.toFixed(1)}% hit rate
-              </p>
-            </CardContent>
-          </Card>
-        )}
+        {/* Sweet Spots Summary */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {insights.sweetSpots.scoreDiff && (
+            <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm text-purple-900 flex items-center gap-2">
+                  <Target className="h-4 w-4" />
+                  Best Score Diff
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold text-purple-900">{insights.sweetSpots.scoreDiff.range}</p>
+                <p className="text-xs text-purple-700 mt-1">
+                  {insights.sweetSpots.scoreDiff.hitRate.toFixed(1)}% hit rate
+                </p>
+              </CardContent>
+            </Card>
+          )}
+          
+          {insights.sweetSpots.winProb && (
+            <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm text-blue-900 flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4" />
+                  Best Win Prob
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold text-blue-900">{insights.sweetSpots.winProb.range}</p>
+                <p className="text-xs text-blue-700 mt-1">
+                  {insights.sweetSpots.winProb.hitRate.toFixed(1)}% hit rate
+                </p>
+              </CardContent>
+            </Card>
+          )}
 
-        {insights.sweetSpots.ev && (
-          <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm text-green-900 flex items-center gap-2">
-                <Award className="h-4 w-4" />
-                Best EV Range
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold text-green-900">{insights.sweetSpots.ev.range}</p>
-              <p className="text-xs text-green-700 mt-1">
-                {insights.sweetSpots.ev.hitRate.toFixed(1)}% hit rate
-              </p>
-            </CardContent>
-          </Card>
-        )}
+          {insights.sweetSpots.ev && (
+            <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm text-green-900 flex items-center gap-2">
+                  <Award className="h-4 w-4" />
+                  Best EV Range
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold text-green-900">{insights.sweetSpots.ev.range}</p>
+                <p className="text-xs text-green-700 mt-1">
+                  {insights.sweetSpots.ev.hitRate.toFixed(1)}% hit rate
+                </p>
+              </CardContent>
+            </Card>
+          )}
 
-        {insights.sweetSpots.confidence && (
-          <Card className="bg-gradient-to-br from-amber-50 to-amber-100 border-amber-200">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm text-amber-900 flex items-center gap-2">
-                <Lightbulb className="h-4 w-4" />
-                Best Confidence
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold text-amber-900">{insights.sweetSpots.confidence.range}</p>
-              <p className="text-xs text-amber-700 mt-1">
-                {insights.sweetSpots.confidence.hitRate.toFixed(1)}% hit rate
-              </p>
-            </CardContent>
-          </Card>
-        )}
-      </div>
+          {insights.sweetSpots.confidence && (
+            <Card className="bg-gradient-to-br from-amber-50 to-amber-100 border-amber-200">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm text-amber-900 flex items-center gap-2">
+                  <Lightbulb className="h-4 w-4" />
+                  Best Confidence
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold text-amber-900">{insights.sweetSpots.confidence.range}</p>
+                <p className="text-xs text-amber-700 mt-1">
+                  {insights.sweetSpots.confidence.hitRate.toFixed(1)}% hit rate
+                </p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
 
-      <Tabs defaultValue="props" className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="props">Prop Types</TabsTrigger>
-          <TabsTrigger value="teams">Teams</TabsTrigger>
-          <TabsTrigger value="players">Players</TabsTrigger>
-          <TabsTrigger value="time">Time of Day</TabsTrigger>
-          <TabsTrigger value="predictors">Predictors</TabsTrigger>
-        </TabsList>
+        <Tabs defaultValue="props" className="w-full">
+          <TabsList className="grid w-full grid-cols-5">
+            <TabsTrigger value="props">Prop Types</TabsTrigger>
+            <TabsTrigger value="teams">Teams</TabsTrigger>
+            <TabsTrigger value="players">Players</TabsTrigger>
+            <TabsTrigger value="time">Time of Day</TabsTrigger>
+            <TabsTrigger value="predictors">Predictors</TabsTrigger>
+          </TabsList>
 
-        {/* Prop Types Analysis */}
-        <TabsContent value="props" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <BarChart3 className="h-5 w-5" />
-                Success by Prop Type
-              </CardTitle>
-              <CardDescription>
-                Which prop types have the highest win probability and edge
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={400}>
-                <BarChart data={insights.propTypeData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="propType" angle={-45} textAnchor="end" height={100} />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="avgWinProb" fill="#8b5cf6" name="Avg Win Prob %" />
-                  <Bar dataKey="avgEdge" fill="#10b981" name="Avg Edge %" />
-                </BarChart>
-              </ResponsiveContainer>
+          {/* Prop Types Analysis */}
+          <TabsContent value="props" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <BarChart3 className="h-5 w-5" />
+                  Success by Prop Type
+                </CardTitle>
+                <CardDescription>
+                  Which prop types have the highest win probability and edge
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={400}>
+                  <BarChart data={insights.propTypeData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="propType" angle={-45} textAnchor="end" height={100} />
+                    <YAxis />
+                    <Tooltip />
+                    <Legend />
+                    <Bar dataKey="avgWinProb" fill="#8b5cf6" name="Avg Win Prob %" />
+                    <Bar dataKey="avgEdge" fill="#10b981" name="Avg Edge %" />
+                  </BarChart>
+                </ResponsiveContainer>
 
-              <div className="mt-6 space-y-2">
-                <h4 className="font-semibold">Top 5 Prop Types:</h4>
-                {insights.propTypeData.slice(0, 5).map((prop, i) => (
-                  <div key={prop.propType} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <Badge variant="outline">{i + 1}</Badge>
-                      <span className="font-medium">{prop.propType}</span>
-                      <span className="text-sm text-slate-500">({prop.count} props)</span>
-                    </div>
-                    <div className="flex gap-4 text-sm">
-                      <span className="text-purple-600 font-semibold">{prop.avgWinProb.toFixed(1)}% win</span>
-                      <span className="text-green-600 font-semibold">{prop.avgEdge.toFixed(1)}% edge</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Teams Analysis */}
-        <TabsContent value="teams" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Success by Team</CardTitle>
-              <CardDescription>
-                Top 10 teams with the best prop performance
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={400}>
-                <BarChart data={insights.topTeams} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis type="number" />
-                  <YAxis dataKey="team" type="category" width={80} />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="avgWinProb" fill="#3b82f6" name="Avg Win Prob %" />
-                </BarChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Players Analysis */}
-        <TabsContent value="players" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Top Players by Success Rate</CardTitle>
-              <CardDescription>
-                Players with highest average win probability (min. 3 props)
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {insights.topPlayers.map((player, i) => (
-                  <div key={player.player} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
-                    <div className="flex items-center gap-3">
-                      <Badge variant={i < 3 ? "default" : "outline"}>{i + 1}</Badge>
-                      <div>
-                        <p className="font-semibold">{player.player}</p>
-                        <p className="text-xs text-slate-500">{player.count} props analyzed</p>
+                <div className="mt-6 space-y-2">
+                  <h4 className="font-semibold">Top 5 Prop Types:</h4>
+                  {insights.propTypeData.slice(0, 5).map((prop, i) => (
+                    <div key={prop.propType} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <Badge variant="outline">{i + 1}</Badge>
+                        <span className="font-medium">{prop.propType}</span>
+                        <span className="text-sm text-slate-500">({prop.count} props)</span>
                       </div>
-                    </div>
-                    <div className="flex gap-4 text-sm">
-                      <div className="text-right">
-                        <p className="text-purple-600 font-bold">{player.avgWinProb.toFixed(1)}%</p>
-                        <p className="text-xs text-slate-500">Win Prob</p>
+                      <div className="flex gap-4 text-sm">
+                        <span className="text-purple-600 font-semibold">{prop.avgWinProb.toFixed(1)}% win</span>
+                        <span className="text-green-600 font-semibold">{prop.avgEdge.toFixed(1)}% edge</span>
                       </div>
-                      <div className="text-right">
-                        <p className="text-green-600 font-bold">{player.avgEdge.toFixed(1)}%</p>
-                        <p className="text-xs text-slate-500">Edge</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-blue-600 font-bold">{player.avgConfidence.toFixed(1)}%</p>
-                        <p className="text-xs text-slate-500">Confidence</p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Time of Day Analysis */}
-        <TabsContent value="time" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Clock className="h-5 w-5" />
-                Success by Game Time
-              </CardTitle>
-              <CardDescription>
-                Are certain game times more predictable?
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={insights.timeData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="period" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="avgWinProb" fill="#f59e0b" name="Avg Win Prob %" />
-                </BarChart>
-              </ResponsiveContainer>
-
-              <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-                {insights.timeData.map((time) => (
-                  <Card key={time.period}>
-                    <CardContent className="pt-6">
-                      <p className="text-sm font-medium text-slate-600">{time.period}</p>
-                      <p className="text-2xl font-bold text-amber-600">{time.avgWinProb.toFixed(1)}%</p>
-                      <p className="text-xs text-slate-500">{time.count} games</p>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Predictors/Sweet Spots */}
-        <TabsContent value="predictors" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Target className="h-5 w-5" />
-                Best Predictor Ranges
-              </CardTitle>
-              <CardDescription>
-                Optimal ranges for each metric that predict winning bets
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Score Diff */}
-              <div>
-                <h4 className="font-semibold mb-3 flex items-center gap-2">
-                  <Badge variant="outline">Score Diff</Badge>
-                  Sweet Spots
-                </h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {insights.scoreDiffRanges.slice(0, 4).map((range, i) => (
-                    <div key={i} className={`p-3 rounded-lg border ${i === 0 ? 'bg-purple-50 border-purple-200' : 'bg-slate-50'}`}>
-                      <p className="text-sm font-medium">{range.range}</p>
-                      <p className="text-lg font-bold text-purple-600">{range.hitRate.toFixed(1)}% hit rate</p>
-                      <p className="text-xs text-slate-500">{range.count} props</p>
                     </div>
                   ))}
                 </div>
-              </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-              {/* Win Probability */}
-              <div>
-                <h4 className="font-semibold mb-3 flex items-center gap-2">
-                  <Badge variant="outline">Win Probability</Badge>
-                  Sweet Spots
-                </h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {insights.winProbRanges.slice(0, 4).map((range, i) => (
-                    <div key={i} className={`p-3 rounded-lg border ${i === 0 ? 'bg-blue-50 border-blue-200' : 'bg-slate-50'}`}>
-                      <p className="text-sm font-medium">{range.range}</p>
-                      <p className="text-lg font-bold text-blue-600">{range.hitRate.toFixed(1)}% hit rate</p>
-                      <p className="text-xs text-slate-500">{range.count} props</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
+          {/* Teams Analysis */}
+          <TabsContent value="teams" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Success by Team</CardTitle>
+                <CardDescription>
+                  Top 10 teams with the best prop performance
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={400}>
+                  <BarChart data={insights.topTeams} layout="vertical">
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis type="number" />
+                    <YAxis dataKey="team" type="category" width={80} />
+                    <Tooltip />
+                    <Legend />
+                    <Bar dataKey="avgWinProb" fill="#3b82f6" name="Avg Win Prob %" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-              {/* Expected Value */}
-              <div>
-                <h4 className="font-semibold mb-3 flex items-center gap-2">
-                  <Badge variant="outline">Expected Value</Badge>
-                  Sweet Spots
-                </h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {insights.evRanges.slice(0, 4).map((range, i) => (
-                    <div key={i} className={`p-3 rounded-lg border ${i === 0 ? 'bg-green-50 border-green-200' : 'bg-slate-50'}`}>
-                      <p className="text-sm font-medium">{range.range}</p>
-                      <p className="text-lg font-bold text-green-600">{range.hitRate.toFixed(1)}% hit rate</p>
-                      <p className="text-xs text-slate-500">{range.count} props</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Confidence Score */}
-              <div>
-                <h4 className="font-semibold mb-3 flex items-center gap-2">
-                  <Badge variant="outline">Confidence Score</Badge>
-                  Sweet Spots
-                </h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {insights.confidenceRanges.slice(0, 4).map((range, i) => (
-                    <div key={i} className={`p-3 rounded-lg border ${i === 0 ? 'bg-amber-50 border-amber-200' : 'bg-slate-50'}`}>
-                      <p className="text-sm font-medium">{range.range}</p>
-                      <p className="text-lg font-bold text-amber-600">{range.hitRate.toFixed(1)}% hit rate</p>
-                      <p className="text-xs text-slate-500">{range.count} props</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Recommended Props Based on Sweet Spots */}
-          <Card className="bg-gradient-to-br from-indigo-50 to-purple-50 border-indigo-200">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Lightbulb className="h-5 w-5 text-indigo-600" />
-                Recommended Props
-              </CardTitle>
-              <CardDescription>
-                Top 10 props that fall within all sweet spot ranges
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {insights.recommendedProps.map((prop, i) => (
-                  <div key={prop.id} className="p-3 bg-white rounded-lg border border-indigo-200 hover:shadow-md transition-shadow">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Badge>{i + 1}</Badge>
-                          <p className="font-semibold">{prop.Player}</p>
-                          <span className="text-xs text-slate-500">{prop.Team}</span>
+          {/* Players Analysis */}
+          <TabsContent value="players" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Top Players by Success Rate</CardTitle>
+                <CardDescription>
+                  Players with highest average win probability (min. 3 props)
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {insights.topPlayers.map((player, i) => (
+                    <div key={player.player} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg hover:bg-slate-100 transition-colors">
+                      <div className="flex items-center gap-3">
+                        <Badge variant={i < 3 ? "default" : "outline"}>{i + 1}</Badge>
+                        <div>
+                          <p className="font-semibold">{player.player}</p>
+                          <p className="text-xs text-slate-500">{player.count} props analyzed</p>
                         </div>
-                        <p className="text-sm text-slate-600">
-                          {prop.Prop} - {prop["Over/Under?"]} {prop.Line}
-                        </p>
                       </div>
-                      <div className="text-right">
-                        <p className="text-lg font-bold text-indigo-600">
-                          {((prop["Win Probability"] || 0) * 100).toFixed(1)}%
-                        </p>
-                        <p className="text-xs text-slate-500">Win Prob</p>
+                      <div className="flex gap-4 text-sm">
+                        <div className="text-right">
+                          <p className="text-purple-600 font-bold">{player.avgWinProb.toFixed(1)}%</p>
+                          <p className="text-xs text-slate-500">Win Prob</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-green-600 font-bold">{player.avgEdge.toFixed(1)}%</p>
+                          <p className="text-xs text-slate-500">Edge</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-blue-600 font-bold">{player.avgConfidence.toFixed(1)}%</p>
+                          <p className="text-xs text-slate-500">Confidence</p>
+                        </div>
                       </div>
                     </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Time of Day Analysis */}
+          <TabsContent value="time" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Clock className="h-5 w-5" />
+                  Success by Game Time
+                </CardTitle>
+                <CardDescription>
+                  Are certain game times more predictable?
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={insights.timeData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="period" />
+                    <YAxis />
+                    <Tooltip />
+                    <Legend />
+                    <Bar dataKey="avgWinProb" fill="#f59e0b" name="Avg Win Prob %" />
+                  </BarChart>
+                </ResponsiveContainer>
+
+                <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {insights.timeData.map((time) => (
+                    <Card key={time.period}>
+                      <CardContent className="pt-6">
+                        <p className="text-sm font-medium text-slate-600">{time.period}</p>
+                        <p className="text-2xl font-bold text-amber-600">{time.avgWinProb.toFixed(1)}%</p>
+                        <p className="text-xs text-slate-500">{time.count} games</p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Predictors/Sweet Spots */}
+          <TabsContent value="predictors" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Target className="h-5 w-5" />
+                  Best Predictor Ranges
+                </CardTitle>
+                <CardDescription>
+                  Optimal ranges for each metric that predict winning bets
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Score Diff */}
+                <div>
+                  <h4 className="font-semibold mb-3 flex items-center gap-2">
+                    <Badge variant="outline">Score Diff</Badge>
+                    Sweet Spots
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {insights.scoreDiffRanges.slice(0, 4).map((range, i) => (
+                      <div key={i} className={`p-3 rounded-lg border ${i === 0 ? 'bg-purple-50 border-purple-200' : 'bg-slate-50'}`}>
+                        <p className="text-sm font-medium">{range.range}</p>
+                        <p className="text-lg font-bold text-purple-600">{range.hitRate.toFixed(1)}% hit rate</p>
+                        <p className="text-xs text-slate-500">{range.count} props</p>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-    </div>
+                </div>
+
+                {/* Win Probability */}
+                <div>
+                  <h4 className="font-semibold mb-3 flex items-center gap-2">
+                    <Badge variant="outline">Win Probability</Badge>
+                    Sweet Spots
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {insights.winProbRanges.slice(0, 4).map((range, i) => (
+                      <div key={i} className={`p-3 rounded-lg border ${i === 0 ? 'bg-blue-50 border-blue-200' : 'bg-slate-50'}`}>
+                        <p className="text-sm font-medium">{range.range}</p>
+                        <p className="text-lg font-bold text-blue-600">{range.hitRate.toFixed(1)}% hit rate</p>
+                        <p className="text-xs text-slate-500">{range.count} props</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Expected Value */}
+                <div>
+                  <h4 className="font-semibold mb-3 flex items-center gap-2">
+                    <Badge variant="outline">Expected Value</Badge>
+                    Sweet Spots
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {insights.evRanges.slice(0, 4).map((range, i) => (
+                      <div key={i} className={`p-3 rounded-lg border ${i === 0 ? 'bg-green-50 border-green-200' : 'bg-slate-50'}`}>
+                        <p className="text-sm font-medium">{range.range}</p>
+                        <p className="text-lg font-bold text-green-600">{range.hitRate.toFixed(1)}% hit rate</p>
+                        <p className="text-xs text-slate-500">{range.count} props</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Confidence Score */}
+                <div>
+                  <h4 className="font-semibold mb-3 flex items-center gap-2">
+                    <Badge variant="outline">Confidence Score</Badge>
+                    Sweet Spots
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {insights.confidenceRanges.slice(0, 4).map((range, i) => (
+                      <div key={i} className={`p-3 rounded-lg border ${i === 0 ? 'bg-amber-50 border-amber-200' : 'bg-slate-50'}`}>
+                        <p className="text-sm font-medium">{range.range}</p>
+                        <p className="text-lg font-bold text-amber-600">{range.hitRate.toFixed(1)}% hit rate</p>
+                        <p className="text-xs text-slate-500">{range.count} props</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Recommended Props Based on Sweet Spots */}
+            <Card className="bg-gradient-to-br from-indigo-50 to-purple-50 border-indigo-200">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Lightbulb className="h-5 w-5 text-indigo-600" />
+                  Recommended Props
+                </CardTitle>
+                <CardDescription>
+                  Top 10 props that fall within all sweet spot ranges
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {insights.recommendedProps.map((prop, i) => (
+                    <div key={prop.id} className="p-3 bg-white rounded-lg border border-indigo-200 hover:shadow-md transition-shadow">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Badge>{i + 1}</Badge>
+                            <p className="font-semibold">{prop.Player}</p>
+                            <span className="text-xs text-slate-500">{prop.Team}</span>
+                          </div>
+                          <p className="text-sm text-slate-600">
+                            {prop.Prop} - {prop["Over/Under?"]} {prop.Line}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-lg font-bold text-indigo-600">
+                            {((prop["Win Probability"] || 0) * 100).toFixed(1)}%
+                          </p>
+                          <p className="text-xs text-slate-500">Win Prob</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </div>
+    </AppLayout>
   );
 }
