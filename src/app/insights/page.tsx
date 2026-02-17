@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import AppLayout from '@/components/layout/app-layout';
+import app-layout from '@/components/layout/app-layout';
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -235,29 +235,29 @@ export default function InsightsPage() {
 
   if (isLoading) {
     return (
-      <AppLayout>
+      <app-layout>
         <div className="container mx-auto p-6">
           <PageHeader title="Market Intelligence Insights" description="Loading analysis..." />
           <div className="flex justify-center items-center h-64">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
           </div>
         </div>
-      </AppLayout>
+      </app-layout>
     );
   }
 
   if (!insights) {
     return (
-      <AppLayout>
+      <app-layout>
         <div className="container mx-auto p-6">
           <PageHeader title="Market Intelligence Insights" description="No data available for analysis" />
         </div>
-      </AppLayout>
+      </app-layout>
     );
   }
 
   return (
-    <AppLayout>
+    <app-layout>
       <div className="container mx-auto p-6 space-y-6 max-w-7xl">
         <PageHeader
           title="Market Intelligence Insights"
@@ -617,6 +617,6 @@ export default function InsightsPage() {
           </TabsContent>
         </Tabs>
       </div>
-    </AppLayout>
+    </app-layout>
   );
 }

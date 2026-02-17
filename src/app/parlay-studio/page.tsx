@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import AppLayout from '@/components/layout/app-layout';
+import app-layout from '@/components/layout/app-layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -68,7 +68,7 @@ export default function ParlayStudioPage() {
   };
 
   return (
-    <AppLayout>
+    <app-layout>
       <div className="p-6 max-w-7xl mx-auto">
         <div className="mb-6">
           <h1 className="text-3xl font-black text-white tracking-tighter italic">PARLAY STUDIO</h1>
@@ -82,7 +82,6 @@ export default function ParlayStudioPage() {
                 <div className="flex justify-between items-center">
                   <CardTitle>Bet Legs ({selections.length})</CardTitle>
                   {selections.length > 0 && (
-                    // FIX: Wrap the function call in an arrow function to prevent passing the event object.
                     <Button variant="ghost" size="sm" onClick={() => clearSelections()}>
                       Clear All
                     </Button>
@@ -315,6 +314,6 @@ export default function ParlayStudioPage() {
           </div>
         </div>
       </div>
-    </AppLayout>
+    </app-layout>
   );
 }

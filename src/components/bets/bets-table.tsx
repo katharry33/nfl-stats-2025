@@ -1,4 +1,4 @@
-// src/components/bets/bets-table.tsx
+// Save this as: src/components/bets/bets-table.tsx
 'use client';
 
 import React, { useState, useMemo } from 'react';
@@ -24,30 +24,17 @@ export function calculatePayout(stake: number | string, odds: number | string, i
 function getNormalizedDate(bet: any): Date | null {
   const rawDate = bet.createdAt || bet.date || bet.gameDate || bet.timestamp;
   
-  if (!rawDate) {
-    console.log('⚠️ No date for bet:', bet.id);
-    return null;
-  }
+  if (!rawDate) return null;
   
   try {
-    // Handle Firestore Timestamp - check BOTH _seconds and seconds
     if (typeof rawDate === 'object') {
-      // Serialized Firestore Timestamp (from API)
-      if (rawDate._seconds) {
-        console.log('✓ Found _seconds:', rawDate._seconds);
-        return new Date(rawDate._seconds * 1000);
-      }
-      // Direct Firestore Timestamp
-      if (rawDate.seconds) {
-        return new Date(rawDate.seconds * 1000);
-      }
+      if (rawDate._seconds) return new Date(rawDate._seconds * 1000);
+      if (rawDate.seconds) return new Date(rawDate.seconds * 1000);
     }
     
-    // Handle string dates
     const parsedDate = new Date(rawDate);
     return isNaN(parsedDate.getTime()) ? null : parsedDate;
   } catch (error) {
-    console.error('Date parsing error:', error, rawDate);
     return null;
   }
 }
@@ -67,9 +54,8 @@ export const BetsTable = ({ bets, onDelete, onEdit }: any) => {
   };
 
   const sortedBets = useMemo(() => {
-    if (!Array.isArray(bets)) {
-      return [];
-    }
+    if (!Array.isArray(bets)) return [];
+    
     return [...bets].sort((a, b) => {
       let aVal, bVal;
       
@@ -101,11 +87,9 @@ export const BetsTable = ({ bets, onDelete, onEdit }: any) => {
           bVal = 0;
       }
       
-      if (sortDirection === 'asc') {
-        return aVal > bVal ? 1 : -1;
-      } else {
-        return aVal < bVal ? 1 : -1;
-      }
+      return sortDirection === 'asc' 
+        ? (aVal > bVal ? 1 : -1)
+        : (aVal < bVal ? 1 : -1);
     });
   }, [bets, sortColumn, sortDirection]);
 
@@ -173,11 +157,9 @@ export const BetsTable = ({ bets, onDelete, onEdit }: any) => {
             const effectiveOdds = ensureNumber(bet.odds || legs[0]?.odds || 0);
             const payoutValue = calculatePayout(numericStake, effectiveOdds, isBonus);
             
-            // Get unique matchups for display
             const matchups = Array.from(new Set(legs.map((l: any) => l.matchup).filter(Boolean)));
             const matchupDisplay = matchups.length > 0 ? matchups.join(' • ') : '';
             
-            // Create player preview for parlays
             const playerPreview = isParlay 
               ? legs.map((l: any) => l.player).filter(Boolean).join(', ')
               : '';
@@ -218,21 +200,18 @@ export const BetsTable = ({ bets, onDelete, onEdit }: any) => {
                         }
                       </span>
                       
-                      {/* Show player preview for parlays */}
                       {isParlay && playerPreview && (
                         <span className="text-xs text-slate-500 truncate max-w-xs">
                           {playerPreview}
                         </span>
                       )}
                       
-                      {/* Show prop details for single bets */}
                       {!isParlay && legs[0] && (
                         <span className="text-xs text-slate-400">
                           {legs[0].prop} {legs[0].selection} {legs[0].line}
                         </span>
                       )}
                       
-                      {/* Show matchups as badges */}
                       {matchupDisplay && (
                         <div className="flex gap-1 flex-wrap mt-1">
                           {matchups.slice(0, 3).map((matchup, idx) => (
@@ -241,7 +220,7 @@ export const BetsTable = ({ bets, onDelete, onEdit }: any) => {
                               variant="outline" 
                               className="text-[9px] px-1.5 py-0 font-mono bg-slate-900/50 border-slate-700 text-slate-400"
                             >
-                              {String(matchup)} {/* Convert to string */}
+                              {String(matchup)}
                             </Badge>
                           ))}
                           {matchups.length > 3 && (
@@ -249,7 +228,7 @@ export const BetsTable = ({ bets, onDelete, onEdit }: any) => {
                               variant="outline" 
                               className="text-[9px] px-1.5 py-0 font-mono bg-slate-900/50 border-slate-700 text-slate-500"
                             >
-                              +{String(matchups.length - 3)} {/* Convert to string */}
+                              +{String(matchups.length - 3)}
                             </Badge>
                           )}
                         </div>
@@ -299,7 +278,6 @@ export const BetsTable = ({ bets, onDelete, onEdit }: any) => {
                   </td>
                 </tr>
                 
-                {/* Expanded legs view */}
                 {isExpanded && legs.length > 0 && (
                   <tr className="bg-slate-900/60">
                     <td colSpan={8} className="px-6 py-6 border-l-4 border-emerald-500/50">

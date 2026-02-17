@@ -91,14 +91,15 @@ export default function HistoricalPropsPage() {
     addLeg({
       id: crypto.randomUUID(),
       propId: prop.id,
-      player: prop.Player || prop.player || 'Unknown',
-      prop: prop.Prop || prop.prop || '',
+      player: prop.Player || prop.player || 'Unknown Player',
+      prop: prop.Prop || prop.prop || 'Unknown Prop',
       line: prop.Line || prop.line || 0,
       matchup: prop.Matchup || prop.matchup || '',
       team: prop.Team || prop.team || '',
-      week: prop.Week || prop.week || 0,
       selection: selection,
-      odds: -110,
+      odds: -110, // Default odds
+      status: 'pending',
+      week: prop.Week || prop.week,
       source: 'historical-props'
     });
     toast.success(`Added ${selection} ${prop.Line || prop.line} to slip`);

@@ -1,253 +1,110 @@
-// src/app/betting-log/page.tsx
-'use client';
+import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
+import { getBettingLog } from "@/lib/firebase/server/queries";
+import { Bet, BetLeg } from "@/lib/types";
 
-import React, { useState, useEffect, useMemo } from 'react';
-import AppLayout from '@/components/layout/app-layout';
-import { BetsTable, calculatePayout } from '@/components/bets/bets-table';
-import { EditBetModal } from '@/components/bets/edit-bet-modal';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Label } from '@/components/ui/label';
-import { DollarSign, Ticket, TrendingUp, TrendingDown, Filter, X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Bet } from '@/lib/types'; // Import the robust Bet type
+export default async function BettingLogPage() {
+  // 1. Get the real authenticated user from Clerk
+  const { userId } = await auth();
 
-export default function BettingLogPage() {
-  const [bets, setBets] = useState<Bet[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedBet, setSelectedBet] = useState<Bet | null>(null);
-  const [isEditOpen, setIsEditOpen] = useState(false);
+  // 2. Redirect to sign-in if not authenticated
+  if (!userId) {
+    redirect("/sign-in");
+  }
 
-  // Filter states
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [betTypeFilter, setBetTypeFilter] = useState<string>('all');
-  const [playerSearch, setPlayerSearch] = useState<string>('');
-  const [dateFrom, setDateFrom] = useState<string>('');
-  const [dateTo, setDateTo] = useState<string>('');
-
-  useEffect(() => {
-    fetchBets();
-  }, []);
-
-  const fetchBets = async () => {
-    try {
-      const res = await fetch('/api/bets'); // Corrected endpoint
-      if (!res.ok) throw new Error('Failed to fetch bets');
-      const data = await res.json();
-      setBets(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.error("Failed to fetch bets:", err);
-      setBets([]); // Ensure bets is an array on error
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleEdit = (bet: Bet) => {
-    setSelectedBet(bet);
-    setIsEditOpen(true);
-  };
-
-  const handleSave = async (id: string, updatedData: any) => {
-    try {
-      const res = await fetch(`/api/betting-log/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedData),
-      });
-  
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || 'Failed to update');
-      }
-  
-      const result = await res.json();
-      
-      setBets((prevBets) => 
-        prevBets.map((bet) => (bet.id === id ? { ...bet, ...result.data } : bet))
-      );
-  
-    } catch (err) {
-      console.error("Update failed:", err);
-      alert("Error updating bet. Please try again.");
-    }
-  };
-
-  // Apply filters
-  const filteredBets = useMemo(() => {
-    return bets.filter(bet => {
-      if (statusFilter !== 'all' && bet.status !== statusFilter) return false;
-      if (betTypeFilter !== 'all') {
-        if (betTypeFilter === 'parlay' && bet.betType !== 'parlay' && bet.betType !== 'sgp') return false;
-        if (betTypeFilter === 'straight' && bet.betType !== 'straight') return false;
-      }
-      
-      // FIX: Add robust check for leg and leg.player to prevent crashes
-      if (playerSearch && Array.isArray(bet.legs)) {
-        const hasPlayer = bet.legs.some(leg => 
-          leg && typeof leg.player === 'string' && 
-          leg.player.toLowerCase().includes(playerSearch.toLowerCase())
-        );
-        if (!hasPlayer) return false;
-      }
-      
-      if (dateFrom || dateTo) {
-        const betDate = bet.createdAt ? new Date(bet.createdAt as string) : null;
-        if (betDate) {
-          if (dateFrom && betDate < new Date(dateFrom)) return false;
-          if (dateTo && betDate > new Date(dateTo + 'T23:59:59')) return false;
-        }
-      }
-      
-      return true;
-    });
-  }, [bets, statusFilter, betTypeFilter, playerSearch, dateFrom, dateTo]);
-
-  const stats = useMemo(() => {
-    if (!filteredBets.length) return { total: 0, won: 0, lost: 0, profit: 0, roi: 0 };
-
-    let totalRisked = 0;
-    let totalProfit = 0;
-    const won = filteredBets.filter(b => b.status === 'won').length;
-    const lost = filteredBets.filter(b => b.status === 'lost').length;
-
-    filteredBets.forEach(bet => {
-        const stake = Number(bet.stake) || 0;
-        totalRisked += stake;
-        if (bet.status === 'won') {
-            const payout = calculatePayout(stake, Number(bet.odds) || 0);
-            totalProfit += payout - stake;
-        } else if (bet.status === 'lost') {
-            totalProfit -= stake;
-        }
-    });
-    
-    const roi = totalRisked > 0 ? (totalProfit / totalRisked) * 100 : 0;
-
-    return { total: filteredBets.length, won, lost, profit: totalProfit, roi };
-  }, [filteredBets]);
-
-  const clearFilters = () => {
-    setStatusFilter('all');
-    setBetTypeFilter('all');
-    setPlayerSearch('');
-    setDateFrom('');
-    setDateTo('');
-  };
-
-  const hasActiveFilters = statusFilter !== 'all' || betTypeFilter !== 'all' || playerSearch || dateFrom || dateTo;
-
-  if (loading) return <div className="p-8 text-slate-400 font-mono">Loading betting logs...</div>;
+  // 3. Fetch normalized and grouped bets from your server query
+  const bets: Bet[] = await getBettingLog(userId);
 
   return (
-    <AppLayout>
-      <div className="p-6 max-w-7xl mx-auto space-y-6">
-        <header className="flex justify-between items-end">
-          <div>
-            <h1 className="text-3xl font-black text-white tracking-tighter italic">BETTING LOG</h1>
-            <p className="text-slate-500 text-sm">
-              {filteredBets.length} of {bets.length} bets
-              {hasActiveFilters && ' (filtered)'}
-            </p>
-          </div>
-        </header>
+    <div className="max-w-4xl mx-auto p-4">
+      <header className="mb-8">
+        <h1 className="text-3xl font-bold text-gray-900">Betting History</h1>
+        <p className="text-gray-500 text-sm">Review your past performance and legacy parlays.</p>
+      </header>
 
-        <Card className="bg-slate-900/50 border-slate-800">
-          <CardHeader>
-            <div className="flex justify-between items-center">
-              <div className="flex items-center gap-2">
-                <Filter className="h-4 w-4 text-slate-400" />
-                <CardTitle className="text-sm font-bold text-slate-400 uppercase">Filters</CardTitle>
-              </div>
-              {hasActiveFilters && (
-                <Button variant="ghost" size="sm" onClick={clearFilters} className="text-xs text-slate-500 hover:text-slate-300">
-                  <X className="h-3 w-3 mr-1" />
-                  Clear All
-                </Button>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-              <div className="space-y-2">
-                <Label className="text-xs text-slate-400">Status</Label>
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="bg-slate-950 border-slate-800"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="won">Won</SelectItem>
-                    <SelectItem value="lost">Lost</SelectItem>
-                    <SelectItem value="pending">Pending</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-xs text-slate-400">Bet Type</Label>
-                <Select value={betTypeFilter} onValueChange={setBetTypeFilter}>
-                  <SelectTrigger className="bg-slate-950 border-slate-800"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Types</SelectItem>
-                    <SelectItem value="parlay">Parlays</SelectItem>
-                    <SelectItem value="straight">Straights</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-xs text-slate-400">Player Search</Label>
-                <Input placeholder="Search player..." value={playerSearch} onChange={(e) => setPlayerSearch(e.target.value)} className="bg-slate-950 border-slate-800" />
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-xs text-slate-400">Date From</Label>
-                <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="bg-slate-950 border-slate-800" />
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-xs text-slate-400">Date To</Label>
-                <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="bg-slate-950 border-slate-800" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          <StatCard title="Total Bets" value={stats.total} icon={<Ticket className="h-4 w-4" />} />
-          <StatCard title="Won" value={stats.won} icon={<TrendingUp className="h-4 w-4" />} color="text-emerald-400" />
-          <StatCard title="Lost" value={stats.lost} icon={<TrendingDown className="h-4 w-4" />} color="text-red-400" />
-          <StatCard title="Net P/L" value={`$${stats.profit.toFixed(2)}`} color={stats.profit >= 0 ? 'text-emerald-400' : 'text-red-400'} icon={<DollarSign className="h-4 w-4" />} />
-          <StatCard title="ROI" value={`${stats.roi.toFixed(1)}%`} color={stats.roi >= 0 ? 'text-emerald-400' : 'text-red-400'} icon={<TrendingUp className="h-4 w-4" />} />
+      {bets.length === 0 ? (
+        <div className="text-center py-20 bg-gray-50 rounded-xl border-2 border-dashed">
+          <p className="text-gray-400">No bets found in your history.</p>
         </div>
+      ) : (
+        <div className="space-y-6">
+          {bets.map((bet) => (
+            <div 
+              key={bet.id} 
+              className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow"
+            >
+              {/* Card Header */}
+              <div className="bg-gray-50 px-4 py-3 border-b flex justify-between items-center">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-blue-700 uppercase tracking-wide text-sm">
+                      {bet.betType || 'Straight'}
+                    </span>
+                    {bet.boost && (
+                      <span className="bg-orange-100 text-orange-700 text-[10px] font-black px-1.5 py-0.5 rounded uppercase">
+                        Boosted
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[10px] font-mono text-gray-400 mt-1">
+                    REF: {bet.id.slice(-12).toUpperCase()}
+                  </p>
+                </div>
+                
+                <div className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-tighter ${
+                  bet.status === 'won' ? 'bg-green-100 text-green-700' : 
+                  bet.status === 'lost' ? 'bg-red-100 text-red-700' : 
+                  'bg-yellow-100 text-yellow-700'
+                }`}>
+                  {bet.status}
+                </div>
+              </div>
 
-        <div className="bg-slate-950 border border-slate-800 rounded-xl shadow-2xl overflow-hidden">
-          <BetsTable bets={filteredBets} onEdit={handleEdit} />
+              {/* Legs Section */}
+              <div className="p-4 space-y-4">
+                {bet.legs && bet.legs.length > 0 ? (
+                  bet.legs.map((leg, idx) => (
+                    <div key={leg.id || idx} className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <p className="font-bold text-gray-900 leading-tight">
+                          {leg.player}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-0.5 italic">
+                          {leg.matchup} • {leg.prop}
+                        </p>
+                      </div>
+                      <div className="text-right ml-4">
+                        <p className="font-bold text-gray-800">
+                          {leg.selection} {leg.line}
+                        </p>
+                        <p className="text-[11px] text-gray-400 font-medium">
+                          ({typeof leg.odds === 'number' && leg.odds > 0 ? `+${leg.odds}` : leg.odds})
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-gray-400 italic">Leg data unavailable for this entry.</p>
+                )}
+              </div>
+
+              {/* Financial Footer */}
+              <div className="bg-gray-50/50 px-4 py-3 border-t grid grid-cols-2 gap-4">
+                <div className="flex flex-col">
+                  <span className="text-[10px] uppercase text-gray-400 font-bold">Stake</span>
+                  <span className="font-bold text-gray-900">${Number(bet.stake).toFixed(2)}</span>
+                </div>
+                <div className="flex flex-col text-right">
+                  <span className="text-[10px] uppercase text-gray-400 font-bold">Payout</span>
+                  <span className={`font-bold ${bet.status === 'won' ? 'text-green-600' : 'text-gray-900'}`}>
+                    ${Number(bet.payout || 0).toFixed(2)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
-
-        {selectedBet && <EditBetModal bet={selectedBet} isOpen={isEditOpen} onClose={() => setIsEditOpen(false)} onSave={handleSave} />}
-      </div>
-    </AppLayout>
-  );
-}
-
-interface StatCardProps {
-  title: string;
-  value: string | number;
-  icon: React.ReactNode;
-  color?: string;
-}
-
-function StatCard({ title, value, icon, color = "text-white" }: StatCardProps) {
-  return (
-    <Card className="bg-slate-900/50 border-slate-800 backdrop-blur-sm">
-      <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-        <CardTitle className="text-xs font-bold text-slate-500 uppercase tracking-widest">{title}</CardTitle>
-        <div className="text-slate-600">{icon}</div>
-      </CardHeader>
-      <CardContent>
-        <div className={`text-2xl font-black font-mono ${color}`}>{value}</div>
-      </CardContent>
-    </Card>
+      )}
+    </div>
   );
 }
