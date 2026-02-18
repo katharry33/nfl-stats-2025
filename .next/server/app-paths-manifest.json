@@ -1,3 +1,5 @@
 {
-  "/betting-log/page": "app/betting-log/page.js"
+  "/favicon.ico/route": "app/favicon.ico/route.js",
+  "/betting-log/page": "app/betting-log/page.js",
+  "/api/betting-log/route": "app/api/betting-log/route.js"
 }

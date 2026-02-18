@@ -15,6 +15,10 @@ export default function HistoricalPropsPage() {
   const router = useRouter();
   const [props, setProps] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [lastVisibleId, setLastVisibleId] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [totalCount, setTotalCount] = useState<number>(0); // State for total prop count
   const { addLeg } = useBetSlip();
 
   // Filter states
@@ -44,30 +48,58 @@ export default function HistoricalPropsPage() {
     'Longest Completion',
   ];
 
-  const handleSearch = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    
-    setLoading(true);
+  const fetchProps = async (lastId: string | null = null) => {
+    if (lastId) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+    }
+
     try {
       const params = new URLSearchParams();
+      params.append('limit', '100');
       if (week !== 'all') params.append('week', week);
       if (team) params.append('team', team.trim());
       if (player) params.append('player', player.trim());
       if (propType) params.append('prop', propType);
       if (gameDate) params.append('gamedate', gameDate);
       if (matchup) params.append('matchup', matchup.trim());
+      if (lastId) params.append('lastVisible', lastId);
 
       const response = await fetch(`/api/all-props?${params.toString()}`);
       if (!response.ok) throw new Error('Failed to fetch props');
       
-      const propsData = await response.json();
-      setProps(propsData);
-      toast.success(`Found ${propsData.length} props`);
+      const { props: newProps, lastVisibleId: newLastVisibleId, totalCount: newTotalCount } = await response.json();
+
+      setProps(prev => lastId ? [...prev, ...newProps] : newProps);
+      setLastVisibleId(newLastVisibleId);
+      setTotalCount(newTotalCount); // Update the total count
+      setHasMore(newProps.length > 0 && newLastVisibleId !== null);
+
+      if (!lastId) {
+        toast.success(`Found ${newTotalCount} props matching your criteria.`);
+      }
+
     } catch (error) {
       console.error('Error fetching props:', error);
       toast.error("Failed to fetch props");
     } finally {
       setLoading(false);
+      setLoadingMore(false);
+    }
+  };
+
+  const handleSearch = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setProps([]);
+    setLastVisibleId(null);
+    setHasMore(true);
+    fetchProps();
+  };
+
+  const loadMore = () => {
+    if (hasMore && !loadingMore) {
+      fetchProps(lastVisibleId);
     }
   };
 
@@ -233,7 +265,7 @@ export default function HistoricalPropsPage() {
         {/* Results Count */}
         {!loading && (
           <div className="mb-4 text-sm text-slate-400">
-            Showing {props.length} props
+            Showing {props.length} of {totalCount} props
           </div>
         )}
 
@@ -249,52 +281,70 @@ export default function HistoricalPropsPage() {
             <p className="text-slate-500 text-sm mt-2">Try adjusting your filters</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {props.map((prop, index) => (
-              <Card key={prop.id || index} className="bg-slate-900 border-slate-800 hover:border-slate-700 transition-colors">
-                <CardContent className="p-4">
-                  {/* Player Info */}
-                  <div className="mb-3">
-                    <h3 className="font-bold text-white text-lg truncate">
-                      {prop.Player || prop.player || 'Unknown Player'}
-                    </h3>
-                    <p className="text-sm text-slate-400">
-                      {prop.Team || prop.team || 'N/A'}
-                    </p>
-                    <p className="text-xs text-slate-500 font-mono mt-0.5">
-                      {prop.Matchup || prop.matchup || 'No matchup'}
-                    </p>
-                  </div>
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {props.map((prop, index) => (
+                <Card key={prop.id || index} className="bg-slate-900 border-slate-800 hover:border-slate-700 transition-colors">
+                  <CardContent className="p-4">
+                    {/* Player Info */}
+                    <div className="mb-3">
+                      <div className="flex justify-between items-start mb-1">
+                        <h3 className="font-bold text-white text-lg truncate pr-2">
+                          {prop.Player || prop.player || 'Unknown Player'}
+                        </h3>
+                        <span className="text-xs font-mono bg-emerald-900/50 text-emerald-400 border border-emerald-900 rounded-full px-2 py-0.5 whitespace-nowrap">
+                          Week {prop.Week || prop.week || 'N/A'}
+                        </span>
+                      </div>
+                      <p className="text-sm text-slate-400">
+                        {prop.Team || prop.team || 'N/A'}
+                      </p>
+                      <p className="text-xs text-slate-500 font-mono mt-0.5">
+                        {prop.Matchup || prop.matchup || 'No matchup'}
+                      </p>
+                    </div>
 
-                  {/* Prop Details */}
-                  <div className="mb-3 p-3 bg-slate-950 rounded-lg border border-slate-800">
-                    <p className="text-xs text-slate-500 uppercase mb-1">
-                      {prop.Prop || prop.prop || 'Unknown Prop'}
-                    </p>
-                    <p className="text-2xl font-black text-white font-mono">
-                      {prop.Line || prop.line || '0'}
-                    </p>
-                  </div>
+                    {/* Prop Details */}
+                    <div className="mb-3 p-3 bg-slate-950 rounded-lg border border-slate-800">
+                      <p className="text-xs text-slate-500 uppercase mb-1">
+                        {prop.Prop || prop.prop || 'Unknown Prop'}
+                      </p>
+                      <p className="text-2xl font-black text-white font-mono">
+                        {prop.Line || prop.line || '0'}
+                      </p>
+                    </div>
 
-                  {/* Over/Under Buttons */}
-                  <div className="grid grid-cols-2 gap-2">
-                    <Button
-                      onClick={() => handleAddToBetSlip(prop, 'Over')}
-                      className="bg-slate-800 hover:bg-emerald-600 border border-slate-700 font-bold"
-                    >
-                      OVER
-                    </Button>
-                    <Button
-                      onClick={() => handleAddToBetSlip(prop, 'Under')}
-                      className="bg-slate-800 hover:bg-blue-600 border border-slate-700 font-bold"
-                    >
-                      UNDER
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                    {/* Over/Under Buttons */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        onClick={() => handleAddToBetSlip(prop, 'Over')}
+                        className="bg-slate-800 hover:bg-emerald-600 border border-slate-700 font-bold"
+                      >
+                        OVER
+                      </Button>
+                      <Button
+                        onClick={() => handleAddToBetSlip(prop, 'Under')}
+                        className="bg-slate-800 hover:bg-blue-600 border border-slate-700 font-bold"
+                      >
+                        UNDER
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+            {hasMore && (
+              <div className="text-center mt-6">
+                <Button
+                  onClick={loadMore}
+                  disabled={loadingMore}
+                  className="bg-slate-800 hover:bg-slate-700 font-bold px-8"
+                >
+                  {loadingMore ? 'Loading...' : 'Load More'}
+                </Button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

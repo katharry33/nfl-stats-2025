@@ -4,58 +4,44 @@ import { adminDb } from '@/lib/firebase/admin';
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    
-    // Always use allProps_2025 collection
     const collectionName = 'allProps_2025';
-    
-    // Get filter parameters
+
+    // Pagination parameters
+    const limitParam = searchParams.get('limit');
+    const lastVisibleId = searchParams.get('lastVisible');
+    const limit = limitParam ? parseInt(limitParam, 10) : 100;
+
+    // Filter parameters
     const weekParam = searchParams.get('week');
     const teamParam = searchParams.get('team');
     const playerParam = searchParams.get('player');
     const propParam = searchParams.get('prop');
     const gamedateParam = searchParams.get('gamedate');
     const matchupParam = searchParams.get('matchup');
-    
-    console.log('All-props filters:', { weekParam, teamParam, playerParam, propParam, gamedateParam, matchupParam });
 
-    // Test both uppercase and lowercase field names
-    const testLower = await adminDb.collection(collectionName)
-      .where('week', '==', weekParam ? Number(weekParam) : 1)
-      .limit(5)
-      .get();
+    const useUppercase = true; // Assume uppercase fields for simplicity
+    const playerField = useUppercase ? 'Player' : 'player';
 
-    const testUpper = await adminDb.collection(collectionName)
-      .where('Week', '==', weekParam ? Number(weekParam) : 1)
-      .limit(5)
-      .get();
+    let query = adminDb.collection(collectionName).orderBy(playerField) as FirebaseFirestore.Query;
 
-    const useUppercase = testUpper.size > 0;
-    console.log(`Test lowercase 'week': ${testLower.size} docs`);
-    console.log(`Test uppercase 'Week': ${testUpper.size} docs`);
-    console.log(`✓ Using ${useUppercase ? 'uppercase' : 'lowercase'} fields`);
-
-    // Build query with appropriate field names
-    let query = adminDb.collection(collectionName);
-
-    // Week filter (required)
     if (weekParam && weekParam !== 'all') {
-      const weekNum = Number(weekParam);
       const weekField = useUppercase ? 'Week' : 'week';
-      query = query.where(weekField, '==', weekNum) as any;
-      console.log(`Filtering: ${weekField} == ${weekNum}`);
+      query = query.where(weekField, '==', Number(weekParam));
     }
 
-    // Note: Team filter moved to client-side for case-insensitive matching
+    if (lastVisibleId) {
+      const lastVisibleDoc = await adminDb.collection(collectionName).doc(lastVisibleId).get();
+      if (lastVisibleDoc.exists) {
+        query = query.startAfter(lastVisibleDoc);
+      }
+    }
 
-    // Execute query
-    const snapshot = await query.limit(500).get();
-    console.log(`✅ Query returned: ${snapshot.size} documents`);
+    const snapshot = await query.limit(limit).get();
 
     let props = snapshot.docs.map(doc => {
       const data = doc.data();
       return {
         id: doc.id,
-        // Return both cases for compatibility
         Player: data.Player || data.player || 'Unknown',
         Team: data.Team || data.team || 'N/A',
         Prop: data.Prop || data.prop || '',
@@ -64,7 +50,6 @@ export async function GET(request: NextRequest) {
         Week: data.Week !== undefined ? data.Week : (data.week || 0),
         Matchup: data.Matchup || data.matchup || '',
         GameDate: data['Game Date'] || data.gamedate || data.GameDate || '',
-        // Lowercase versions for consistency
         player: data.Player || data.player || 'Unknown',
         team: data.Team || data.team || 'N/A',
         prop: data.Prop || data.prop || '',
@@ -76,7 +61,6 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // Client-side filters (team, player, prop, gamedate, matchup)
     if (teamParam) {
       const teamLower = teamParam.toLowerCase();
       props = props.filter(p => 
@@ -110,9 +94,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    console.log(`✅ Final result: ${props.length} props after filters`);
+    const lastDoc = snapshot.docs[snapshot.docs.length - 1];
+    const newLastVisibleId = lastDoc ? lastDoc.id : null;
 
-    return NextResponse.json(props);
+    return NextResponse.json({ props, lastVisibleId: newLastVisibleId });
   } catch (error: any) {
     console.error('All-props API error:', error);
     return NextResponse.json({ error: error.message || 'Failed to fetch props' }, { status: 500 });

@@ -3,6 +3,7 @@
 
 import { FirebaseProvider } from '@/context/AuthContext';
 import { BetSlipProvider } from '@/context/betslip-context';
+import { AppLayout } from '@/components/layout/app-layout';
 import { Toaster } from 'sonner';
 import './globals.css';
 
@@ -13,7 +14,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <FirebaseProvider>
           <BetSlipProvider>
             <Toaster position="top-right" />
-            {children}
+            <AppLayout>{children}</AppLayout>
           </BetSlipProvider>
         </FirebaseProvider>
       </body>

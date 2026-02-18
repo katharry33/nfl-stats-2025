@@ -51,6 +51,12 @@ export function PropCard({ prop }: { prop: PropData }) {
 
   return (
     <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-3">
+      <div className="flex justify-between items-center mb-2">
+        <span className="text-xs font-bold px-2 py-1 bg-blue-100 text-blue-800 rounded">
+          WEEK {prop.week}
+        </span>
+        <span className="text-xs text-gray-500">{prop.league}</span>
+      </div>
       <div className="flex justify-between items-start">
         <div>
           <h3 className="text-white font-bold leading-tight">{prop.player}</h3>
