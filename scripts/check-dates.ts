@@ -3,10 +3,10 @@ import { config } from 'dotenv';
 import { resolve } from 'path';
 config({ path: resolve(__dirname, '../.env.local') });
 
-import { getAdminDb } from '../src/lib/firebase/admin';
+import { adminDb } from '../src/lib/firebase/admin';
 
 async function checkDates() {
-  const db = getAdminDb();
+  const db = adminDb;
   
   console.log('\n📊 Checking 2025_bets dates...\n');
   

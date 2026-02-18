@@ -23,20 +23,16 @@ interface Transaction {
 
 export default function WalletPage() {
   const firestore = useFirestore();
-  const auth = useAuth();
+  const { user, loading } = useAuth();
+  const userId = user?.uid;
   
   const [balance, setBalance] = useState<number>(0);
-  const [loading, setLoading] = useState(true);
   const [amount, setAmount] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
 
-  const { user } = useAuth();
-  const userId = user?.uid;
-  
   useEffect(() => {
     if (!firestore || !userId) {
-        if (!userId) setLoading(false);
         return;
     }
 
@@ -45,7 +41,6 @@ export default function WalletPage() {
       if (docSnap.exists()) {
         setBalance(docSnap.data().balance || 0);
       }
-      setLoading(false);
     });
 
     const q = query(collection(firestore, "transactions"), where("userId", "==", userId));

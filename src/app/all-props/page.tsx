@@ -99,7 +99,7 @@ export default function HistoricalPropsPage() {
       selection: selection,
       odds: -110, // Default odds
       status: 'pending',
-      week: prop.Week || prop.week,
+      week: prop.Week || prop.week || 'N/A',
       source: 'historical-props'
     });
     toast.success(`Added ${selection} ${prop.Line || prop.line} to slip`);

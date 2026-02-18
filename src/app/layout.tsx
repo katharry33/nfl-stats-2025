@@ -1,9 +1,8 @@
 // src/app/layout.tsx
-'use client'; 
+'use client';
 
 import { FirebaseProvider } from '@/context/AuthContext';
 import { BetSlipProvider } from '@/context/betslip-context';
-import { AppLayout } from '@/components/layout/app-layout'; // Import the new component
 import { Toaster } from 'sonner';
 import './globals.css';
 
@@ -12,10 +11,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className="dark">
       <body>
         <FirebaseProvider>
-          {/* BetSlipProvider wraps the entire layout */}
           <BetSlipProvider>
             <Toaster position="top-right" />
-            <AppLayout>{children}</AppLayout>
+            {children}
           </BetSlipProvider>
         </FirebaseProvider>
       </body>

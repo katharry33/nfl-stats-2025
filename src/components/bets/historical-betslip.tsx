@@ -1,15 +1,14 @@
 'use client';
 
 import React from "react";
-// Swapped to relative paths to clear editor red lines
-import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
-import { Button } from "../ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Trash2, ArrowRight, Layers } from "lucide-react";
-import { useBetSlip } from "../../context/betslip-context";
+import { useBetSlip } from "@/context/betslip-context";
 import { useRouter } from "next/navigation";
 
 export function HistoricalBetSlip() {
-  const { selections, removeLeg, clearSelections } = useBetSlip();
+  const { selections, removeLeg, clearSlip } = useBetSlip();
   const router = useRouter();
 
   const handleGoToParlayStudio = () => {
@@ -28,7 +27,7 @@ export function HistoricalBetSlip() {
             <Button 
               variant="ghost" 
               size="sm" 
-              onClick={clearSelections}
+              onClick={clearSlip}
               className="h-8 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10"
             >
               Clear

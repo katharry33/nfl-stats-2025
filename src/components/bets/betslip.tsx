@@ -37,7 +37,7 @@ export function BetSlip() {
   const { 
     selections: slip, 
     removeLeg: removeFromSlip, 
-    clearSelections: clearSlip 
+    clearSlip 
   } = useBetSlip();
 
   if (slip.length === 0) {

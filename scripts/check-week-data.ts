@@ -4,11 +4,11 @@ import { resolve } from 'path';
 
 config({ path: resolve(__dirname, '../.env.local') });
 
-import { getAdminDb } from '../src/lib/firebase/admin';
+import { adminDb } from '../src/lib/firebase/admin';
 
 async function checkWeekData() {
   try {
-    const db = getAdminDb();
+    const db = adminDb;
     const collection = 'allProps_2025';
     
     console.log(`\n🔍 Checking ${collection} collection...\n`);

@@ -84,8 +84,9 @@ export function getBestBonusForParlay(legs: BetLeg[], bonuses: Bonus[]): Bonus |
 
     // Check if the parlay meets the bonus requirements
     if (numLegs >= minLegs) {
-      if (bonus.boost !== undefined && bonus.boost > maxBoost) {
-        maxBoost = bonus.boost;
+      const boostValue = bonus.boost ?? 0;
+      if (boostValue > maxBoost) {
+        maxBoost = boostValue;
         bestBonus = bonus;
       }
     }

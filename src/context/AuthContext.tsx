@@ -1,49 +1,43 @@
-// src/context/AuthContext.tsx
-'use client';
+"use client";
+import { createContext, useContext, useEffect, useState } from "react";
+import { auth } from "@/lib/firebase/client"; // Use your client-side config
+import { signInAnonymously, onAuthStateChanged, User } from "firebase/auth";
 
-import React, { createContext, useContext } from 'react';
-import { useAuthState } from 'react-firebase-hooks/auth';
-import { auth, db } from '@/lib/firebase/client';
-import type { User } from 'firebase/auth';
-import type { Firestore } from 'firebase/firestore';
-
-interface AuthContextType {
-  user: User | null | undefined;
-  loading: boolean;
-  error: Error | undefined;
-}
-
-interface FirestoreContextType {
-  db: Firestore;
-}
-
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
-const FirestoreContext = createContext<FirestoreContextType | undefined>(undefined);
+const AuthContext = createContext<{ user: User | null; loading: boolean } | undefined>(undefined);
 
 export function FirebaseProvider({ children }: { children: React.ReactNode }) {
-  const [user, loading, error] = useAuthState(auth);
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (!currentUser) {
+        // Automatically sign in anonymously if no user exists
+        try {
+          await signInAnonymously(auth);
+        } catch (error) {
+          console.error("Anonymous auth failed", error);
+        }
+      } else {
+        setUser(currentUser);
+        setLoading(false);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, error }}>
-      <FirestoreContext.Provider value={{ db }}>
-        {children}
-      </FirestoreContext.Provider>
+    <AuthContext.Provider value={{ user, loading }}>
+      {!loading && children}
     </AuthContext.Provider>
   );
 }
 
-export function useAuth() {
+export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
-    throw new Error('useAuth must be used within a FirebaseProvider');
+    throw new Error("useAuth must be used within a FirebaseProvider");
   }
   return context;
-}
-
-export function useFirestore() {
-  const context = useContext(FirestoreContext);
-  if (context === undefined) {
-    throw new Error('useFirestore must be used within a FirebaseProvider');
-  }
-  return context.db;
-}
+};

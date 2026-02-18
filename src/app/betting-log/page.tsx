@@ -1,110 +1,120 @@
-import { auth } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
-import { getBettingLog } from "@/lib/firebase/server/queries";
-import { Bet, BetLeg } from "@/lib/types";
+'use client';
 
-export default async function BettingLogPage() {
-  // 1. Get the real authenticated user from Clerk
-  const { userId } = await auth();
+import { useEffect, useState } from "react";
+import { db } from "@/lib/firebase/client";
+import { collection, query, orderBy, getDocs } from "firebase/firestore";
+import { Bet } from "@/lib/types";
+import { AppLayout } from "@/components/layout/app-layout"; // Add this import
 
-  // 2. Redirect to sign-in if not authenticated
-  if (!userId) {
-    redirect("/sign-in");
-  }
+export default function BettingLogPage() {
+  const [bets, setBets] = useState<Bet[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // 3. Fetch normalized and grouped bets from your server query
-  const bets: Bet[] = await getBettingLog(userId);
+  useEffect(() => {
+    async function fetchAllBets() {
+      try {
+        setLoading(true);
+        const q = query(
+          collection(db, "bettingLog"), 
+          orderBy("createdAt", "desc")
+        );
+        
+        const snapshot = await getDocs(q);
+        
+        const fetchedBets = snapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            ...data,
+            createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : data.createdAt,
+          };
+        }) as Bet[];
+        
+        setBets(fetchedBets);
+      } catch (error) {
+        console.error("Error fetching all bets:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchAllBets();
+  }, []);
 
   return (
-    <div className="max-w-4xl mx-auto p-4">
-      <header className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Betting History</h1>
-        <p className="text-gray-500 text-sm">Review your past performance and legacy parlays.</p>
-      </header>
-
-      {bets.length === 0 ? (
-        <div className="text-center py-20 bg-gray-50 rounded-xl border-2 border-dashed">
-          <p className="text-gray-400">No bets found in your history.</p>
+    <AppLayout>
+      <div className="p-8 max-w-5xl mx-auto">
+        <div className="flex justify-between items-end mb-8">
+          <div>
+            <h1 className="text-4xl font-black text-white tracking-tighter uppercase italic">
+              Betting Log
+            </h1>
+            <p className="text-emerald-500 font-mono text-sm">
+              {bets.length} TOTAL SETTLED WAGERS
+            </p>
+          </div>
         </div>
-      ) : (
-        <div className="space-y-6">
-          {bets.map((bet) => (
-            <div 
-              key={bet.id} 
-              className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow"
-            >
-              {/* Card Header */}
-              <div className="bg-gray-50 px-4 py-3 border-b flex justify-between items-center">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-blue-700 uppercase tracking-wide text-sm">
-                      {bet.betType || 'Straight'}
-                    </span>
-                    {bet.boost && (
-                      <span className="bg-orange-100 text-orange-700 text-[10px] font-black px-1.5 py-0.5 rounded uppercase">
-                        Boosted
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[10px] font-mono text-gray-400 mt-1">
-                    REF: {bet.id.slice(-12).toUpperCase()}
-                  </p>
-                </div>
-                
-                <div className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-tighter ${
-                  bet.status === 'won' ? 'bg-green-100 text-green-700' : 
-                  bet.status === 'lost' ? 'bg-red-100 text-red-700' : 
-                  'bg-yellow-100 text-yellow-700'
-                }`}>
-                  {bet.status}
-                </div>
-              </div>
 
-              {/* Legs Section */}
-              <div className="p-4 space-y-4">
-                {bet.legs && bet.legs.length > 0 ? (
-                  bet.legs.map((leg, idx) => (
-                    <div key={leg.id || idx} className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <p className="font-bold text-gray-900 leading-tight">
-                          {leg.player}
-                        </p>
-                        <p className="text-xs text-gray-500 mt-0.5 italic">
-                          {leg.matchup} • {leg.prop}
-                        </p>
-                      </div>
-                      <div className="text-right ml-4">
-                        <p className="font-bold text-gray-800">
-                          {leg.selection} {leg.line}
-                        </p>
-                        <p className="text-[11px] text-gray-400 font-medium">
-                          ({typeof leg.odds === 'number' && leg.odds > 0 ? `+${leg.odds}` : leg.odds})
-                        </p>
-                      </div>
+        {loading ? (
+          <div className="animate-pulse space-y-4">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-24 bg-card rounded-xl border border-border" />
+            ))}
+          </div>
+        ) : bets.length === 0 ? (
+          <div className="text-center py-20 border-2 border-dashed border-border rounded-2xl">
+            <p className="text-muted-foreground">No bets found in the master log.</p>
+          </div>
+        ) : (
+          <div className="grid gap-4">
+            {bets.map((bet) => (
+              <div 
+                key={bet.id} 
+                className="group bg-card hover:bg-accent/5 border border-border rounded-xl p-5 transition-all duration-200"
+              >
+                <div className="flex justify-between items-start">
+                  <div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-[10px] font-black bg-emerald-500 text-black px-1.5 py-0.5 rounded uppercase">
+                        {bet.betType}
+                      </span>
+                      <span className="text-xs text-muted-foreground font-mono">
+                        ID: {bet.id.slice(0, 8)}
+                      </span>
                     </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-gray-400 italic">Leg data unavailable for this entry.</p>
+                    <p className="text-2xl font-bold text-white">
+                      ${Number(bet.stake).toLocaleString()}
+                    </p>
+                  </div>
+                  
+                  <div className="text-right">
+                    <span className={`text-sm font-black uppercase tracking-widest ${
+                      bet.status === 'won' ? 'text-emerald-400' : 'text-destructive'
+                    }`}>
+                      {bet.status}
+                    </span>
+                    <p className="text-[10px] text-muted-foreground mt-1 uppercase">
+                      Resulted
+                    </p>
+                  </div>
+                </div>
+
+                {/* Optional: Add a small preview of legs if they exist */}
+                {bet.legs && bet.legs.length > 0 && (
+                  <div className="mt-4 pt-4 border-t border-border/50 flex gap-4 overflow-x-auto pb-2">
+                    {bet.legs.map((leg: any, idx: number) => (
+                      <div key={idx} className="shrink-0 text-[11px]">
+                        <p className="text-white font-bold">{leg.player || 'Player'}</p>
+                        <p className="text-muted-foreground">{leg.prop} {leg.line}</p>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
-
-              {/* Financial Footer */}
-              <div className="bg-gray-50/50 px-4 py-3 border-t grid grid-cols-2 gap-4">
-                <div className="flex flex-col">
-                  <span className="text-[10px] uppercase text-gray-400 font-bold">Stake</span>
-                  <span className="font-bold text-gray-900">${Number(bet.stake).toFixed(2)}</span>
-                </div>
-                <div className="flex flex-col text-right">
-                  <span className="text-[10px] uppercase text-gray-400 font-bold">Payout</span>
-                  <span className={`font-bold ${bet.status === 'won' ? 'text-green-600' : 'text-gray-900'}`}>
-                    ${Number(bet.payout || 0).toFixed(2)}
-                  </span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </AppLayout>
   );
 }

@@ -81,7 +81,7 @@ export function WeeklyProps({ props, loading }: WeeklyPropsProps) {
               </div>
               <div className="flex items-center gap-4">
                 <span className="font-mono font-bold text-green-500">
-                  {prop.Odds > 0 ? `+${prop.Odds}` : prop.Odds}
+                  {(prop.Odds ?? 0) > 0 ? `+${prop.Odds}` : (prop.Odds ?? 0)}
                 </span>
                 <Button
                   size="sm"

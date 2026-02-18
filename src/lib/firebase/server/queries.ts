@@ -1,5 +1,10 @@
 import { adminDb } from "../index"; 
-import { Bet, BetLeg, BetStatus } from "@/lib/types";
+import { Bet, BetLeg, BetStatus, LegStatus } from "@/lib/types";
+
+export async function getStaticSchedule() {
+  // Your logic here
+  return []; 
+}
 
 export async function getBettingLog(userId: string, limit: number = 50): Promise<Bet[]> {
   try {
@@ -41,7 +46,7 @@ export async function getBettingLog(userId: string, limit: number = 50): Promise
         line: data.line || '',
         selection: data.selection || '',
         odds: Number(data.odds) || 0,
-        status: (data.status || 'pending') as BetStatus,
+        status: (data.status || 'pending') as LegStatus,
         matchup: data.matchup || "",
         team: data.team || "",
         week: data.week || ""

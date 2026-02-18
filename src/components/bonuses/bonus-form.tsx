@@ -36,7 +36,7 @@ export function BonusForm({ onSave, bonusToEdit }: BonusFormProps) {
     if (bonusToEdit) {
       setName(bonusToEdit.name || "");
       setBoost(String(bonusToEdit.boost || ""));
-      setBetType(bonusToEdit.betType || "any");
+      setBetType((bonusToEdit.betType || "any") as BetType | "any");
       setMaxWager(String(bonusToEdit.maxWager || ""));
       setDescription(bonusToEdit.description || "");
       
@@ -100,7 +100,7 @@ export function BonusForm({ onSave, bonusToEdit }: BonusFormProps) {
       setExpirationTime("23:59");
       setDescription("");
       
-      onSave({ id: bonusToEdit?.id || '', ...bonusData } as Bonus);
+      onSave({ id: bonusToEdit?.id || '', ...bonusData } as unknown as Bonus);
     } catch (error) {
       console.error("Error saving bonus:", error);
       toast.error("Failed to save bonus");

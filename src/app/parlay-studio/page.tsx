@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import app-layout from '@/components/layout/app-layout';
+import { AppLayout } from '@/components/layout/app-layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,7 +16,7 @@ import { toast } from 'sonner';
 import type { BetLeg } from '@/lib/types';
 
 export default function ParlayStudioPage() {
-  const { selections, removeLeg, clearSelections, updateLeg, submitBet } = useBetSlip();
+  const { selections, removeLeg, clearSlip, updateLeg, submitBet } = useBetSlip();
   const [stake, setStake] = useState('');
   const [boostPercent, setBoostPercent] = useState('0');
   const [isBonus, setIsBonus] = useState(false);
@@ -56,7 +56,7 @@ export default function ParlayStudioPage() {
       boostPercentage: Number(boostPercent),
       isBonus,
       isLive,
-      date: betDate, // Pass the string date; addBet action handles the Timestamp conversion
+      legs: selections,
     });
 
     // Reset local page state (context state is handled in submitBet)
@@ -68,7 +68,7 @@ export default function ParlayStudioPage() {
   };
 
   return (
-    <app-layout>
+    <AppLayout>
       <div className="p-6 max-w-7xl mx-auto">
         <div className="mb-6">
           <h1 className="text-3xl font-black text-white tracking-tighter italic">PARLAY STUDIO</h1>
@@ -82,7 +82,7 @@ export default function ParlayStudioPage() {
                 <div className="flex justify-between items-center">
                   <CardTitle>Bet Legs ({selections.length})</CardTitle>
                   {selections.length > 0 && (
-                    <Button variant="ghost" size="sm" onClick={() => clearSelections()}>
+                    <Button variant="ghost" size="sm" onClick={() => clearSlip()}>
                       Clear All
                     </Button>
                   )}
@@ -314,6 +314,6 @@ export default function ParlayStudioPage() {
           </div>
         </div>
       </div>
-    </app-layout>
+    </AppLayout>
   );
 }

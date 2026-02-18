@@ -1,14 +1,14 @@
 "use client";
 
 import React, { Suspense } from "react";
-import app-layout from "@/components/layout/app-layout";
+import { AppLayout } from "@/components/layout/app-layout";
 import { PageHeader } from "@/components/layout/page-header";
 // We use a default div for now if recent-insights isn't ready
 const RecentInsights = () => <div className="p-4 bg-slate-50 rounded-xl">Upcoming Prop Insights...</div>;
 
 export default function BetIntelPage() {
   return (
-    <app-layout>
+    <AppLayout>
       <div className="space-y-8 p-6">
         <PageHeader 
           title="Betting Insights" 
@@ -18,6 +18,6 @@ export default function BetIntelPage() {
           <RecentInsights />
         </Suspense>
       </div>
-    </app-layout>
+    </AppLayout>
   );
 }

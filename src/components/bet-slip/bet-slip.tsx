@@ -10,11 +10,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useBetSlip } from '@/context/betslip-context';
 import { calculateParlayOdds, getPayout } from '@/lib/utils';
 import { BetLeg } from '@/lib/types';
-import { useAuth } from '@/lib/firebase/provider';
+import { useAuth } from '@/context/AuthContext';
 
 export function BetSlip() {
   const { user } = useAuth();
-  const { selections, removeLeg, clearSelections, submitBet } = useBetSlip();
+  const { selections, removeLeg, clearSlip, submitBet } = useBetSlip();
   const [stake, setStake] = useState<string>('');
   const [isBonus, setIsBonus] = useState(false);
   const [betDate, setBetDate] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -37,7 +37,6 @@ export function BetSlip() {
         isLive: false,
         boost: false,
         boostPercentage: 0,
-        createdAt: new Date(),
       });
       
       setStake('');
@@ -68,7 +67,7 @@ export function BetSlip() {
           <Button 
             variant="ghost" 
             size="sm" 
-            onClick={clearSelections}
+            onClick={clearSlip}
             className="text-slate-500 hover:text-white"
           >
             Clear All

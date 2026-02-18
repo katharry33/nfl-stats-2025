@@ -34,7 +34,7 @@ export function findBestBonus(
   });
 
   // Return the bonus with highest boost percentage
-  return eligibleBonuses.sort((a, b) => b.boost - a.boost)[0] || null;
+  return eligibleBonuses.sort((a, b) => (b.boost ?? 0) - (a.boost ?? 0))[0] || null;
 }
 
 /**

@@ -1,5 +1,5 @@
 // 1. Changed to import what you actually export
-import { adminDb, getAdminApp } from '../src/lib/firebase/admin';
+import { adminDb } from '../src/lib/firebase/admin';
 
 async function mergeCollections() {
   const sourceCol = 'weeklyProps_2025';

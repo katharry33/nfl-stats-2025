@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect } from "react";
-import app-layout from '@/components/layout/app-layout';
+import { AppLayout } from '@/components/layout/app-layout';
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,11 +19,9 @@ import type { Bonus } from "@/lib/types";
 // Bulletproof helper to safely convert a flexible timestamp to a Date object.
 const ensureDate = (ts: any): Date => {
   if (!ts) return new Date();
-  // Check if it's a Firebase Timestamp (has toDate method)
   if (ts && typeof ts.toDate === 'function') {
     return ts.toDate();
   }
-  // Fallback for strings or already-existing Date objects
   return new Date(ts);
 };
 
@@ -40,11 +38,11 @@ export default function BonusesPage() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const updatedBonuses = snapshot.docs.map((doc) => {
         const data = doc.data();
-        // Use the helper to process the date from Firestore
         const expiration = ensureDate(data.expirationDate);
         const now = new Date();
         
         let status = data.status || 'active';
+        // Only trigger update if it hasn't been marked expired yet
         if (status === 'active' && expiration < now) {
           status = 'expired';
           updateDoc(doc.ref, { status: 'expired' });
@@ -54,7 +52,6 @@ export default function BonusesPage() {
           id: doc.id,
           ...data,
           status,
-          // Ensure dates are consistently Date objects within the state
           expirationDate: expiration,
           usedAt: data.usedAt ? ensureDate(data.usedAt) : undefined,
         } as Bonus;
@@ -98,15 +95,14 @@ export default function BonusesPage() {
   const expiredBonuses = bonuses.filter(b => b.status === 'expired');
 
   const BonusCard = ({ bonus, showActions = true }: { bonus: Bonus; showActions?: boolean }) => {
-    // The bonus object from state already has Date objects, but using ensureDate here is safest
     const expirationDate = ensureDate(bonus.expirationDate);
 
     return (
-      <div className={`p-4 border rounded-lg transition-shadow {
+      <div className={`p-4 border rounded-lg transition-shadow 
         ${bonus.status === 'active' ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-200 hover:shadow-md' : ''}
         ${bonus.status === 'used' ? 'bg-blue-50 border-blue-200' : ''}
         ${bonus.status === 'expired' ? 'bg-slate-50 border-slate-200 opacity-60' : ''}
-      }`}>
+      `}>
         <div className="flex items-start justify-between">
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-2">
@@ -123,7 +119,7 @@ export default function BonusesPage() {
 
             <div className="grid grid-cols-2 gap-2 text-xs text-slate-600 mb-2">
               <div>
-                <span className="font-semibold">Bet Type:</span> {bonus.betType === 'any' ? 'Any' : bonus.betType.toUpperCase()}
+                <span className="font-semibold">Bet Type:</span> {bonus.betType ?? 'Standard'}
               </div>
               <div>
                 <span className="font-semibold">Max Wager:</span> ${bonus.maxWager}
@@ -165,7 +161,7 @@ export default function BonusesPage() {
   };
 
   return (
-    <app-layout>
+    <AppLayout>
       <div className="container mx-auto p-6 space-y-6 max-w-5xl">
         <PageHeader
           title="Manage Bonuses"
@@ -221,11 +217,11 @@ export default function BonusesPage() {
               <CardDescription>Bonuses that have been applied to bets</CardDescription>
             </CardHeader>
             <CardContent>
-                <div className="space-y-3">
-                  {usedBonuses.map((bonus) => (
-                      <BonusCard key={bonus.id} bonus={bonus} showActions={false} />
-                  ))}
-                </div>
+              <div className="space-y-3">
+                {usedBonuses.map((bonus) => (
+                  <BonusCard key={bonus.id} bonus={bonus} showActions={false} />
+                ))}
+              </div>
             </CardContent>
           </Card>
         )}
@@ -240,15 +236,15 @@ export default function BonusesPage() {
               <CardDescription>Past bonuses that are no longer active</CardDescription>
             </CardHeader>
             <CardContent>
-                <div className="space-y-3">
-                  {expiredBonuses.map((bonus) => (
-                      <BonusCard key={bonus.id} bonus={bonus} showActions={false} />
-                  ))}
-                </div>
+              <div className="space-y-3">
+                {expiredBonuses.map((bonus) => (
+                  <BonusCard key={bonus.id} bonus={bonus} showActions={false} />
+                ))}
+              </div>
             </CardContent>
           </Card>
         )}
       </div>
-    </app-layout>
+    </AppLayout>
   );
 }
