@@ -1,5 +1,5 @@
 {
+  "/all-props/page": "app/all-props/page.js",
   "/favicon.ico/route": "app/favicon.ico/route.js",
-  "/betting-log/page": "app/betting-log/page.js",
-  "/api/betting-log/route": "app/api/betting-log/route.js"
+  "/api/all-props/route": "app/api/all-props/route.js"
 }

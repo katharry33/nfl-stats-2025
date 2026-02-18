@@ -105,6 +105,7 @@ export const BetsTable = ({ bets, onDelete, onEdit }: any) => {
             const effectiveOdds = ensureNumber(bet.odds || (legs.length > 0 ? legs[0].odds : 0));
             const payoutValue = calculatePayout(numericStake, effectiveOdds, isBonus);
             const betDate = getNormalizedDate(bet);
+            const roundedOdds = Math.round(effectiveOdds);
 
             return (
               <React.Fragment key={bet.id}>
@@ -136,7 +137,7 @@ export const BetsTable = ({ bets, onDelete, onEdit }: any) => {
                     </div>
                   </td>
                   <td className="px-4 py-4 font-mono text-slate-300 font-bold">
-                    {effectiveOdds > 0 ? `+${effectiveOdds}` : effectiveOdds}
+                    {roundedOdds > 0 ? `+${roundedOdds}` : roundedOdds}
                   </td>
                   <td className="px-4 py-4 text-slate-200">${numericStake.toFixed(2)}</td>
                   <td className="px-4 py-4">
@@ -150,7 +151,7 @@ export const BetsTable = ({ bets, onDelete, onEdit }: any) => {
                   <td className="px-4 py-4 text-right">
                     <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <Button variant="ghost" size="icon" onClick={() => onEdit?.(bet)} className="h-7 w-7"><Edit className="h-3.5 w-3.5" /></Button>
-                      <Button variant="ghost" size="icon" onClick={() => onDelete?.(bet.id)} className="h-7 w-7 hover:text-red-500"><Trash2 className="h-3.5 w-3.5" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => onDelete?.(bet)} className="h-7 w-7 hover:text-red-500"><Trash2 className="h-3.5 w-3.5" /></Button>
                     </div>
                   </td>
                 </tr>
@@ -160,23 +161,26 @@ export const BetsTable = ({ bets, onDelete, onEdit }: any) => {
                       <div className="px-10 py-6 border-l-4 border-emerald-500/50">
                         <h4 className="text-sm font-bold text-emerald-400 mb-4">Parlay Legs:</h4>
                         <div className="space-y-3">
-                          {legs.map((leg: any, idx: number) => (
-                            <div key={idx} className="flex justify-between items-center p-3 bg-slate-950/70 rounded-lg border border-slate-800">
-                               <div>
-                                <p className="font-bold text-slate-200 text-sm">
-                                  {leg.playerteam || leg.player}
-                                </p>
-                                <p className="text-xs text-slate-400 mt-1">
-                                  {leg.matchup && <span className="text-blue-400 mr-2">{leg.matchup}</span>}
-                                  {leg.prop}: <span className="text-emerald-400 font-semibold">{leg.selection} {leg.line}</span>
-                                </p>
+                          {legs.map((leg: any, idx: number) => {
+                            const roundedLegOdds = Math.round(leg.odds);
+                            return (
+                              <div key={idx} className="flex justify-between items-center p-3 bg-slate-950/70 rounded-lg border border-slate-800">
+                                <div>
+                                  <p className="font-bold text-slate-200 text-sm">
+                                    {leg.playerteam || leg.player}
+                                  </p>
+                                  <p className="text-xs text-slate-400 mt-1">
+                                    {leg.matchup && <span className="text-blue-400 mr-2">{leg.matchup}</span>}
+                                    {leg.prop}: <span className="text-emerald-400 font-semibold">{leg.selection} {leg.line}</span>
+                                  </p>
+                                </div>
+                                <div className="text-right">
+                                  <Badge variant="secondary" className="font-mono text-xs bg-slate-900 text-slate-300">{roundedLegOdds > 0 ? `+${roundedLegOdds}` : roundedLegOdds}</Badge>
+                                  {leg.status && <span className={`ml-3 text-xs font-bold uppercase px-2 py-1 rounded ${ leg.status === 'won' ? 'bg-green-500/10 text-green-500' : leg.status === 'lost' ? 'bg-red-500/10 text-red-500' : 'bg-amber-500/10 text-amber-500' }`}>{leg.status}</span>}
+                                </div>
                               </div>
-                              <div className="text-right">
-                                <Badge variant="secondary" className="font-mono text-xs bg-slate-900 text-slate-300">{leg.odds > 0 ? `+${leg.odds}` : leg.odds}</Badge>
-                                {leg.status && <span className={`ml-3 text-xs font-bold uppercase px-2 py-1 rounded ${ leg.status === 'won' ? 'bg-green-500/10 text-green-500' : leg.status === 'lost' ? 'bg-red-500/10 text-red-500' : 'bg-amber-500/10 text-amber-500' }`}>{leg.status}</span>}
-                              </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
                     </td>

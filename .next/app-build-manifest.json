@@ -1,19 +1,9 @@
 {
   "pages": {
-    "/betting-log/page": [
+    "/all-props/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/betting-log/page.js"
-    ],
-    "/betting-log/error": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/betting-log/error.js"
-    ],
-    "/betting-log/loading": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/betting-log/loading.js"
+      "static/chunks/app/all-props/page.js"
     ],
     "/layout": [
       "static/chunks/webpack.js",

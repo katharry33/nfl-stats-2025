@@ -2,351 +2,243 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useBetSlip } from '@/context/betslip-context';
+import { X, ArrowRight, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Search, X } from 'lucide-react';
 
-export default function HistoricalPropsPage() {
+export default function AllPropsPage() {
   const router = useRouter();
   const [props, setProps] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [lastVisibleId, setLastVisibleId] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(true);
-  const [totalCount, setTotalCount] = useState<number>(0); // State for total prop count
-  const { addLeg } = useBetSlip();
+  const { selections, addLeg, removeLeg, clearSlip } = useBetSlip();
 
   // Filter states
   const [week, setWeek] = useState('all');
   const [team, setTeam] = useState('');
-  const [gameDate, setGameDate] = useState('');
-  const [matchup, setMatchup] = useState('');
   const [player, setPlayer] = useState('');
-  const [propType, setPropType] = useState('');
+  const [propType, setPropType] = useState('All Props');
+  const [gameDate, setGameDate] = useState('');
 
   // Prop types for dropdown
   const propTypes = [
+    'All Props',
     'Passing Yards',
     'Passing TDs',
-    'Passing Attempts',
-    'Passing Completions',
-    'Interceptions',
     'Rushing Yards',
     'Rushing TDs',
-    'Rushing Attempts',
     'Receiving Yards',
     'Receiving TDs',
     'Receptions',
-    'Targets',
-    'Longest Reception',
-    'Longest Rush',
-    'Longest Completion',
+    'Completions',
+    'Attempts',
+    'Interceptions',
   ];
 
-  const fetchProps = async (lastId: string | null = null) => {
-    if (lastId) {
-      setLoadingMore(true);
-    } else {
-      setLoading(true);
-    }
-
-    try {
-      const params = new URLSearchParams();
-      params.append('limit', '100');
-      if (week !== 'all') params.append('week', week);
-      if (team) params.append('team', team.trim());
-      if (player) params.append('player', player.trim());
-      if (propType) params.append('prop', propType);
-      if (gameDate) params.append('gamedate', gameDate);
-      if (matchup) params.append('matchup', matchup.trim());
-      if (lastId) params.append('lastVisible', lastId);
-
-      const response = await fetch(`/api/all-props?${params.toString()}`);
-      if (!response.ok) throw new Error('Failed to fetch props');
-      
-      const { props: newProps, lastVisibleId: newLastVisibleId, totalCount: newTotalCount } = await response.json();
-
-      setProps(prev => lastId ? [...prev, ...newProps] : newProps);
-      setLastVisibleId(newLastVisibleId);
-      setTotalCount(newTotalCount); // Update the total count
-      setHasMore(newProps.length > 0 && newLastVisibleId !== null);
-
-      if (!lastId) {
-        toast.success(`Found ${newTotalCount} props matching your criteria.`);
-      }
-
-    } catch (error) {
-      console.error('Error fetching props:', error);
-      toast.error("Failed to fetch props");
-    } finally {
-      setLoading(false);
-      setLoadingMore(false);
-    }
-  };
-
-  const handleSearch = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    setProps([]);
-    setLastVisibleId(null);
-    setHasMore(true);
-    fetchProps();
-  };
-
-  const loadMore = () => {
-    if (hasMore && !loadingMore) {
-      fetchProps(lastVisibleId);
-    }
-  };
-
-  // Initial load with all props
+  // Fetch props when filters change
   useEffect(() => {
-    handleSearch();
-  }, []);
+    const fetchProps = async () => {
+      setLoading(true);
+      try {
+        const params = new URLSearchParams();
+        if (week !== 'all') params.append('week', week);
+        if (team) params.append('team', team.trim());
+        if (player) params.append('player', player.trim());
+        if (propType && propType !== 'All Props') params.append('prop', propType);
+        if (gameDate) params.append('gamedate', gameDate);
 
-  const handleClearAll = () => {
-    setWeek('all');
-    setTeam('');
-    setGameDate('');
-    setMatchup('');
-    setPlayer('');
-    setPropType('');
-    // Trigger search after clearing
-    setTimeout(() => handleSearch(), 100);
-  };
+        const response = await fetch(`/api/all-props?${params.toString()}`);
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          console.error('API error:', errorData);
+          toast.error(errorData.error || "Failed to fetch props");
+          setProps([]);
+          setLoading(false);
+          return;
+        }
+        
+        const propsData = await response.json();
+        setProps(propsData);
+        
+        if (!Array.isArray(propsData)) {
+          console.error('Invalid data format:', propsData);
+          toast.error("Invalid data format received");
+          setProps([]);
+          setLoading(false);
+          return;
+        }
+        
+        setProps(propsData);
+      } catch (error) {
+        console.error('Error fetching props:', error);
+        toast.error("Failed to fetch props");
+        setProps([]);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const handleAddToBetSlip = (prop: any, selection: 'Over' | 'Under') => {
+    fetchProps();
+  }, [week, team, player, propType, gameDate]);
+
+  const handleAddToBetSlip = (prop: any) => {
     addLeg({
       id: crypto.randomUUID(),
       propId: prop.id,
-      player: prop.Player || prop.player || 'Unknown Player',
-      prop: prop.Prop || prop.prop || 'Unknown Prop',
+      player: prop.Player || prop.player || 'Unknown',
+      prop: prop.Prop || prop.prop || 'Line',
       line: prop.Line || prop.line || 0,
       matchup: prop.Matchup || prop.matchup || '',
       team: prop.Team || prop.team || '',
-      selection: selection,
-      odds: -110, // Default odds
-      status: 'pending',
-      week: prop.Week || prop.week || 'N/A',
-      source: 'historical-props'
+      week: prop.Week || prop.week,
+      selection: 'Over',
+      odds: -110,
+      source: 'all-props'
     });
-    toast.success(`Added ${selection} ${prop.Line || prop.line} to slip`);
+    toast.success(`Added ${prop.Player || prop.player} to slip`);
   };
 
-  // Handle Enter key press
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleSearch();
+  const handleClearFilters = () => {
+    setWeek('all');
+    setTeam('');
+    setPlayer('');
+    setPropType('All Props');
+    setGameDate('');
+  };
+
+  const handleParlayStudio = () => {
+    if (selections.length === 0) {
+      toast.error("Add props to your bet slip first");
+      return;
     }
+    router.push('/parlay-studio');
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 p-6">
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-3xl font-black text-white tracking-tighter">All Props</h1>
-          <p className="text-slate-400 text-sm">Filter and browse all available player props.</p>
-        </div>
-
-        {/* Search Filters */}
-        <Card className="bg-slate-900 border-slate-800 mb-6">
-          <CardContent className="pt-6">
-            <form onSubmit={handleSearch}>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
-                {/* Week Filter */}
-                <div className="space-y-2">
-                  <Label className="text-xs text-slate-400 uppercase font-bold">Week</Label>
-                  <Select value={week} onValueChange={setWeek}>
-                    <SelectTrigger className="bg-slate-950 border-slate-700 h-11">
-                      <SelectValue placeholder="All Weeks" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-slate-900 border-slate-700 max-h-60">
-                      <SelectItem value="all">All Weeks</SelectItem>
-                      {Array.from({ length: 22 }, (_, i) => i + 1).map((w) => (
-                        <SelectItem key={w} value={String(w)}>Week {w}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Team Filter */}
-                <div className="space-y-2">
-                  <Label className="text-xs text-slate-400 uppercase font-bold">Team</Label>
-                  <Input
-                    placeholder="e.g., KC or chiefs"
-                    value={team}
-                    onChange={(e) => setTeam(e.target.value)}
-                    onKeyPress={handleKeyPress}
-                    className="bg-slate-950 border-slate-700 h-11"
-                  />
-                </div>
-
-                {/* Game Date Filter */}
-                <div className="space-y-2">
-                  <Label className="text-xs text-slate-400 uppercase font-bold">Game Date</Label>
-                  <Input
-                    type="date"
-                    value={gameDate}
-                    onChange={(e) => setGameDate(e.target.value)}
-                    onKeyPress={handleKeyPress}
-                    className="bg-slate-950 border-slate-700 h-11"
-                  />
-                </div>
-
-                {/* Matchup Filter */}
-                <div className="space-y-2">
-                  <Label className="text-xs text-slate-400 uppercase font-bold">Matchup</Label>
-                  <Input
-                    placeholder="e.g., KC @ BUF"
-                    value={matchup}
-                    onChange={(e) => setMatchup(e.target.value)}
-                    onKeyPress={handleKeyPress}
-                    className="bg-slate-950 border-slate-700 h-11"
-                  />
-                </div>
-
-                {/* Player Filter */}
-                <div className="space-y-2">
-                  <Label className="text-xs text-slate-400 uppercase font-bold">Player</Label>
-                  <Input
-                    placeholder="Search player name..."
-                    value={player}
-                    onChange={(e) => setPlayer(e.target.value)}
-                    onKeyPress={handleKeyPress}
-                    className="bg-slate-950 border-slate-700 h-11"
-                  />
-                </div>
-
-                {/* Prop Type Filter */}
-                <div className="space-y-2">
-                  <Label className="text-xs text-slate-400 uppercase font-bold">Prop Type</Label>
-                  <Select value={propType} onValueChange={setPropType}>
-                    <SelectTrigger className="bg-slate-950 border-slate-700 h-11">
-                      <SelectValue placeholder="All Prop Types" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-slate-900 border-slate-700 max-h-60">
-                      <SelectItem value="">All Prop Types</SelectItem>
-                      {propTypes.map((type) => (
-                        <SelectItem key={type} value={type}>{type}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex gap-3">
-                <Button
-                  type="submit"
-                  disabled={loading}
-                  className="bg-emerald-600 hover:bg-emerald-700 font-bold px-8"
-                >
-                  <Search className="mr-2 h-4 w-4" />
-                  {loading ? 'Searching...' : 'Search'}
-                </Button>
-                <Button
-                  type="button"
-                  onClick={handleClearAll}
-                  variant="outline"
-                  className="border-slate-700 text-slate-400 hover:text-white"
-                >
-                  <X className="mr-2 h-4 w-4" />
-                  Clear All
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-
-        {/* Results Count */}
-        {!loading && (
-          <div className="mb-4 text-sm text-slate-400">
-            Showing {props.length} of {totalCount} props
-          </div>
-        )}
-
-        {/* Props Grid */}
-        {loading ? (
-          <div className="text-center py-12">
-            <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-emerald-500 border-r-transparent"></div>
-            <p className="text-slate-400 mt-4">Loading props...</p>
-          </div>
-        ) : props.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-slate-400 text-lg">No props found</p>
-            <p className="text-slate-500 text-sm mt-2">Try adjusting your filters</p>
-          </div>
-        ) : (
-          <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {props.map((prop, index) => (
-                <Card key={prop.id || index} className="bg-slate-900 border-slate-800 hover:border-slate-700 transition-colors">
-                  <CardContent className="p-4">
-                    {/* Player Info */}
-                    <div className="mb-3">
-                      <div className="flex justify-between items-start mb-1">
-                        <h3 className="font-bold text-white text-lg truncate pr-2">
-                          {prop.Player || prop.player || 'Unknown Player'}
-                        </h3>
-                        <span className="text-xs font-mono bg-emerald-900/50 text-emerald-400 border border-emerald-900 rounded-full px-2 py-0.5 whitespace-nowrap">
-                          Week {prop.Week || prop.week || 'N/A'}
-                        </span>
-                      </div>
-                      <p className="text-sm text-slate-400">
-                        {prop.Team || prop.team || 'N/A'}
-                      </p>
-                      <p className="text-xs text-slate-500 font-mono mt-0.5">
-                        {prop.Matchup || prop.matchup || 'No matchup'}
-                      </p>
-                    </div>
-
-                    {/* Prop Details */}
-                    <div className="mb-3 p-3 bg-slate-950 rounded-lg border border-slate-800">
-                      <p className="text-xs text-slate-500 uppercase mb-1">
-                        {prop.Prop || prop.prop || 'Unknown Prop'}
-                      </p>
-                      <p className="text-2xl font-black text-white font-mono">
-                        {prop.Line || prop.line || '0'}
-                      </p>
-                    </div>
-
-                    {/* Over/Under Buttons */}
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button
-                        onClick={() => handleAddToBetSlip(prop, 'Over')}
-                        className="bg-slate-800 hover:bg-emerald-600 border border-slate-700 font-bold"
-                      >
-                        OVER
-                      </Button>
-                      <Button
-                        onClick={() => handleAddToBetSlip(prop, 'Under')}
-                        className="bg-slate-800 hover:bg-blue-600 border border-slate-700 font-bold"
-                      >
-                        UNDER
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+      <div className="flex h-full overflow-hidden">
+        {/* Main Content */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="p-6 max-w-7xl mx-auto">
+            <div className="mb-6">
+              <h1 className="text-3xl font-black text-white tracking-tighter italic">ALL PROPS</h1>
+              <p className="text-slate-500 text-sm">Search and build your custom parlays</p>
             </div>
-            {hasMore && (
-              <div className="text-center mt-6">
-                <Button
-                  onClick={loadMore}
-                  disabled={loadingMore}
-                  className="bg-slate-800 hover:bg-slate-700 font-bold px-8"
-                >
-                  {loadingMore ? 'Loading...' : 'Load More'}
-                </Button>
+
+            {/* Filters */}
+            <Card className="bg-slate-950 border-slate-800 mb-6">
+              <CardHeader className="border-b border-slate-800">
+                <div className="flex justify-between items-center">
+                  <CardTitle className="text-sm text-white">Search Filters</CardTitle>
+                  <Button variant="ghost" size="sm" onClick={handleClearFilters} className="text-slate-400 hover:text-white">
+                    Clear All
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-4">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-xs text-slate-400">Week</Label>
+                    <Select value={week} onValueChange={setWeek}>
+                      <SelectTrigger className="bg-slate-900 border-slate-800 text-white">
+                        <SelectValue placeholder="Select week" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-slate-900 border-slate-700 text-white max-h-60">
+                        <SelectItem value="all" className="text-white hover:bg-slate-800">All Weeks</SelectItem>
+                        {Array.from({ length: 22 }, (_, i) => i + 1).map((w) => (
+                          <SelectItem key={w} value={String(w)} className="text-white hover:bg-slate-800">
+                            Week {w}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs text-slate-400">Team</Label>
+                    <Input placeholder="e.g. KC" value={team} onChange={(e) => setTeam(e.target.value)} className="bg-slate-900 border-slate-800 text-white" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs text-slate-400">Player Name</Label>
+                    <Input placeholder="Search player..." value={player} onChange={(e) => setPlayer(e.target.value)} className="bg-slate-900 border-slate-800 text-white" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs text-slate-400">Prop Type</Label>
+                    <Select value={propType} onValueChange={setPropType}>
+                      <SelectTrigger className="bg-slate-900 border-slate-800 text-white">
+                        <SelectValue placeholder="Select prop type" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-slate-900 border-slate-700 text-white max-h-60">
+                        {propTypes.map((type) => (
+                          <SelectItem key={type} value={type} className="text-white hover:bg-slate-800">
+                            {type}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs text-slate-400">Game Date</Label>
+                    <Input type="date" value={gameDate} onChange={(e) => setGameDate(e.target.value)} className="bg-slate-900 border-slate-800 text-white" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Props Grid */}
+            {loading ? (
+              <div className="text-center py-12"><p className="text-slate-400">Loading props...</p></div>
+            ) : !Array.isArray(props) || props.length === 0 ? (
+              <div className="text-center py-12"><p className="text-slate-400">No props found.</p></div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {props.map((prop, index) => {
+                  const data = {
+                    player: prop.Player || prop.player || 'Unknown',
+                    team: prop.Team || prop.team || 'N/A',
+                    prop: prop.Prop || prop.prop || 'Stat',
+                    line: prop.Line || prop.line || '0',
+                    matchup: prop.Matchup || prop.matchup || '',
+                    week: prop.Week || prop.week || '?'
+                  };
+
+                  return (
+                    <Card key={prop.id || index} className="bg-slate-900 border-slate-800 hover:border-emerald-500 transition-colors shadow-lg">
+                      <CardContent className="p-4">
+                        <div className="flex justify-between items-start mb-3">
+                          <div>
+                            <h3 className="font-bold text-white text-lg tracking-tight">{data.player}</h3>
+                            <p className="text-sm text-slate-400 font-medium">{data.team}</p>
+                            <p className="text-xs text-slate-500 italic">{data.matchup}</p>
+                          </div>
+                          <Badge variant="outline" className="bg-emerald-600/10 text-emerald-400 border-emerald-500/20">
+                            Week {data.week}
+                          </Badge>
+                        </div>
+                        
+                        <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 mb-3 group-hover:border-emerald-500/30 transition-colors">
+                          <p className="text-[10px] uppercase font-black text-slate-500 mb-1 tracking-widest">{data.prop}</p>
+                          <p className="text-2xl font-bold text-emerald-400 font-mono tracking-tighter">{data.line}</p>
+                        </div>
+
+                        <Button 
+                          onClick={() => handleAddToBetSlip(prop)} 
+                          className="w-full bg-emerald-600 hover:bg-emerald-500 font-bold shadow-[0_0_15px_rgba(16,185,129,0.2)]"
+                        >
+                          Add to Slip
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
               </div>
             )}
-          </>
-        )}
+          </div>
+        </div>
       </div>
-    </div>
   );
 }

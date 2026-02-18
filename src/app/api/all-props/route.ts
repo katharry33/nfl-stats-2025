@@ -1,44 +1,51 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const collectionName = 'allProps_2025';
-
-    // Pagination parameters
-    const limitParam = searchParams.get('limit');
-    const lastVisibleId = searchParams.get('lastVisible');
-    const limit = limitParam ? parseInt(limitParam, 10) : 100;
-
-    // Filter parameters
+    
     const weekParam = searchParams.get('week');
     const teamParam = searchParams.get('team');
     const playerParam = searchParams.get('player');
     const propParam = searchParams.get('prop');
     const gamedateParam = searchParams.get('gamedate');
     const matchupParam = searchParams.get('matchup');
+    
+    console.log('All-props filters:', { weekParam, teamParam, playerParam, propParam, gamedateParam, matchupParam });
 
-    const useUppercase = true; // Assume uppercase fields for simplicity
-    const playerField = useUppercase ? 'Player' : 'player';
-
-    let query = adminDb.collection(collectionName).orderBy(playerField) as FirebaseFirestore.Query;
+    const collectionName = 'allProps_2025';
+    let query: any = adminDb.collection(collectionName);
 
     if (weekParam && weekParam !== 'all') {
-      const weekField = useUppercase ? 'Week' : 'week';
-      query = query.where(weekField, '==', Number(weekParam));
-    }
-
-    if (lastVisibleId) {
-      const lastVisibleDoc = await adminDb.collection(collectionName).doc(lastVisibleId).get();
-      if (lastVisibleDoc.exists) {
-        query = query.startAfter(lastVisibleDoc);
+      const weekNumber = parseInt(weekParam, 10);
+      if (!isNaN(weekNumber)) {
+        query = query.where('Week', '==', weekNumber);
+        console.log(`Filtering: Week == ${weekNumber} (number)`);
+      } else {
+        console.warn(`Invalid week number: ${weekParam}`);
       }
     }
 
-    const snapshot = await query.limit(limit).get();
+    if (teamParam) {
+      query = query.where('Team', '==', teamParam.toUpperCase());
+      console.log(`Filtering: Team == ${teamParam.toUpperCase()}`);
+    }
 
-    let props = snapshot.docs.map(doc => {
+    const snapshot = await query.get();
+    console.log(`✅ Query returned: ${snapshot.size} documents for Week ${weekParam || 'all'}`);
+
+    if (snapshot.size === 0) {
+      console.warn('⚠️ Zero documents returned! Check:');
+      console.warn('  - Collection name:', collectionName);
+      console.warn('  - Week filter:', weekParam ? `Week == ${parseInt(weekParam, 10)}` : 'none');
+      console.warn('  - Team filter:', teamParam ? `Team == ${teamParam.toUpperCase()}` : 'none');
+    }
+
+    let props = snapshot.docs.map((doc: any) => {
       const data = doc.data();
       return {
         id: doc.id,
@@ -61,43 +68,41 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    if (teamParam) {
-      const teamLower = teamParam.toLowerCase();
-      props = props.filter(p => 
-        (p.Team || p.team || '').toLowerCase().includes(teamLower)
-      );
-    }
-
     if (playerParam) {
       const playerLower = playerParam.toLowerCase();
-      props = props.filter(p => 
+      props = props.filter((p: any) => 
         (p.Player || p.player || '').toLowerCase().includes(playerLower)
       );
     }
 
-    if (propParam && propParam !== 'all') {
-      props = props.filter(p => 
+    if (propParam && propParam !== 'All Props') {
+      props = props.filter((p: any) => 
         (p.Prop || p.prop || '').toLowerCase().includes(propParam.toLowerCase())
       );
     }
 
     if (gamedateParam) {
-      props = props.filter(p => 
+      props = props.filter((p: any) => 
         (p.GameDate || p.gameDate || '').includes(gamedateParam)
       );
     }
 
     if (matchupParam) {
       const matchupLower = matchupParam.toLowerCase();
-      props = props.filter(p => 
+      props = props.filter((p: any) => 
         (p.Matchup || p.matchup || '').toLowerCase().includes(matchupLower)
       );
     }
 
-    const lastDoc = snapshot.docs[snapshot.docs.length - 1];
-    const newLastVisibleId = lastDoc ? lastDoc.id : null;
+    console.log(`✅ Final result: ${props.length} props after filters`);
 
-    return NextResponse.json({ props, lastVisibleId: newLastVisibleId });
+    return NextResponse.json(props, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      }
+    });
   } catch (error: any) {
     console.error('All-props API error:', error);
     return NextResponse.json({ error: error.message || 'Failed to fetch props' }, { status: 500 });

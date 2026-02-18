@@ -41,6 +41,7 @@ export interface Bet {
   potentialPayout?: number;
   actualPayout?: number;
   result?: string;
+  parlayid?: string; // For grouping parlay bets together
 }
 
 export interface BetResult {
@@ -93,6 +94,7 @@ export interface PropData {
   underOdds?: number;
   'Over/Under?'?: string;
   overunder?: string;
+  league?: string;
 }
 
 export interface WeeklyProp {
@@ -158,8 +160,8 @@ export interface Auth {
 export interface BetSlipContextType {
   selections: BetLeg[];
   addLeg: (leg: BetLeg) => void;
-  removeLeg: (legId: string) => void;
-  clearSelections: () => void;  // This is the correct name
-  updateLeg?: (legId: string, updates: Partial<BetLeg>) => void;
-  submitBet?: (bet: Partial<Bet>) => Promise<void>;  // More flexible - accepts partial
+  removeLeg: (id: string) => void;
+  clearSlip: () => void;  // Changed from clearSelections to match actual context
+  updateLeg: (id: string, updates: Partial<BetLeg>) => void;
+  submitBet: (betData: Omit<Bet, "createdAt" | "userId" | "id" | "payout">) => Promise<void>;
 }

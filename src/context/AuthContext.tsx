@@ -1,43 +1,41 @@
-"use client";
-import { createContext, useContext, useEffect, useState } from "react";
-import { auth } from "@/lib/firebase/client"; // Use your client-side config
-import { signInAnonymously, onAuthStateChanged, User } from "firebase/auth";
+'use client';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { getAuth, onAuthStateChanged, signInAnonymously, User } from 'firebase/auth';
+import { app } from '@/lib/firebase/client';
 
-const AuthContext = createContext<{ user: User | null; loading: boolean } | undefined>(undefined);
+const AuthContext = createContext<{ user: User | null; loading: boolean }>({
+  user: null,
+  loading: true,
+});
 
-export function FirebaseProvider({ children }: { children: React.ReactNode }) {
+export const FirebaseProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const auth = getAuth(app);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (!currentUser) {
-        // Automatically sign in anonymously if no user exists
         try {
-          await signInAnonymously(auth);
+          const result = await signInAnonymously(auth);
+          setUser(result.user);
         } catch (error) {
-          console.error("Anonymous auth failed", error);
+          console.error("Anonymous auth failed:", error);
         }
       } else {
         setUser(currentUser);
-        setLoading(false);
       }
+      setLoading(false);
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [auth]);
 
   return (
     <AuthContext.Provider value={{ user, loading }}>
-      {!loading && children}
+      {children}
     </AuthContext.Provider>
   );
-}
-
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error("useAuth must be used within a FirebaseProvider");
-  }
-  return context;
 };
+
+export const useAuth = () => useContext(AuthContext);
