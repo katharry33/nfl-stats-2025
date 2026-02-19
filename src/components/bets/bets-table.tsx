@@ -1,196 +1,275 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { ChevronDown, ChevronRight, Trash2, Edit } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { Bet, BetLeg } from "@/lib/types";
+import { cn } from "@/lib/utils";
+import { 
+  Table, 
+  TableBody, 
+  TableCell, 
+  TableHead, 
+  TableHeader, 
+  TableRow 
+} from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { 
+  ChevronDown, 
+  ChevronRight, 
+  Trash2, 
+  Edit, 
+  MoreVertical,
+  PlusCircle,
+  ArrowUp, 
+  ArrowDown
+} from 'lucide-react';
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuTrigger 
+} from '@/components/ui/dropdown-menu';
 
-// Helper to ensure a value is a number for calculations
-const ensureNumber = (val: any): number => {
-  if (typeof val === 'number') return val;
-  if (!val) return 0;
-  const parsed = parseFloat(String(val).replace(/[^0-9.-]/g, ''));
-  return isNaN(parsed) ? 0 : parsed;
+type SortableKey = 'selection' | 'gameDate' | 'matchup' | 'odds' | 'stake' | 'potential' | 'status';
+type SortDirection = 'ascending' | 'descending';
+
+interface BetsTableProps {
+  bets: Bet[];
+  onAction?: (bet: Bet) => void;
+  onDelete?: (id: string) => void;
+  onEdit?: (id: string) => void;
+}
+
+const getStatusClass = (status: string) => {
+  switch (status?.toLowerCase()) {
+    case 'won': return 'text-emerald-500 bg-emerald-500/10';
+    case 'lost': return 'text-red-500 bg-red-500/10';
+    case 'pending': return 'text-yellow-500 bg-yellow-500/10';
+    case 'cashed out': return 'text-blue-500 bg-blue-500/10';
+    case 'push':
+    default: return 'text-slate-400 bg-slate-700/20';
+  }
 };
 
-// Calculates payout based on stake and odds
-export function calculatePayout(stake: number | string, odds: number | string, isBonus: boolean = false): number {
-  const s = ensureNumber(stake);
-  const o = ensureNumber(odds);
-  if (s <= 0 || o === 0) return 0;
-  let profit = o > 0 ? s * (o / 100) : s * (100 / Math.abs(o));
-  return isBonus ? profit : profit + s;
-}
+const calculatePotential = (stake: number, odds: number) => {
+    if (odds > 0) return stake * (odds / 100);
+    return stake * (100 / Math.abs(odds));
+};
 
-// Parses various date formats into a standard Date object
-function getNormalizedDate(bet: any): Date | null {
-  const rawDate = bet.createdAt || bet.date || bet.gameDate || bet.timestamp;
-  if (!rawDate) return null;
-  try {
-    // If it's a Firestore Timestamp {seconds, nanoseconds}
-    if (typeof rawDate === 'object') {
-      if (rawDate.seconds) return new Date(rawDate.seconds * 1000);
-      if (rawDate._seconds) return new Date(rawDate._seconds * 1000);
-    }
-    // If it's already a string or number
-    const parsedDate = new Date(rawDate);
-    return isNaN(parsedDate.getTime()) ? null : parsedDate;
-  } catch (error) {
-    return null;
+const normalizeAndFormatDate = (bet: Bet): string => {
+  const dateSource = bet.manualDate || bet.date || bet.legs[0]?.gameDate || bet.createdAt;
+  if (!dateSource) return 'N/A';
+
+  let date;
+  if (typeof dateSource === 'string') {
+    date = new Date(dateSource);
+  } else if (dateSource && typeof dateSource.toDate === 'function') {
+    date = dateSource.toDate();
+  } else if (dateSource instanceof Date) {
+    date = dateSource;
   }
-}
 
-export const BetsTable = ({ bets, onDelete, onEdit }: any) => {
-  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
-  const [sortColumn, setSortColumn] = useState<string>('date');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  if (date && !isNaN(date.getTime())) {
+    const userTimezoneOffset = date.getTimezoneOffset() * 60000;
+    const adjustedDate = new Date(date.getTime() + userTimezoneOffset);
+    return adjustedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  } 
+  else if (typeof dateSource === 'string') {
+      return dateSource;
+  }
+  
+  return 'Invalid Date';
+};
 
-  const handleSort = (column: string) => {
-    setSortColumn(prev => (prev === column ? prev : column));
-    setSortDirection(prev => (sortColumn === column ? (prev === 'asc' ? 'desc' : 'asc') : 'desc'));
+const formatLegSelection = (leg: BetLeg) => {
+  const parts = [leg.player, leg.selection, leg.prop, leg.line];
+  return parts.filter(p => p).join(' ');
+};
+
+export function BetsTable({ bets, onDelete, onEdit, onAction }: BetsTableProps) {
+  const [expandedParlays, setExpandedParlays] = useState<Record<string, boolean>>({});
+  const [sortConfig, setSortConfig] = useState<{ key: SortableKey; direction: SortDirection } | null>(null);
+
+  const showActions = !!onDelete || !!onEdit;
+  const showAdd = !!onAction;
+
+  const toggleParlay = (id: string) => {
+    setExpandedParlays(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
   const sortedBets = useMemo(() => {
-    if (!Array.isArray(bets)) return [];
-    // The 'bets' prop is now expected to be pre-grouped.
-    return [...bets].sort((a, b) => {
-      let aVal, bVal;
-      switch(sortColumn) {
-        case 'date':
-          aVal = getNormalizedDate(a)?.getTime() || 0;
-          bVal = getNormalizedDate(b)?.getTime() || 0;
-          break;
-        case 'stake': aVal = ensureNumber(a.stake); bVal = ensureNumber(b.stake); break;
-        case 'odds': aVal = ensureNumber(a.odds); bVal = ensureNumber(b.odds); break;
-        case 'status': aVal = a.status || ''; bVal = b.status || ''; break;
-        case 'payout':
-          aVal = a.status?.toLowerCase() === 'lost' ? 0 : calculatePayout(a.stake, a.odds, a.isBonus);
-          bVal = b.status?.toLowerCase() === 'lost' ? 0 : calculatePayout(b.stake, b.odds, b.isBonus);
-          break;
-        default: aVal = 0; bVal = 0;
-      }
-      return sortDirection === 'asc' ? (aVal > bVal ? 1 : -1) : (aVal < bVal ? 1 : -1);
-    });
-  }, [bets, sortColumn, sortDirection]);
+    let sortableItems = [...bets];
+    if (sortConfig !== null) {
+      sortableItems.sort((a, b) => {
+        let aValue: any;
+        let bValue: any;
 
-  const SortIcon = ({ column }: { column: string }) => {
-    if (sortColumn !== column) return <span className="opacity-0 group-hover:opacity-50 transition-opacity">↕</span>;
-    return <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>;
+        switch (sortConfig.key) {
+          case 'selection':
+            aValue = a.legs[0]?.player ?? '';
+            bValue = b.legs[0]?.player ?? '';
+            break;
+          case 'gameDate':
+            const aDate = a.date || a.legs[0]?.gameDate || a.createdAt;
+            const bDate = b.date || b.legs[0]?.gameDate || b.createdAt;
+            aValue = aDate ? new Date(aDate.toDate ? aDate.toDate() : aDate).getTime() : 0;
+            bValue = bDate ? new Date(bDate.toDate ? bDate.toDate() : bDate).getTime() : 0;
+            break;
+          case 'matchup':
+            aValue = a.legs[0]?.matchup ?? '';
+            bValue = b.legs[0]?.matchup ?? '';
+            break;
+          case 'potential':
+            const getSortValue = (bet: Bet) => {
+                switch(bet.status) {
+                    case 'won': return calculatePotential(bet.stake, bet.odds);
+                    case 'cashed out': return bet.cashedOutAmount ? bet.cashedOutAmount - bet.stake : 0;
+                    case 'lost': return -bet.stake;
+                    case 'push': return 0;
+                    default: return calculatePotential(bet.stake, bet.odds);
+                }
+            }
+            aValue = getSortValue(a);
+            bValue = getSortValue(b);
+            break;
+          default:
+            aValue = a[sortConfig.key];
+            bValue = b[sortConfig.key];
+        }
+
+        if (aValue < bValue) return sortConfig.direction === 'ascending' ? -1 : 1;
+        if (aValue > bValue) return sortConfig.direction === 'ascending' ? 1 : -1;
+        return 0;
+      });
+    }
+    return sortableItems;
+  }, [bets, sortConfig]);
+
+  const requestSort = (key: SortableKey) => {
+    let direction: SortDirection = 'ascending';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'ascending') {
+      direction = 'descending';
+    }
+    setSortConfig({ key, direction });
+  };
+  
+  const getSortIndicator = (key: SortableKey) => {
+    if (!sortConfig || sortConfig.key !== key) return null;
+    if (sortConfig.direction === 'ascending') return <ArrowUp className="h-3 w-3 ml-1" />;
+    return <ArrowDown className="h-3 w-3 ml-1" />;
+  };
+
+  const PayoutCell = ({ bet }: { bet: Bet }) => {
+    let content: React.ReactNode;
+    let className: string = 'text-slate-400';
+
+    switch (bet.status) {
+      case 'won':
+        content = `$${calculatePotential(bet.stake, bet.odds).toFixed(2)}`;
+        className = 'text-emerald-400';
+        break;
+      case 'lost':
+        content = `-$${bet.stake.toFixed(2)}`;
+        className = 'text-red-500';
+        break;
+      case 'cashed out':
+        content = `$${(bet.cashedOutAmount || 0).toFixed(2)}`;
+        className = 'text-blue-400';
+        break;
+      case 'push':
+        content = `$${bet.stake.toFixed(2)}`;
+        className = 'text-slate-400';
+        break;
+      case 'pending':
+      default:
+        content = `$${calculatePotential(bet.stake, bet.odds).toFixed(2)}`;
+        className = 'text-slate-400';
+        break;
+    }
+    
+    return <span className={className}>{content}</span>;
   };
 
   return (
-    <div className="overflow-x-auto border border-slate-800 rounded-lg bg-slate-950/50">
-      <table className="w-full text-left border-collapse">
-        <thead className="bg-slate-900/80 text-slate-400 uppercase text-[10px] font-bold border-b border-slate-800">
-          <tr>
-            <th className="px-4 py-4 w-10"></th>
-            {['date', 'selection', 'odds', 'stake', 'status', 'payout'].map(col => (
-              <th key={col} className="px-4 py-4 cursor-pointer hover:text-emerald-400 group" onClick={() => handleSort(col)}>
-                {col} <SortIcon column={col} />
-              </th>
-            ))}
-            <th className="px-4 py-4 text-right">Actions</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-800/50">
-          {sortedBets?.map((bet) => {
-            const isExpanded = expandedRows.has(bet.id);
-            const status = (bet.status || bet.result || 'pending').toLowerCase();
-            
-            const legs = Array.isArray(bet.legs) && bet.legs.length > 0 ? bet.legs : [];
-
-            const isParlay = bet.betType === 'parlay' || legs.length > 1;
-            const numericStake = ensureNumber(bet.stake);
-            const isBonus = !!bet.isBonus;
-            const effectiveOdds = ensureNumber(bet.odds || (legs.length > 0 ? legs[0].odds : 0));
-            const payoutValue = calculatePayout(numericStake, effectiveOdds, isBonus);
-            const betDate = getNormalizedDate(bet);
-            const roundedOdds = Math.round(effectiveOdds);
-
-            return (
-              <React.Fragment key={bet.id}>
-                <tr className="hover:bg-slate-900/40 transition-colors group text-sm">
-                  <td className="px-4 py-4">
-                    {isParlay && (
-                      <button onClick={() => {
-                        const next = new Set(expandedRows);
-                        isExpanded ? next.delete(bet.id) : next.add(bet.id);
-                        setExpandedRows(next);
-                      }} className="text-slate-500 hover:text-emerald-400">
-                        {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                      </button>
-                    )}
-                  </td>
-                  <td className="px-4 py-4 text-slate-400 whitespace-nowrap text-xs">
-                    {betDate?.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) || <span className="text-red-400 text-[10px]">No Date</span>}
-                  </td>
-                  <td className="px-4 py-4">
-                    <div className="flex flex-col gap-1">
-                      <span className="font-bold text-slate-200">
-                        {isParlay ? `${legs.length} Leg Parlay` : (legs[0]?.player || 'Straight Bet')}
-                      </span>
-                      {!isParlay && legs[0] && (
-                        <span className="text-xs text-slate-400">
-                          {legs[0].prop} {legs[0].selection} {legs[0].line}
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-4 font-mono text-slate-300 font-bold">
-                    {roundedOdds > 0 ? `+${roundedOdds}` : roundedOdds}
-                  </td>
-                  <td className="px-4 py-4 text-slate-200">${numericStake.toFixed(2)}</td>
-                  <td className="px-4 py-4">
-                    <Badge className={ status === 'won' ? 'bg-green-500/10 text-green-500 border-green-500/20' : status === 'lost' ? 'bg-red-500/10 text-red-500 border-red-500/20' : 'bg-amber-500/10 text-amber-500 border-amber-500/20' }>
-                      {status}
-                    </Badge>
-                  </td>
-                  <td className={`px-4 py-4 font-mono font-bold ${status === 'won' ? 'text-emerald-400' : status === 'lost' ? 'text-red-400' : 'text-slate-400'}`}>
-                    ${status === 'lost' ? '0.00' : payoutValue.toFixed(2)}
-                  </td>
-                  <td className="px-4 py-4 text-right">
-                    <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Button variant="ghost" size="icon" onClick={() => onEdit?.(bet)} className="h-7 w-7"><Edit className="h-3.5 w-3.5" /></Button>
-                      <Button variant="ghost" size="icon" onClick={() => onDelete?.(bet)} className="h-7 w-7 hover:text-red-500"><Trash2 className="h-3.5 w-3.5" /></Button>
-                    </div>
-                  </td>
-                </tr>
-                {isExpanded && isParlay && (
-                  <tr className="bg-slate-900/60">
-                    <td colSpan={8} className="p-0">
-                      <div className="px-10 py-6 border-l-4 border-emerald-500/50">
-                        <h4 className="text-sm font-bold text-emerald-400 mb-4">Parlay Legs:</h4>
-                        <div className="space-y-3">
-                          {legs.map((leg: any, idx: number) => {
-                            const roundedLegOdds = Math.round(leg.odds);
-                            return (
-                              <div key={idx} className="flex justify-between items-center p-3 bg-slate-950/70 rounded-lg border border-slate-800">
-                                <div>
-                                  <p className="font-bold text-slate-200 text-sm">
-                                    {leg.playerteam || leg.player}
-                                  </p>
-                                  <p className="text-xs text-slate-400 mt-1">
-                                    {leg.matchup && <span className="text-blue-400 mr-2">{leg.matchup}</span>}
-                                    {leg.prop}: <span className="text-emerald-400 font-semibold">{leg.selection} {leg.line}</span>
-                                  </p>
-                                </div>
-                                <div className="text-right">
-                                  <Badge variant="secondary" className="font-mono text-xs bg-slate-900 text-slate-300">{roundedLegOdds > 0 ? `+${roundedLegOdds}` : roundedLegOdds}</Badge>
-                                  {leg.status && <span className={`ml-3 text-xs font-bold uppercase px-2 py-1 rounded ${ leg.status === 'won' ? 'bg-green-500/10 text-green-500' : leg.status === 'lost' ? 'bg-red-500/10 text-red-500' : 'bg-amber-500/10 text-amber-500' }`}>{leg.status}</span>}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
+    <div className="border border-slate-800 rounded-xl">
+      <Table>
+        <TableHeader>
+          <TableRow className="border-slate-800 hover:bg-slate-900/75">
+            {showAdd && <TableHead className="w-[50px] text-slate-400">Add</TableHead>}
+            <TableHead className="w-12"></TableHead>
+            <TableHead onClick={() => requestSort('selection')} className="cursor-pointer text-slate-400 hover:text-white"><div className='flex items-center'>Selection {getSortIndicator('selection')}</div></TableHead>
+            <TableHead onClick={() => requestSort('gameDate')} className="cursor-pointer text-slate-400 hover:text-white"><div className='flex items-center'>Game Date {getSortIndicator('gameDate')}</div></TableHead>
+            <TableHead onClick={() => requestSort('matchup')} className="cursor-pointer text-slate-400 hover:text-white"><div className='flex items-center'>Matchup {getSortIndicator('matchup')}</div></TableHead>
+            <TableHead onClick={() => requestSort('odds')} className="cursor-pointer text-slate-400 hover:text-white"><div className='flex items-center'>Odds {getSortIndicator('odds')}</div></TableHead>
+            <TableHead onClick={() => requestSort('stake')} className="cursor-pointer text-slate-400 hover:text-white"><div className='flex items-center'>Stake {getSortIndicator('stake')}</div></TableHead>
+            <TableHead onClick={() => requestSort('potential')} className="cursor-pointer text-slate-400 hover:text-white"><div className='flex items-center'>Payout / Potential {getSortIndicator('potential')}</div></TableHead>
+            <TableHead onClick={() => requestSort('status')} className="cursor-pointer text-slate-400 hover:text-white"><div className='flex items-center'>Status {getSortIndicator('status')}</div></TableHead>
+            {showActions && <TableHead className="text-right text-slate-400">Actions</TableHead>}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {sortedBets.map((bet) => (
+            <React.Fragment key={bet.id}>
+              <TableRow className="border-slate-800">
+                {showAdd && <TableCell><Button variant="ghost" size="icon" onClick={() => onAction(bet)} className="text-blue-500 hover:bg-blue-500/10"><PlusCircle className="h-4 w-4" /></Button></TableCell>}
+                <TableCell>{bet.legs.length > 1 && <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => toggleParlay(bet.id)}>{expandedParlays[bet.id] ? <ChevronDown className="h-4 w-4"/> : <ChevronRight className="h-4 w-4"/>}</Button>}</TableCell>
+                <TableCell className="font-medium text-white">{bet.legs.length > 1 ? `${bet.legs.length} Leg Parlay` : formatLegSelection(bet.legs[0])}</TableCell>
+                <TableCell className="text-slate-300">{normalizeAndFormatDate(bet)}</TableCell>
+                <TableCell className="text-slate-300">{bet.legs.length > 1 ? 'Multiple' : bet.legs[0]?.matchup ?? 'N/A'}</TableCell>
+                <TableCell className="text-slate-300">{bet.odds > 0 ? `+${bet.odds}` : bet.odds}</TableCell>
+                <TableCell className="text-slate-300">${bet.stake.toFixed(2)}</TableCell>
+                <TableCell><PayoutCell bet={bet} /></TableCell>
+                <TableCell>
+                  {bet.status === 'cashed out' ? (
+                    <div>
+                      <span className="text-amber-500 font-bold uppercase text-xs">Cashed Out</span>
+                      <div className="text-[10px] text-slate-400">
+                        ${(bet.cashedOutAmount ?? 0).toFixed(2)}
                       </div>
-                    </td>
-                  </tr>
-                )}
-              </React.Fragment>
-            );
-          })}
-        </tbody>
-      </table>
+                    </div>
+                  ) : (
+                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusClass(bet.status)}`}>
+                      {bet.status}
+                    </span>
+                  )}
+                </TableCell>
+                {showActions && <TableCell className="text-right">{(onEdit || onDelete) && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent className="bg-slate-900 border-slate-800 text-white">{onEdit && <DropdownMenuItem onClick={() => onEdit(bet.id)} className="hover:bg-slate-800"><Edit className="h-4 w-4 mr-2" /> Edit</DropdownMenuItem>}{onDelete && <DropdownMenuItem onClick={() => onDelete(bet.id)} className="text-red-500 hover:!text-red-500 hover:!bg-red-500/10"><Trash2 className="h-4 w-4 mr-2" /> Delete</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu>}</TableCell>}
+              </TableRow>
+              {expandedParlays[bet.id] && bet.legs.map((leg, index) => (
+                <TableRow key={`${bet.id}-leg-${index}`} className="bg-slate-900/50 border-slate-800 hover:bg-slate-900/60">
+                  <TableCell colSpan={showAdd ? 2 : 1} />
+                  <TableCell className="pl-12 text-sm text-slate-300">
+                    <div className="font-medium text-white">{leg.player}</div>
+                    <div>{leg.prop}</div>
+                  </TableCell>
+                  <TableCell className="text-xs text-slate-400">
+                    {leg.gameDate ? new Date(leg.gameDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'N/A'}
+                  </TableCell>
+                  <TableCell className="font-mono text-xs text-slate-400 uppercase">{leg.matchup}</TableCell>
+                  <TableCell className="text-slate-300">{leg.odds > 0 ? `+${leg.odds}` : leg.odds}</TableCell>
+                  <TableCell colSpan={2}>
+                     <span className={cn(
+                      "inline-flex items-center rounded px-2 py-0.5 text-[10px] font-bold uppercase",
+                      leg.selection?.toLowerCase() === 'over' ? "bg-emerald-500/10 text-emerald-500" : "bg-red-500/10 text-red-500"
+                    )}>
+                      {leg.selection} {leg.line}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <span className={cn(
+                      "text-[10px] font-bold uppercase",
+                      leg.status === 'won' ? 'text-emerald-500' : 
+                      leg.status === 'lost' ? 'text-red-500' : 'text-slate-500'
+                    )}>
+                      {leg.status}
+                    </span>
+                  </TableCell>
+                  {showActions && <TableCell></TableCell>}
+                </TableRow>
+              ))}
+            </React.Fragment>
+          ))}
+        </TableBody>
+      </Table>
     </div>
   );
-};
+}

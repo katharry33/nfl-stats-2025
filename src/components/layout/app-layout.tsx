@@ -3,7 +3,6 @@
 
 import { useBetSlip } from '@/context/betslip-context';
 import { SidebarNav } from '@/components/layout/sidebar-nav';
-import { BetSlip } from '@/components/bets/betslip'; 
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const { selections: slip } = useBetSlip();
@@ -18,7 +17,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         {children}
       </main>
 
-      <BetSlip />
+      {/* BetSlip removed - pages add it individually where needed */}
     </div>
   );
 }

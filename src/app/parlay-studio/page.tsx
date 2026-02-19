@@ -70,18 +70,26 @@ export default function ParlayStudioPage() {
       return;
     }
 
+    const payload = {
+      stake: Number(stake),
+      odds: parlayOdds,
+      betType: betType as any,
+      status: overallStatus as any,
+      boost: Number(boostPercent) > 0,
+      boostPercentage: Number(boostPercent),
+      isBonus,
+      isLive,
+      legs: selections.map(leg => ({
+        ...leg,
+        // Ensure the leg keeps its original historical date if it exists
+        gameDate: leg.gameDate || betDate 
+      })),
+      // This is the date for the overall Betting Log entry
+      createdAt: new Date(betDate).toISOString(), 
+    };
+
     try {
-      await submitBet({
-        stake: Number(stake),
-        odds: parlayOdds,
-        betType: betType as any,
-        status: overallStatus as any,
-        boost: Number(boostPercent) > 0,
-        boostPercentage: Number(boostPercent),
-        isBonus,
-        isLive,
-        legs: selections,
-      });
+      await submitBet(payload);
 
       // Reset local page state
       setStake('');
@@ -101,9 +109,9 @@ export default function ParlayStudioPage() {
   return (
     <div className="min-h-screen bg-slate-950">
       <div className="p-8 max-w-7xl mx-auto">
-        <div className="mb-6">
+        <div className="sticky top-0 z-20 bg-slate-950/80 backdrop-blur-md pb-4 pt-8 mb-6">
           <h1 className="text-3xl font-black text-white tracking-tighter italic">PARLAY STUDIO</h1>
-          <p className="text-slate-500 text-sm">Build and record your custom parlays, SGPs, and straight bets.</p>
+          <p className="text-slate-500 text-sm">Build and record your custom parlays from allProps_2025.</p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -284,27 +292,58 @@ export default function ParlayStudioPage() {
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <Label className="text-xs text-slate-400">Total Odds (+/-)</Label>
+                <div className="space-y-3">
+                  <Label className="text-xs text-slate-400">Total Odds (+/-)</Label>
+                  
+                  {/* Manual/Auto Toggle - BIG and OBVIOUS */}
+                  <div className="flex gap-2">
                     <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      onClick={() => setIsManualOdds(!isManualOdds)} 
-                      className="text-xs text-slate-400 hover:text-white"
+                      type="button"
+                      onClick={() => setIsManualOdds(false)}
+                      variant={!isManualOdds ? "default" : "outline"}
+                      className={`flex-1 font-bold ${
+                        !isManualOdds 
+                          ? 'bg-emerald-600 hover:bg-emerald-700 text-white' 
+                          : 'bg-slate-800 hover:bg-slate-700 text-slate-400 border-slate-700'
+                      }`}
                     >
-                      {isManualOdds ? <Calculator className="h-3 w-3 mr-1"/> : <Edit className="h-3 w-3 mr-1"/>} 
-                      {isManualOdds ? 'Auto' : 'Manual'}
+                      <Calculator className="h-4 w-4 mr-2"/> 
+                      AUTO
+                    </Button>
+                    <Button 
+                      type="button"
+                      onClick={() => setIsManualOdds(true)}
+                      variant={isManualOdds ? "default" : "outline"}
+                      className={`flex-1 font-bold ${
+                        isManualOdds 
+                          ? 'bg-blue-600 hover:bg-blue-700 text-white' 
+                          : 'bg-slate-800 hover:bg-slate-700 text-slate-400 border-slate-700'
+                      }`}
+                    >
+                      <Edit className="h-4 w-4 mr-2"/> 
+                      MANUAL
                     </Button>
                   </div>
+                  
+                  {/* Odds Input with Visual Feedback */}
                   <Input
                     type="number"
                     value={isManualOdds ? manualOdds : calculatedParlayOdds}
                     onChange={(e) => setManualOdds(e.target.value)}
                     disabled={!isManualOdds}
-                    placeholder={isManualOdds ? "Enter odds" : "Calculated"}
-                    className="bg-slate-900 border-slate-800 font-mono font-bold text-emerald-400"
+                    placeholder={isManualOdds ? "Enter odds (e.g., 450 or -110)" : "Auto-calculated"}
+                    className={`font-mono font-bold text-lg ${
+                      isManualOdds 
+                        ? 'bg-blue-900/20 border-blue-500 text-blue-400 ring-2 ring-blue-500/50' 
+                        : 'bg-slate-900 border-slate-800 text-emerald-400'
+                    }`}
                   />
+                  {isManualOdds && (
+                    <p className="text-xs text-blue-400">✏️ Manual mode: Enter your historical odds</p>
+                  )}
+                  {!isManualOdds && (
+                    <p className="text-xs text-emerald-400">🤖 Auto mode: Calculated from leg odds</p>
+                  )}
                 </div>
 
                 <div className="space-y-2">

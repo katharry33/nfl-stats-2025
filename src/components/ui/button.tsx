@@ -13,9 +13,10 @@ function cn(...inputs: ClassValue[]) {
 const variantStyles = {
   default: 'bg-emerald-600 text-white hover:bg-emerald-500 shadow-lg shadow-emerald-900/20',
   outline: 'border border-slate-800 bg-transparent hover:bg-slate-800 text-slate-300',
-  secondary: 'bg-slate-800 text-slate-100 hover:bg-slate-700 border border-slate-700', // Added this back
+  secondary: 'bg-slate-800 text-slate-100 hover:bg-slate-700 border border-slate-700',
   ghost: 'hover:bg-slate-800 text-slate-400 hover:text-slate-100',
   destructive: 'bg-rose-600 text-white hover:bg-rose-500 shadow-lg shadow-rose-900/20',
+  link: 'text-blue-500 underline-offset-4 hover:underline',
 };
 
 const sizeStyles = {

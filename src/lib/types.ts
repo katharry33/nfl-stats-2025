@@ -1,24 +1,24 @@
 // src/lib/types.ts
 
-export type BetType = 'straight' | 'parlay' | 'sgp' | 'sgp+' | 'teaser' | 'round_robin';
-export type BetStatus = 'pending' | 'won' | 'lost' | 'void' | 'cashed_out' | 'push';
+export type BetType = 'Single' | 'Parlay' | 'SGP' | 'Teaser';
+export type BetStatus = 'pending' | 'won' | 'lost' | 'void' | 'cashed out' | 'push';
 export type LegStatus = 'pending' | 'won' | 'lost' | 'void' | 'push';
 export type Selection = 'Over' | 'Under';
 
 export interface BetLeg {
   id: string;
   propId?: string;
-  player?: string;  // Made optional - use fallbacks in code
-  team?: string;
-  prop?: string;    // Made optional - use fallbacks in code
-  line?: number;    // Made optional - use fallbacks in code
+  player: string;
+  team: string;
+  prop: string;
+  line: number;
   selection: Selection;
-  odds?: number;    // Made optional - use fallbacks in code
+  odds: number;
   matchup?: string;
   week?: number;
-  status?: LegStatus;
+  status: LegStatus;
   source?: string;
-  gameDate?: string;
+  gameDate: string | null;
 }
 
 export interface Bet {
@@ -42,6 +42,7 @@ export interface Bet {
   actualPayout?: number;
   result?: string;
   parlayid?: string; // For grouping parlay bets together
+  cashedOutAmount?: number;
 }
 
 export type BetSubmissionData = Omit<Bet, "id" | "userId" | "payout" | "createdAt">;

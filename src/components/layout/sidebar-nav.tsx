@@ -1,107 +1,91 @@
 'use client';
 
-import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { 
-  History, 
-  FileText, 
+  LayoutDashboard, 
+  Wallet, 
+  Hammer, 
+  Grid3x3, 
+  Trophy,
   TrendingUp,
-  Wallet,
-  Target,
-  Zap,
-  CalendarDays,
-  Combine,
-  Shield,
-  BarChart
+  History,
+  Calendar,
+  Gift
 } from 'lucide-react';
-import { cn } from '../../lib/utils';
-import { useBetSlip } from '../../context/betslip-context';
 
 interface SidebarNavProps {
   bankroll: number;
   bonusBalance: number;
-  selectedBetsCount?: number; 
+  selectedBetsCount: number;
 }
 
-export function SidebarNav({ bankroll, bonusBalance }: SidebarNavProps) {
+export function SidebarNav({ bankroll, bonusBalance, selectedBetsCount }: SidebarNavProps) {
   const pathname = usePathname();
-  const { selections } = useBetSlip();
-  const liveCount = selections?.length || 0;
 
-  const safeBankroll = typeof bankroll === 'number' ? bankroll : 0;
-  const safeBonus = typeof bonusBalance === 'number' ? bonusBalance : 0;
-
-  const routes = [
-    { label: 'My Performance', icon: BarChart, href: '/performance' },
-    { label: 'Wallet', icon: Wallet, href: '/wallet' },
-    { label: 'Bet Builder', icon: Zap, href: '/bet-builder' },
-    { label: 'Parlay Studio', icon: Combine, href: '/parlay-studio' },
-    { label: 'Bonuses', icon: Shield, href: '/bonuses' },
-    { label: 'Market Insights', icon: TrendingUp, href: '/insights' },
-    { label: 'Historical Props', icon: FileText, href: '/all-props' },
-    { label: 'Betting Log', icon: History, href: '/betting-log' },
-    { label: 'Schedule', icon: CalendarDays, href: '/schedule' },
+  const navItems = [
+    { href: '/my-performance', label: 'My Performance', icon: LayoutDashboard },
+    { href: '/wallet', label: 'Wallet', icon: Wallet },
+    { href: '/bet-builder', label: 'Bet Builder', icon: Hammer, badge: selectedBetsCount },
+    { href: '/parlay-studio', label: 'Parlay Studio', icon: Trophy },
+    { href: '/bonuses', label: 'Bonuses', icon: Gift },
+    { href: '/market-insights', label: 'Market Insights', icon: TrendingUp },
+    { href: '/all-props', label: 'Historical Props', icon: History },
+    { href: '/betting-log', label: 'Betting Log', icon: History },
+    { href: '/schedule', label: 'Schedule', icon: Calendar },
   ];
 
   return (
-    <nav className='flex flex-col h-full bg-green-950 text-slate-300'>
-      {/* Branding Section */}
-      <div className='p-6'>
-        <div className='text-xl font-bold text-white flex items-center gap-2'>
-          <Target className='text-emerald-500 h-6 w-6' />
-          <span className="tracking-tight">Gridiron Guru</span>
-        </div>
+    <div className="flex flex-col h-full bg-slate-950 border-r border-slate-800">
+      {/* Logo */}
+      <div className="p-6 border-b border-slate-800">
+        <Link href="/" className="flex items-center gap-2">
+          <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center">
+            <span className="text-white font-bold text-lg">G</span>
+          </div>
+          <span className="text-xl font-bold text-white">Gridiron Guru</span>
+        </Link>
       </div>
 
-      {/* Navigation Links */}
-      <div className='flex-1 px-4 space-y-1 overflow-y-auto custom-scrollbar'>
-        {routes.map((route) => {
-          const isActive = pathname === route.href;
+      {/* Navigation */}
+      <nav className="flex-1 overflow-y-auto p-4 space-y-1">
+        {navItems.map((item) => {
+          const Icon = item.icon;
+          const isActive = pathname === item.href;
+          
           return (
             <Link
-              key={route.href}
-              href={route.href}
-              className={cn(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group',
-                isActive 
-                  ? 'bg-emerald-600/10 text-emerald-400 border border-emerald-600/20' 
-                  : 'text-slate-400 hover:text-white hover:bg-green-900/50'
-              )}
+              key={item.href}
+              href={item.href}
+              className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors relative ${
+                isActive
+                  ? 'bg-emerald-500/10 text-emerald-500'
+                  : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+              }`}
             >
-              <route.icon className={cn(
-                'h-4 w-4 shrink-0',
-                isActive ? 'text-emerald-400' : 'group-hover:text-white'
-              )} />
-              <span className='text-sm font-medium'>{route.label}</span>
-              
-              {route.label === 'Bet Builder' && liveCount > 0 && (
-                <span className='ml-auto bg-emerald-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full ring-2 ring-green-950'>
-                  {liveCount}
+              <Icon className="h-5 w-5" />
+              <span className="text-sm font-medium">{item.label}</span>
+              {item.badge && item.badge > 0 && (
+                <span className="ml-auto bg-emerald-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                  {item.badge}
                 </span>
               )}
             </Link>
           );
         })}
-      </div>
+      </nav>
 
-      {/* Bottom Bankroll Section */}
-      <div className='p-5 border-t border-green-900 bg-black/10'>
-        <div className='space-y-4'>
-          <div className='flex flex-col gap-0.5'>
-            <span className='text-[10px] text-slate-500 uppercase font-black tracking-widest'>Bankroll</span>
-            <span className='text-xl font-mono font-bold text-emerald-400'>
-              ${safeBankroll.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-            </span>
-          </div>
-          <div className='flex flex-col gap-0.5'>
-            <span className='text-[10px] text-slate-500 uppercase font-black tracking-widest'>Bonus Balance</span>
-            <span className='text-md font-mono font-semibold text-blue-400'>
-              ${safeBonus.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-            </span>
-          </div>
+      {/* Bankroll */}
+      <div className="p-4 border-t border-slate-800 space-y-3">
+        <div>
+          <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Bankroll</p>
+          <p className="text-2xl font-bold text-emerald-500">${bankroll.toFixed(2)}</p>
+        </div>
+        <div>
+          <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Bonus Balance</p>
+          <p className="text-lg font-bold text-purple-400">${bonusBalance.toFixed(2)}</p>
         </div>
       </div>
-    </nav>
+    </div>
   );
 }

@@ -1,9 +1,9 @@
 {
   "pages": {
-    "/all-props/page": [
+    "/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/all-props/page.js"
+      "static/chunks/app/page.js"
     ],
     "/layout": [
       "static/chunks/webpack.js",
@@ -26,11 +26,6 @@
       "static/chunks/main-app.js",
       "static/chunks/app/not-found.js"
     ],
-    "/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/page.js"
-    ],
     "/betting-log/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
@@ -46,10 +41,15 @@
       "static/chunks/main-app.js",
       "static/chunks/app/betting-log/loading.js"
     ],
-    "/parlay-studio/page": [
+    "/_not-found/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/parlay-studio/page.js"
+      "static/chunks/app/_not-found/page.js"
+    ],
+    "/all-props/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/all-props/page.js"
     ]
   }
 }

@@ -6,16 +6,23 @@ import { FieldValue } from 'firebase-admin/firestore';
  * Add a bet to Firestore (server-side)
  * Used by API routes
  */
-export async function addBet(userId: string, betData: Partial<Bet>): Promise<string> {
+export async function addBet(userId: string, betData: Partial<Bet>): Promise<{ id: string } & Partial<Bet>> {
   try {
-    const betRef = await db.collection('betintgLog').add({
+    const dataToSave = {
       ...betData,
       userId,
       createdAt: FieldValue.serverTimestamp(),
       status: betData.status || 'pending',
-    });
+    };
+    const betRef = await db.collection('bettingLog').add(dataToSave);
     
-    return betRef.id;
+    // Return a complete object with a client-side timestamp for immediate UI use
+    return {
+      id: betRef.id,
+      ...betData,
+      createdAt: new Date().toISOString(), // Return a serializable timestamp
+    };
+
   } catch (error) {
     console.error('Error adding bet:', error);
     throw new Error('Failed to add bet');
@@ -51,10 +58,15 @@ export async function getBetById(betId: string): Promise<Bet | null> {
       return null;
     }
     
+    const data = doc.data();
+
     return {
       id: doc.id,
-      ...doc.data()
+      ...data,
+      createdAt: data?.createdAt?.toDate?.().toISOString() || null,
+      updatedAt: data?.updatedAt?.toDate?.().toISOString() || null,
     } as Bet;
+
   } catch (error) {
     console.error('Error fetching bet:', error);
     return null;

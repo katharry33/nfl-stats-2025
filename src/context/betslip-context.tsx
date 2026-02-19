@@ -1,90 +1,129 @@
 'use client';
 
-import React, { createContext, useContext, useState } from 'react';
-import { BetLeg, Bet } from "@/lib/types";
+import { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
+import type { BetLeg, Bet, Selection } from '../lib/types';
 import { toast } from 'sonner';
-import { useRouter } from 'next/navigation';
-import { firestore } from '@/lib/firebase/client';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { useAuth } from '@/context/AuthContext';
+import { normalizeBet } from '../lib/services/bet-normalizer';
 
-// The data passed when submitting a bet. `createdAt` is now optional.
-// It will be provided by the Parlay Studio for historical bets.
-type BetSubmissionData = Omit<Bet, 'id' | 'userId' | 'payout'> & {
-    createdAt?: Date;
-};
-
-interface BetSlipContextType {
+export interface BetslipContextType {
   selections: BetLeg[];
-  addLeg: (leg: BetLeg) => void;
-  removeLeg: (id: string) => void;
+  bets: Bet[];
+  loading: boolean;
+  fetchBets: () => Promise<void>;
+  addLeg: (leg: any) => void;
+  removeLeg: (legId: string) => void;
   clearSlip: () => void;
-  updateLeg: (id: string, updates: Partial<BetLeg>) => void;
-  submitBet: (betData: BetSubmissionData) => Promise<void>;
+  updateLeg: (legId: string, updates: Partial<BetLeg>) => void;
+  submitBet: (bet: Partial<Bet>) => Promise<void>;
+  deleteBet: (id: string) => Promise<void>;
+  updateBet: (id: string, updates: Partial<Bet>) => Promise<void>;
 }
 
-const BetSlipContext = createContext<BetSlipContextType | undefined>(undefined);
+const BetslipContext = createContext<BetslipContextType | undefined>(undefined);
 
-export function BetSlipProvider({ children }: { children: React.ReactNode }) {
+export function BetslipProvider({ children }: { children: ReactNode }) {
   const [selections, setSelections] = useState<BetLeg[]>([]);
-  const { user } = useAuth();
-  const router = useRouter();
+  const [bets, setBets] = useState<Bet[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const addLeg = (leg: BetLeg) => {
-    const legWithDefaults = { ...leg, status: 'pending' };
-    setSelections((prev) => [...prev.filter(l => l.id !== leg.id), legWithDefaults]);
-    toast.success("Leg added to bet slip!");
+  const fetchBets = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('/api/betting-log?userId=dev-user');
+      if (response.ok) {
+        const data = await response.json();
+        const cleanBets = (data.bets || []).map(normalizeBet);
+        setBets(cleanBets);
+        console.log(`Context: Fetched and normalized ${cleanBets.length} bets.`);
+      } else {
+        toast.error("Failed to fetch betting log from API.");
+      }
+    } catch (err) {
+      console.error("Context fetch error:", err);
+      toast.error("An error occurred while fetching data.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchBets(); }, [fetchBets]);
+
+  const addLeg = (incoming: any) => {
+    setSelections(prev => {
+      const propId = incoming.id || incoming.Id || incoming.propId;
+      const selection = incoming.selection || (incoming.overunder === 'Over' || incoming.OverUnder === 'Over' ? 'Over' : 'Under');
+
+      const exists = prev.some(l => {
+        const legPropId = l.propId || l.id;
+        return legPropId === propId && l.selection === selection;
+      });
+
+      if (exists) {
+        toast.warning("Selection already in bet slip.");
+        return prev;
+      }
+
+      const newLeg: BetLeg = {
+        id: crypto.randomUUID(),
+        propId: propId,
+        player: incoming.player || incoming.Player || 'Unknown Player',
+        team: incoming.team || incoming.Team || 'TBD',
+        prop: incoming.prop || incoming.Prop || 'Unknown Prop',
+        line: Number(incoming.line || incoming.Line || 0),
+        odds: Number(incoming.odds || incoming.Odds || -110),
+        selection: selection,
+        status: 'pending',
+        gameDate: incoming.gameDate || incoming.GameDate || incoming.createdAt || new Date().toISOString(),
+        matchup: incoming.matchup || incoming.Matchup || 'TBD',
+        week: (incoming.week || incoming.Week) ? Number(incoming.week || incoming.Week) : undefined,
+      };
+
+      toast.success(`${newLeg.player} ${newLeg.prop} added to slip.`);
+      return [...prev, newLeg];
+    });
   };
 
-  const removeLeg = (id: string) => {
-    setSelections((prev) => prev.filter((leg) => leg.id !== id));
+  const removeLeg = (legId: string) => {
+    setSelections(prev => prev.filter(l => l.id !== legId));
+    toast.info("Selection removed from slip.");
   };
 
   const clearSlip = () => setSelections([]);
 
-  const updateLeg = (id: string, updates: Partial<BetLeg>) => {
-    setSelections(prev => prev.map(leg => 
-      leg.id === id ? { ...leg, ...updates } : leg
-    ));
+  const updateLeg = (legId: string, updates: Partial<BetLeg>) => {
+    setSelections(prev => prev.map(leg => leg.id === legId ? { ...leg, ...updates } : leg));
   };
 
-  const submitBet = async (betData: BetSubmissionData) => {
-    if (!user) {
-      toast.error("You must be logged in to save a bet.");
-      return;
-    }
-
+  const submitBet = async (betData: Partial<Bet>) => {
     try {
-      const betPayload = {
-        ...betData,
-        userId: user.uid,
-        // Use the passed createdAt date for historical bets, otherwise use server time.
-        createdAt: betData.createdAt ? betData.createdAt : serverTimestamp(),
-      };
-
-      const docRef = await addDoc(collection(firestore, 'bettingLog'), betPayload);
-      toast.success("Bet successfully saved to your Betting Log!", { 
-        description: `Bet ID: ${docRef.id}` 
+      await fetch('/api/betting-log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...betData, userId: 'dev-user', legs: betData.legs || selections }),
       });
-      
+      await fetchBets();
+      toast.success("Bet saved successfully!");
       clearSlip();
-      router.push('/betting-log');
-
-    } catch (error) {
-      console.error("Error saving bet to Firebase:", error);
-      toast.error("There was an error saving your bet. Please try again.");
+    } catch (error: any) {
+      toast.error(error.message);
     }
   };
+
+  const deleteBet = async (id: string) => { await fetchBets(); };
+  const updateBet = async (id: string, updates: Partial<Bet>) => { await fetchBets(); };
 
   return (
-    <BetSlipContext.Provider value={{ selections, addLeg, removeLeg, clearSlip, updateLeg, submitBet }}>
+    <BetslipContext.Provider value={{
+      selections, bets, loading, fetchBets, addLeg, removeLeg, 
+      clearSlip, updateLeg, submitBet, deleteBet, updateBet
+    }}>
       {children}
-    </BetSlipContext.Provider>
+    </BetslipContext.Provider>
   );
 }
 
-export function useBetSlip() {
-  const context = useContext(BetSlipContext);
-  if (!context) throw new Error("useBetSlip must be used within a BetSlipProvider");
+export const useBetSlip = () => {
+  const context = useContext(BetslipContext);
+  if (!context) throw new Error('useBetSlip must be used within a BetslipProvider');
   return context;
-}
+};

@@ -1,168 +1,188 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from "react";
-import { Bet } from "@/lib/types";
-import { toast } from "sonner";
-import { EditBetModal } from "@/components/bets/edit-bet-modal";
-import { Input } from "@/components/ui/input";
-import { Search } from 'lucide-react';
-import { db } from "@/lib/firebase";
-import { collection, query, getDocs, orderBy } from "firebase/firestore";
+import { useState, useMemo } from "react";
+import { Bet, BetLeg, BetStatus } from "@/lib/types";
 import { BetsTable } from "@/components/bets/bets-table";
+import { EditBetModal } from "@/components/bets/edit-bet-modal";
+import { useFirebaseBets } from "@/hooks/useBets"; 
+import { BettingStats } from "@/components/bets/betting-stats";
 
-const calculateProfit = (stake: number, odds: number): number => {
-  if (odds > 0) return stake * (odds / 100);
-  return stake / (Math.abs(odds) / 100);
-};
+import { 
+  Search, 
+  RotateCcw, 
+  Loader2, 
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from '@/components/ui/select';
 
-const aggregateBets = (rawDocs: any[]) => {
-  const map = new Map();
-  rawDocs.forEach(doc => {
-    const groupId = doc.parlayid || doc.id;
-    if (!map.has(groupId)) {
-      map.set(groupId, { ...doc, id: groupId, status: (doc.status || doc.result || 'pending').toLowerCase(), legs: doc.legs || [] });
-    }
-    const entry = map.get(groupId);
-    if (doc.parlayid) {
-      entry.legs.push({ player: doc.playerteam || doc.player || 'Legacy Bet', prop: doc.prop, line: doc.line, selection: doc.selection || '', odds: doc.odds, status: (doc.status || doc.result || 'pending').toLowerCase(), matchup: doc.matchup });
-      if (doc.result?.toLowerCase() === 'lost' || doc.status?.toLowerCase() === 'lost') {
-        entry.status = 'lost';
-      }
-    }
-  });
-  return Array.from(map.values());
-};
+function normalizeBet(data: any): Bet {
+  const isFlatRecord = !Array.isArray(data.legs) || data.legs.length === 0;
+  const rawLegs = isFlatRecord ? [data] : data.legs;
+
+  const normalizedLegs: BetLeg[] = rawLegs.map((leg: any) => ({
+    id: leg.id || crypto.randomUUID(),
+    player: leg.player || leg.Player || 'Unknown',
+    team: leg.team || leg.Team || 'TBD',
+    prop: leg.prop || leg.Prop || '',
+    line: Number(leg.line ?? leg.Line ?? 0),
+    odds: Number(leg.odds ?? leg.Odds ?? -110),
+    selection: leg.selection || (leg.overunder === 'Over' || leg['Over/Under?'] === 'Over' ? 'Over' : 'Under'),
+    status: (leg.status || 'pending').toLowerCase(),
+    gameDate: leg.gameDate || (isFlatRecord ? data.date : null),
+    matchup: leg.matchup || (isFlatRecord ? data.matchup : 'N/A')
+  }));
+
+  const finalDate = data.manualDate || data.date;
+  const creation = data.createdAt?.seconds 
+      ? new Date(data.createdAt.seconds * 1000) 
+      : new Date(data.createdAt || data.date || Date.now());
+
+  return {
+    ...data,
+    id: data.id,
+    stake: Number(data.stake || 0),
+    odds: Number(data.odds || 0),
+    betType: data.betType || (normalizedLegs.length > 1 ? 'Parlay' : 'Single'),
+    status: (data.status || 'pending').toLowerCase() as BetStatus,
+    legs: normalizedLegs,
+    date: finalDate,
+    manualDate: data.manualDate,
+    createdAt: creation,
+    cashedOutAmount: data.cashedOutAmount || data.CashedOutAmount || undefined,
+  } as Bet;
+}
 
 export default function BettingLogPage() {
-  const [bets, setBets] = useState<Bet[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const { 
+    bets: allBets, 
+    loading, 
+    deleteBet, 
+    updateBet, 
+    loadMore,
+    hasMore,
+    loadingMore 
+  } = useFirebaseBets('dev-user');
+
   const [selectedBet, setSelectedBet] = useState<Bet | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [isEditOpen, setIsEditOpen] = useState(false);
 
-  const fetchBets = useCallback(async () => {
-    setLoading(true);
-    try {
-      const q = query(collection(db, "bettingLog"), orderBy("createdAt", "desc"));
-      const snapshot = await getDocs(q);
-      const rawData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      const groupedData = aggregateBets(rawData);
-      setBets(groupedData);
-    } catch (error) {
-      console.error("Fetch error:", error);
-      toast.error("Failed to load betting log.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const [playerInput, setPlayerInput] = useState('');
+  const [teamInput, setTeamInput] = useState('');
+  const [statusInput, setStatusInput] = useState('all');
+  const [betTypeInput, setBetTypeInput] = useState('all');
+  const [appliedFilters, setAppliedFilters] = useState({ 
+    player: '', team: '', status: 'all', betType: 'all'
+  });
 
-  useEffect(() => {
-    fetchBets();
-  }, [fetchBets]);
+  const processedBets = useMemo(() => {
+    return allBets.map(normalizeBet).sort((a, b) => {
+        const aDate = new Date(a.date || a.createdAt).getTime();
+        const bDate = new Date(b.date || b.createdAt).getTime();
+        return bDate - aDate;
+    });
+  }, [allBets]);
+
+  const handleSearch = () => {
+    setAppliedFilters({ player: playerInput, team: teamInput, status: statusInput, betType: betTypeInput });
+  };
+
+  const handleReset = () => {
+    setPlayerInput('');
+    setTeamInput('');
+    setStatusInput('all');
+    setBetTypeInput('all');
+    setAppliedFilters({ player: '', team: '', status: 'all', betType: 'all' });
+  };
 
   const filteredBets = useMemo(() => {
-    const q = searchQuery.toLowerCase().trim();
-    if (!q) return bets;
-
-    return bets.filter(bet => {
-      // Check if any leg matches the search
-      const legMatch = bet.legs?.some((leg: any) => {
-        // Check every possible field name used in both Legacy and Studio
-        const searchSpace = [
-          leg.player,
-          leg.playerteam,
-          leg.prop,
-          leg.matchup,
-          bet.betType
-        ].join(' ').toLowerCase();
-        
-        return searchSpace.includes(q);
+    if (appliedFilters.player || appliedFilters.team || appliedFilters.status !== 'all' || appliedFilters.betType !== 'all') {
+      return processedBets.filter(bet => {
+        const playerMatch = !appliedFilters.player || bet.legs.some(l => (l.player ?? "").toLowerCase().includes(appliedFilters.player.toLowerCase()));
+        const teamMatch = !appliedFilters.team || bet.legs.some(l => (l.team ?? "").toLowerCase().includes(appliedFilters.team.toLowerCase()));
+        const statusMatch = appliedFilters.status === 'all' || bet.status === appliedFilters.status;
+        const typeMatch = appliedFilters.betType === 'all' || bet.betType === appliedFilters.betType;
+        return playerMatch && teamMatch && statusMatch && typeMatch;
       });
+    } 
+    return processedBets;
+  }, [processedBets, appliedFilters]);
 
-      return legMatch || bet.status.toLowerCase().includes(q);
-    });
-  }, [bets, searchQuery]);
-
-  const stats = useMemo(() => {
-    return bets.reduce((acc, bet) => {
-      const stake = Number(bet.stake) || 0;
-      const isBonus = !!bet.isBonus || !!bet.boost;
-      let payout = 0;
-      if (bet.status === 'push') payout = stake;
-      else if (bet.status === 'won') {
-        const profit = calculateProfit(stake, bet.odds);
-        payout = isBonus ? profit : stake + profit;
-      }
-      acc.totalVolume += stake;
-      acc.totalPayout += payout;
-      acc.netProfit += (payout - (isBonus ? 0 : stake));
-      acc.betCount += 1;
-      if (bet.status === 'won') acc.winCount += 1;
-      return acc;
-    }, { totalVolume: 0, totalPayout: 0, netProfit: 0, betCount: 0, winCount: 0 });
-  }, [bets]);
-
-  const roi = stats.totalVolume > 0 ? (stats.netProfit / stats.totalVolume) * 100 : 0;
-  const winRate = stats.betCount > 0 ? (stats.winCount / stats.betCount) * 100 : 0;
-
-  const handleEdit = (bet: Bet) => {
-    setSelectedBet(bet);
-    setIsModalOpen(true);
+  const handleEditClick = (id: string) => {
+    const bet = processedBets.find(b => b.id === id);
+    if (bet) {
+      setSelectedBet(bet);
+      setIsEditOpen(true);
+    }
   };
 
-  const handleCloseModal = () => setIsModalOpen(false);
-
-  const handleSaveBet = async (updatedData: any) => {
-    // Implementation... (omitted for brevity, remains the same)
-  };
-
-  const handleDeleteBet = async (bet: Bet) => {
-    // Implementation... (omitted for brevity, remains the same)
+  const handleSave = async (updates: any) => {
+    await updateBet(updates);
+    setIsEditOpen(false);
   };
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8 text-center">
-        <div className="bg-card border border-border rounded-lg p-4">
-          <p className="text-sm text-muted-foreground">Net Profit</p>
-          <p className={`text-2xl font-bold ${stats.netProfit >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-            {stats.netProfit.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
-          </p>
-        </div>
-        <div className="bg-card border border-border rounded-lg p-4">
-          <p className="text-sm text-muted-foreground">Total Volume</p>
-          <p className="text-2xl font-bold text-white">{stats.totalVolume.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</p>
-        </div>
-        <div className="bg-card border border-border rounded-lg p-4">
-          <p className="text-sm text-muted-foreground">ROI</p>
-          <p className={`text-2xl font-bold ${roi >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{roi.toFixed(2)}%</p>
-        </div>
-        <div className="bg-card border border-border rounded-lg p-4">
-          <p className="text-sm text-muted-foreground">Win Rate</p>
-          <p className="text-2xl font-bold text-white">{winRate.toFixed(2)}%</p>
-        </div>
+    <div className="max-w-7xl mx-auto p-6 space-y-8">
+      <div>
+        <h1 className="text-2xl font-bold text-white mb-2">Betting Log</h1>
+        <p className="text-slate-400 text-sm">Track your performance and manage active plays.</p>
       </div>
 
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-black italic uppercase text-white">Betting Log</h1>
-        <div className="relative w-full max-w-xs sm:max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-          <Input
-            placeholder="Search players, teams, status..."
-            className="pl-10 bg-slate-900 border-slate-800 focus:ring-emerald-500 h-11 text-white"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
+      <BettingStats bets={processedBets} />
+
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-3 bg-slate-900/40 p-4 rounded-xl border border-slate-800/50 items-end">
+        <div className="space-y-1.5"><Label className="label-form">Player</Label><Input placeholder="Search..." value={playerInput} onChange={(e) => setPlayerInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} className="input-form" /></div>
+        <div className="space-y-1.5"><Label className="label-form">Team</Label><Input placeholder="LAL, SF..." value={teamInput} onChange={(e) => setTeamInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} className="input-form uppercase" /></div>
+        <div className="space-y-1.5"><Label className="label-form">Bet Status</Label><Select value={statusInput} onValueChange={setStatusInput}><SelectTrigger className="input-form"><SelectValue/></SelectTrigger><SelectContent className="select-content"><SelectItem value="all">All Statuses</SelectItem><SelectItem value="won">Won</SelectItem><SelectItem value="lost">Lost</SelectItem><SelectItem value="pending">Pending</SelectItem><SelectItem value="push">Push</SelectItem><SelectItem value="cashed out">Cashed Out</SelectItem></SelectContent></Select></div>
+        <div className="space-y-1.5"><Label className="label-form">Bet Type</Label><Select value={betTypeInput} onValueChange={setBetTypeInput}><SelectTrigger className="input-form"><SelectValue/></SelectTrigger><SelectContent className="select-content"><SelectItem value="all">All Types</SelectItem><SelectItem value="Single">Single</SelectItem><SelectItem value="Parlay">Parlay</SelectItem><SelectItem value="SGP">SGP</SelectItem><SelectItem value="SGPx">SGP+</SelectItem></SelectContent></Select></div>
+        <div className="flex gap-2">
+            <Button onClick={handleSearch} className="flex-1 bg-emerald-600 hover:bg-emerald-500 h-9"><Search className="h-4 w-4 mr-2"/>Filter</Button>
+            <Button variant="ghost" onClick={handleReset} className="text-slate-400 border border-slate-700 h-9 px-3"><RotateCcw className="h-4 w-4"/></Button>
         </div>
       </div>
 
       {loading ? (
-        <div className="text-center text-slate-400 py-10">Loading bets...</div>
+        <div className="text-center text-slate-400 py-10"><Loader2 className="h-6 w-6 mx-auto animate-spin"/></div>
       ) : (
-        <BetsTable bets={filteredBets} onDelete={handleDeleteBet} onEdit={handleEdit} />
+        <BetsTable 
+          bets={filteredBets} 
+          onDelete={deleteBet} 
+          onEdit={handleEditClick} 
+        />
       )}
 
-      <EditBetModal bet={selectedBet} isOpen={isModalOpen} onClose={handleCloseModal} onSave={handleSaveBet} />
+      {hasMore && (
+        <div className="flex justify-center mt-4">
+          <Button 
+            onClick={loadMore} 
+            disabled={loadingMore}
+            className="bg-slate-800 hover:bg-slate-700 text-white"
+          >
+            {loadingMore ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Loading...
+              </>
+            ) : (
+              'Load More'
+            )}
+          </Button>
+        </div>
+      )}
+
+      <EditBetModal 
+        isOpen={isEditOpen} 
+        bet={selectedBet}
+        onClose={() => setIsEditOpen(false)}
+        onSave={handleSave}
+      />
     </div>
   );
 }

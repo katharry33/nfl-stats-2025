@@ -46,7 +46,7 @@ export function BetSlip() {
   }
 
   const handleGoToStudio = () => {
-    router.push('/parlay-studio');
+    router.push('/parlay-studio?source=historical');
   };
 
   return (
