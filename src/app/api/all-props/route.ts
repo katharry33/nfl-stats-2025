@@ -1,10 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: NextRequest) {
+export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     
@@ -14,87 +14,81 @@ export async function GET(request: NextRequest) {
     const propParam = searchParams.get('prop');
     const gamedateParam = searchParams.get('gamedate');
     const matchupParam = searchParams.get('matchup');
-    
-    console.log('All-props filters:', { weekParam, teamParam, playerParam, propParam, gamedateParam, matchupParam });
+
+    console.log('--- New API Request (In-Memory Filter) ---');
+    console.log('🔍 Search Params:', { weekParam, teamParam, playerParam, propParam, gamedateParam, matchupParam });
 
     const collectionName = 'allProps_2025';
-    let query: any = adminDb.collection(collectionName);
-
-    if (weekParam && weekParam !== 'all') {
-      const weekNumber = parseInt(weekParam, 10);
-      if (!isNaN(weekNumber)) {
-        query = query.where('Week', '==', weekNumber);
-        console.log(`Filtering: Week == ${weekNumber} (number)`);
-      } else {
-        console.warn(`Invalid week number: ${weekParam}`);
-      }
-    }
-
-    if (teamParam) {
-      query = query.where('Team', '==', teamParam.toUpperCase());
-      console.log(`Filtering: Team == ${teamParam.toUpperCase()}`);
-    }
-
+    const query = adminDb.collection(collectionName);
+    
+    // 1. Fetch ALL data first
     const snapshot = await query.get();
-    console.log(`✅ Query returned: ${snapshot.size} documents for Week ${weekParam || 'all'}`);
+    console.log(`Fetched ${snapshot.size} total documents from ${collectionName}.`);
 
-    if (snapshot.size === 0) {
-      console.warn('⚠️ Zero documents returned! Check:');
-      console.warn('  - Collection name:', collectionName);
-      console.warn('  - Week filter:', weekParam ? `Week == ${parseInt(weekParam, 10)}` : 'none');
-      console.warn('  - Team filter:', teamParam ? `Team == ${teamParam.toUpperCase()}` : 'none');
-    }
-
+    // 2. Normalize and Filter in Memory
     let props = snapshot.docs.map((doc: any) => {
       const data = doc.data();
       return {
         id: doc.id,
-        Player: data.Player || data.player || 'Unknown',
-        Team: data.Team || data.team || 'N/A',
-        Prop: data.Prop || data.prop || '',
-        Line: data.Line !== undefined ? data.Line : (data.line || 0),
-        Odds: data.Odds || data.odds || -110,
-        Week: data.Week !== undefined ? data.Week : (data.week || 0),
-        Matchup: data.Matchup || data.matchup || '',
-        GameDate: data['Game Date'] || data.gamedate || data.GameDate || '',
-        player: data.Player || data.player || 'Unknown',
-        team: data.Team || data.team || 'N/A',
-        prop: data.Prop || data.prop || '',
-        line: data.Line !== undefined ? data.Line : (data.line || 0),
-        odds: data.Odds || data.odds || -110,
-        week: data.Week !== undefined ? data.Week : (data.week || 0),
-        matchup: data.Matchup || data.matchup || '',
+        ...data,
+        // Create standardized, lowercase fields for reliable filtering
+        normalizedWeek: data.Week !== undefined ? data.Week : data.week,
+        player: (data.Player || data.player || '').toLowerCase(),
+        team: (data.Team || data.team || '').toLowerCase(),
+        prop: (data.Prop || data.prop || '').toLowerCase(),
+        matchup: (data.Matchup || data.matchup || '').toLowerCase(),
         gameDate: data['Game Date'] || data.gamedate || data.GameDate || '',
       };
     });
+    
+    console.log(`Normalized ${props.length} documents.`);
 
+    // 3. Apply filters manually on the normalized data
+    
+    // Week Filter
+    if (weekParam && weekParam !== 'all') {
+      const targetWeek = parseInt(weekParam, 10);
+      if (!isNaN(targetWeek)) {
+        props = props.filter(p => p.normalizedWeek === targetWeek);
+        console.log(`After week filter (${targetWeek}): ${props.length} props remaining.`);
+      }
+    }
+
+    // Team Filter
+    if (teamParam) {
+      const searchTeam = teamParam.toLowerCase();
+      props = props.filter(p => p.team.includes(searchTeam));
+      console.log(`After team filter ("${searchTeam}"): ${props.length} props remaining.`);
+    }
+
+    // Player Filter
     if (playerParam) {
-      const playerLower = playerParam.toLowerCase();
-      props = props.filter((p: any) => 
-        (p.Player || p.player || '').toLowerCase().includes(playerLower)
-      );
+      const searchPlayer = playerParam.toLowerCase();
+      props = props.filter(p => p.player.includes(searchPlayer));
+      console.log(`After player filter ("${searchPlayer}"): ${props.length} props remaining.`);
     }
 
+    // Prop Type Filter
     if (propParam && propParam !== 'All Props') {
-      props = props.filter((p: any) => 
-        (p.Prop || p.prop || '').toLowerCase().includes(propParam.toLowerCase())
-      );
+        const searchProp = propParam.toLowerCase();
+        props = props.filter(p => p.prop.includes(searchProp));
+        console.log(`After prop filter ("${searchProp}"): ${props.length} props remaining.`);
     }
 
+    // Game Date Filter
     if (gamedateParam) {
-      props = props.filter((p: any) => 
-        (p.GameDate || p.gameDate || '').includes(gamedateParam)
-      );
+        props = props.filter(p => p.gameDate.includes(gamedateParam));
+        console.log(`After gamedate filter: ${props.length} props remaining.`);
     }
 
+    // Matchup Filter
     if (matchupParam) {
-      const matchupLower = matchupParam.toLowerCase();
-      props = props.filter((p: any) => 
-        (p.Matchup || p.matchup || '').toLowerCase().includes(matchupLower)
-      );
+        const searchMatchup = matchupParam.toLowerCase();
+        props = props.filter(p => p.matchup.includes(searchMatchup));
+        console.log(`After matchup filter: ${props.length} props remaining.`);
     }
 
-    console.log(`✅ Final result: ${props.length} props after filters`);
+    console.log(`✅ Final result: ${props.length} props after all filters.`);
 
     return NextResponse.json(props, {
       headers: {
@@ -103,6 +97,7 @@ export async function GET(request: NextRequest) {
         'Expires': '0',
       }
     });
+
   } catch (error: any) {
     console.error('All-props API error:', error);
     return NextResponse.json({ error: error.message || 'Failed to fetch props' }, { status: 500 });

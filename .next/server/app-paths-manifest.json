@@ -1,5 +1,8 @@
 {
+  "/page": "app/page.js",
   "/all-props/page": "app/all-props/page.js",
+  "/betting-log/page": "app/betting-log/page.js",
+  "/parlay-studio/page": "app/parlay-studio/page.js",
   "/favicon.ico/route": "app/favicon.ico/route.js",
   "/api/all-props/route": "app/api/all-props/route.js"
 }

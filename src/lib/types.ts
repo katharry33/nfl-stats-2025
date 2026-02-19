@@ -44,6 +44,8 @@ export interface Bet {
   parlayid?: string; // For grouping parlay bets together
 }
 
+export type BetSubmissionData = Omit<Bet, "id" | "userId" | "payout" | "createdAt">;
+
 export interface BetResult {
   won: boolean;
   payout: number;

@@ -1,7 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
-import { AppLayout } from '@/components/layout/app-layout';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,28 +8,47 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { Trash2, Calendar } from 'lucide-react';
+import { Trash2, Calendar, Edit, Calculator } from 'lucide-react';
 import { useBetSlip } from '@/context/betslip-context';
 import { calculateParlayOdds, calculatePayout } from '@/lib/utils/odds';
 import { toast } from 'sonner';
 import type { BetLeg } from '@/lib/types';
+import { useSearchParams } from 'next/navigation';
 
 export default function ParlayStudioPage() {
   const { selections, removeLeg, clearSlip, updateLeg, submitBet } = useBetSlip();
+  const searchParams = useSearchParams();
+
   const [stake, setStake] = useState('');
   const [boostPercent, setBoostPercent] = useState('0');
   const [isBonus, setIsBonus] = useState(false);
   const [betDate, setBetDate] = useState(new Date().toISOString().split('T')[0]);
   const [isLive, setIsLive] = useState(false);
   const [betType, setBetType] = useState('Parlay');
+  
+  // New state for manual odds override
+  const [manualOdds, setManualOdds] = useState<string>('');
+  const [isManualOdds, setIsManualOdds] = useState(false);
 
-  const parlayOdds = useMemo(() => {
+  useEffect(() => {
+    // If 'source' is historical, automatically enable manual odds mode
+    if (searchParams.get('source') === 'historical') {
+      setIsManualOdds(true);
+    }
+  }, [searchParams]);
+  
+  const calculatedParlayOdds = useMemo(() => {
+    if (selections.length === 0) return 0;
     const legsWithOdds = selections.map((leg: BetLeg) => leg.odds || -110);
-    return calculateParlayOdds(legsWithOdds);
+    // Round the final odds to a whole number
+    return Math.round(calculateParlayOdds(legsWithOdds));
   }, [selections]);
 
+  // Determine which odds to use
+  const parlayOdds = isManualOdds ? Number(manualOdds) : calculatedParlayOdds;
+
   const potentialPayout = useMemo(() => {
-    if (!stake) return 0;
+    if (!stake || !parlayOdds) return 0;
     return calculatePayout(Number(stake), parlayOdds, isBonus);
   }, [stake, parlayOdds, isBonus]);
 
@@ -38,6 +56,7 @@ export default function ParlayStudioPage() {
     const results = selections.map((leg: BetLeg) => leg.status || 'pending');
     if (results.every((r: string) => r === 'won')) return 'won';
     if (results.some((r: string) => r === 'lost')) return 'lost';
+    if (results.some((r: string) => r === 'push')) return 'push';
     return 'pending';
   }, [selections]);
 
@@ -46,43 +65,56 @@ export default function ParlayStudioPage() {
       toast.error('Please add selections and enter stake');
       return;
     }
+    if (isManualOdds && !manualOdds) {
+      toast.error("Please enter the odds for this historical bet.");
+      return;
+    }
 
-    await submitBet({
-      stake: Number(stake),
-      odds: parlayOdds,
-      betType: betType as any,
-      status: overallStatus as any,
-      boost: Number(boostPercent) > 0,
-      boostPercentage: Number(boostPercent),
-      isBonus,
-      isLive,
-      legs: selections,
-    });
+    try {
+      await submitBet({
+        stake: Number(stake),
+        odds: parlayOdds,
+        betType: betType as any,
+        status: overallStatus as any,
+        boost: Number(boostPercent) > 0,
+        boostPercentage: Number(boostPercent),
+        isBonus,
+        isLive,
+        legs: selections,
+      });
 
-    // Reset local page state (context state is handled in submitBet)
-    setStake('');
-    setBoostPercent('0');
-    setIsBonus(false);
-    setIsLive(false);
-    setBetDate(new Date().toISOString().split('T')[0]);
+      // Reset local page state
+      setStake('');
+      setBoostPercent('0');
+      setIsBonus(false);
+      setIsLive(false);
+      setManualOdds('');
+      setBetDate(new Date().toISOString().split('T')[0]);
+      
+      toast.success('Bet saved to betting log!');
+    } catch (error) {
+      console.error('Error saving bet:', error);
+      toast.error('Failed to save bet');
+    }
   };
 
   return (
-    <AppLayout>
-      <div className="p-6 max-w-7xl mx-auto">
+    <div className="min-h-screen bg-slate-950">
+      <div className="p-8 max-w-7xl mx-auto">
         <div className="mb-6">
           <h1 className="text-3xl font-black text-white tracking-tighter italic">PARLAY STUDIO</h1>
           <p className="text-slate-500 text-sm">Build and record your custom parlays, SGPs, and straight bets.</p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left Column - Bet Legs */}
           <div className="lg:col-span-2">
             <Card className="bg-slate-950 border-slate-800">
               <CardHeader className="border-b border-slate-800">
                 <div className="flex justify-between items-center">
-                  <CardTitle>Bet Legs ({selections.length})</CardTitle>
+                  <CardTitle className="text-white">Bet Legs ({selections.length})</CardTitle>
                   {selections.length > 0 && (
-                    <Button variant="ghost" size="sm" onClick={() => clearSlip()}>
+                    <Button variant="ghost" size="sm" onClick={() => clearSlip()} className="text-slate-400 hover:text-white">
                       Clear All
                     </Button>
                   )}
@@ -116,36 +148,50 @@ export default function ParlayStudioPage() {
                           </div>
 
                           <div className="space-y-3">
-                            <div className="p-3 bg-slate-950 rounded border border-slate-800">
-                              <p className="text-xs text-slate-500">{leg.prop}</p>
-                              <p className="text-lg font-bold text-emerald-400 font-mono">{leg.line}</p>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="p-3 bg-slate-950 rounded border border-slate-800">
+                                <p className="text-xs text-slate-500">{leg.prop}</p>
+                                <p className="text-lg font-bold text-emerald-400 font-mono">{leg.line}</p>
+                              </div>
+                              <div className="space-y-2">
+                                <Label className="text-xs text-slate-400">Odds</Label>
+                                <Input
+                                  type="number"
+                                  value={leg.odds}
+                                  placeholder="-110"
+                                  onChange={(e) => updateLeg(leg.id!, { odds: Number(e.target.value) })}
+                                  className="bg-slate-800 border-slate-700 font-mono text-white"
+                                />
+                              </div>
                             </div>
 
+                            {/* Over/Under Selection */}
                             <div className="grid grid-cols-2 gap-2 mt-2">
                               <Button 
-                                  variant={leg.selection === 'Over' ? 'default' : 'outline'}
-                                  className={leg.selection === 'Over' ? 'bg-emerald-600' : 'border-slate-700'}
-                                  onClick={() => updateLeg(leg.id, { selection: 'Over' })}
+                                onClick={() => updateLeg(leg.id!, { selection: 'Over' })}
+                                variant={leg.selection === 'Over' ? 'default' : 'outline'}
+                                className={leg.selection === 'Over' ? 'bg-emerald-600 hover:bg-emerald-700' : 'border-slate-700 text-slate-400'}
                               >
-                                  OVER
+                                OVER
                               </Button>
                               <Button 
-                                  variant={leg.selection === 'Under' ? 'default' : 'outline'}
-                                  className={leg.selection === 'Under' ? 'bg-red-600' : 'border-slate-700'}
-                                  onClick={() => updateLeg(leg.id, { selection: 'Under' })}
+                                onClick={() => updateLeg(leg.id!, { selection: 'Under' })}
+                                variant={leg.selection === 'Under' ? 'default' : 'outline'}
+                                className={leg.selection === 'Under' ? 'bg-red-600 hover:bg-red-700' : 'border-slate-700 text-slate-400'}
                               >
-                                  UNDER
+                                UNDER
                               </Button>
                             </div>
 
-                            <div className="space-y-2">
+                            {/* Result Status */}
+                            <div className="space-y-2 pt-3 border-t border-slate-800/50 mt-4">
                               <Label className="text-xs text-slate-400">Result</Label>
                               <div className="flex gap-2">
                                 <Button
                                   variant={leg.status === 'won' ? 'default' : 'outline'}
                                   size="sm"
                                   onClick={() => updateLeg(leg.id!, { status: 'won' })}
-                                  className={leg.status === 'won' ? 'bg-green-600 hover:bg-green-700' : ''}
+                                  className={`flex-1 ${leg.status === 'won' ? 'bg-green-600 hover:bg-green-700' : 'border-slate-700 text-slate-400'}`}
                                 >
                                   Win
                                 </Button>
@@ -153,7 +199,7 @@ export default function ParlayStudioPage() {
                                   variant={leg.status === 'lost' ? 'default' : 'outline'}
                                   size="sm"
                                   onClick={() => updateLeg(leg.id!, { status: 'lost' })}
-                                  className={leg.status === 'lost' ? 'bg-red-600 hover:bg-red-700' : ''}
+                                  className={`flex-1 ${leg.status === 'lost' ? 'bg-red-600 hover:bg-red-700' : 'border-slate-700 text-slate-400'}`}
                                 >
                                   Loss
                                 </Button>
@@ -161,7 +207,7 @@ export default function ParlayStudioPage() {
                                   variant={leg.status === 'pending' ? 'default' : 'outline'}
                                   size="sm"
                                   onClick={() => updateLeg(leg.id!, { status: 'pending' })}
-                                  className={leg.status === 'pending' ? 'bg-amber-600 hover:bg-amber-700' : ''}
+                                  className={`flex-1 ${leg.status === 'pending' ? 'bg-amber-600 hover:bg-amber-700' : 'border-slate-700 text-slate-400'}`}
                                 >
                                   Pending
                                 </Button>
@@ -177,10 +223,11 @@ export default function ParlayStudioPage() {
             </Card>
           </div>
 
+          {/* Right Column - Bet Details */}
           <div>
             <Card className="bg-slate-950 border-slate-800 sticky top-6">
               <CardHeader className="border-b border-slate-800">
-                <CardTitle>Bet Details</CardTitle>
+                <CardTitle className="text-white">Bet Details</CardTitle>
               </CardHeader>
               <CardContent className="pt-4 space-y-4">
                 <div className="space-y-2">
@@ -192,21 +239,27 @@ export default function ParlayStudioPage() {
                     type="date"
                     value={betDate}
                     onChange={(e) => setBetDate(e.target.value)}
-                    className="bg-slate-900 border-slate-800"
+                    className="bg-slate-900 border-slate-800 text-white"
                   />
                 </div>
 
                 <div className="space-y-2">
                   <Label className="text-xs text-slate-400">Bet Type</Label>
                   <Select value={betType} onValueChange={setBetType}>
-                      <SelectTrigger className="w-[180px] bg-emerald-500/10 border-emerald-500/20 text-emerald-500 font-bold">
-                          <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                          <SelectItem value="Straight">Straight</SelectItem>
-                          <SelectItem value="Parlay">Parlay</SelectItem>
-                          <SelectItem value="Teaser">Teaser</SelectItem>
-                      </SelectContent>
+                    <SelectTrigger className="bg-emerald-500/10 border-emerald-500/20 text-emerald-500 font-bold">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-slate-900 border-slate-700">
+                      <SelectItem value="Single">Single</SelectItem>
+                      <SelectItem value="Parlay">Parlay</SelectItem>
+                      <SelectItem value="SGP">SGP (Same Game Parlay)</SelectItem>
+                      <SelectItem value="SGPx">SGP+ (SGP Cross-Sport)</SelectItem>
+                      <SelectItem value="Anytime TD">Anytime TD</SelectItem>
+                      <SelectItem value="Moneyline">Moneyline</SelectItem>
+                      <SelectItem value="Spread">Spread</SelectItem>
+                      <SelectItem value="Round Robin">Round Robin</SelectItem>
+                      <SelectItem value="Teaser">Teaser</SelectItem>
+                    </SelectContent>
                   </Select>
                 </div>
 
@@ -216,7 +269,7 @@ export default function ParlayStudioPage() {
                     checked={isLive}
                     onCheckedChange={(checked: boolean) => setIsLive(!!checked)}
                   />
-                  <Label htmlFor="live-bet" className="text-sm cursor-pointer">Live Bet</Label>
+                  <Label htmlFor="live-bet" className="text-sm cursor-pointer text-white">Live Bet</Label>
                 </div>
 
                 <div className="space-y-2">
@@ -227,16 +280,29 @@ export default function ParlayStudioPage() {
                     placeholder="0.00"
                     value={stake}
                     onChange={(e) => setStake(e.target.value)}
-                    className="bg-slate-900 border-slate-800"
+                    className="bg-slate-900 border-slate-800 text-white"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-xs text-slate-400">Total Odds (+/-)</Label>
+                  <div className="flex justify-between items-center">
+                    <Label className="text-xs text-slate-400">Total Odds (+/-)</Label>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => setIsManualOdds(!isManualOdds)} 
+                      className="text-xs text-slate-400 hover:text-white"
+                    >
+                      {isManualOdds ? <Calculator className="h-3 w-3 mr-1"/> : <Edit className="h-3 w-3 mr-1"/>} 
+                      {isManualOdds ? 'Auto' : 'Manual'}
+                    </Button>
+                  </div>
                   <Input
                     type="number"
-                    value={parlayOdds}
-                    disabled
+                    value={isManualOdds ? manualOdds : calculatedParlayOdds}
+                    onChange={(e) => setManualOdds(e.target.value)}
+                    disabled={!isManualOdds}
+                    placeholder={isManualOdds ? "Enter odds" : "Calculated"}
                     className="bg-slate-900 border-slate-800 font-mono font-bold text-emerald-400"
                   />
                 </div>
@@ -250,7 +316,7 @@ export default function ParlayStudioPage() {
                     placeholder="0"
                     value={boostPercent}
                     onChange={(e) => setBoostPercent(e.target.value)}
-                    className="bg-slate-900 border-slate-800"
+                    className="bg-slate-900 border-slate-800 text-white"
                   />
                   <p className="text-[9px] text-slate-500">Enter percentage (e.g., 25 for 25% boost)</p>
                 </div>
@@ -263,7 +329,7 @@ export default function ParlayStudioPage() {
                     className="border-slate-600 data-[state=checked]:bg-purple-600"
                   />
                   <div className="grid gap-1 leading-none">
-                    <Label htmlFor="bonus-bet" className="text-sm cursor-pointer">Bonus Bet</Label>
+                    <Label htmlFor="bonus-bet" className="text-sm cursor-pointer text-white">Bonus Bet</Label>
                     <p className="text-[9px] text-slate-500">Profit only</p>
                   </div>
                 </div>
@@ -281,6 +347,7 @@ export default function ParlayStudioPage() {
                       <Badge className={
                         overallStatus === 'won' ? 'bg-green-500' :
                         overallStatus === 'lost' ? 'bg-red-500' :
+                        overallStatus === 'push' ? 'bg-slate-500' :
                         'bg-amber-500'
                       }>
                         {overallStatus}
@@ -291,7 +358,7 @@ export default function ParlayStudioPage() {
 
                 <Button
                   onClick={handleSave}
-                  disabled={selections.length === 0 || !stake}
+                  disabled={selections.length === 0 || !stake || (isManualOdds && !manualOdds)}
                   className="w-full bg-blue-600 hover:bg-blue-700 font-bold"
                 >
                   Save to Betting Log
@@ -304,9 +371,7 @@ export default function ParlayStudioPage() {
                   </div>
                   <div className="flex justify-between">
                     <span>Type:</span>
-                    <span className="text-white">
-                      {betType}
-                    </span>
+                    <span className="text-white">{betType}</span>
                   </div>
                 </div>
               </CardContent>
@@ -314,6 +379,6 @@ export default function ParlayStudioPage() {
           </div>
         </div>
       </div>
-    </AppLayout>
+    </div>
   );
 }

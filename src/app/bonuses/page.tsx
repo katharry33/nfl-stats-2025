@@ -2,7 +2,6 @@
 'use client';
 
 import { useState, useEffect } from "react";
-import { AppLayout } from '@/components/layout/app-layout';
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -161,8 +160,7 @@ export default function BonusesPage() {
   };
 
   return (
-    <AppLayout>
-      <div className="container mx-auto p-6 space-y-6 max-w-5xl">
+    <div className="p-8 max-w-7xl mx-auto">
         <PageHeader
           title="Manage Bonuses"
           description="Track your sportsbook bonuses, boosts, and promotions."
@@ -245,6 +243,5 @@ export default function BonusesPage() {
           </Card>
         )}
       </div>
-    </AppLayout>
   );
 }

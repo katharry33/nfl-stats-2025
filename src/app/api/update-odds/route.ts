@@ -6,8 +6,8 @@ export async function POST(request: Request) {
     const { id, totalOdds } = await request.json();
     const db = getAdminDb();
     
-    // Specifically target the document by ID in the active collection
-    await db.collection('allProps_2025').doc(id).update({
+    // Specifically target the document by ID in the bettingLog collection
+    await db.collection('bettingLog').doc(id).update({
       TotalOdds: totalOdds,
       lastUpdated: new Date().toISOString()
     });

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { Trash2 } from 'lucide-react';
 import { BetLeg } from '@/lib/types';
+import { useRouter } from 'next/navigation';
 
 // The card now receives the remove function as a prop and does not call the hook itself.
 function BetLegCard({ leg, removeFromSlip }: { leg: BetLeg; removeFromSlip: (id: string) => void }) {
@@ -33,7 +34,7 @@ function BetLegCard({ leg, removeFromSlip }: { leg: BetLeg; removeFromSlip: (id:
 
 // The main BetSlip component
 export function BetSlip() {
-  // Destructure and alias everything needed from the context in the parent.
+  const router = useRouter();
   const { 
     selections: slip, 
     removeLeg: removeFromSlip, 
@@ -44,9 +45,8 @@ export function BetSlip() {
     return null;
   }
 
-  const handlePlaceBet = () => {
-    toast.success(`Successfully placed bet with ${slip.length} leg(s)`);
-    clearSlip();
+  const handleGoToStudio = () => {
+    router.push('/parlay-studio');
   };
 
   return (
@@ -70,8 +70,8 @@ export function BetSlip() {
           <span className="text-slate-400">Total Legs</span>
           <span className="font-bold text-white">{slip.length}</span>
         </div>
-        <Button onClick={handlePlaceBet} className="w-full bg-yellow-400 text-black font-bold hover:bg-yellow-500">
-          Place Bet
+        <Button onClick={handleGoToStudio} className="w-full bg-yellow-400 text-black font-bold hover:bg-yellow-500">
+          Go to Parlay Studio
         </Button>
       </div>
     </aside>
