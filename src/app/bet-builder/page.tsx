@@ -1,31 +1,19 @@
-"use client";
-import { useBetSlip } from "@/context/betslip-context";
+// apps/web/src/app/bet-builder/page.tsx  — Server Component
+import { getPropsForWeek } from '@/lib/firestore/props';
+import { PropsTable } from '@/components/PropsTable';
 
-export default function BetBuilderPage() {
-  // Use 'selections' instead of 'legs' to match the context fix above
-  const { selections, addLeg, clearSlip } = useBetSlip();
+export default async function BetBuilderPage({
+  searchParams
+}: {
+  searchParams: { week?: string }
+}) {
+  const week = searchParams.week ? parseInt(searchParams.week) : getCurrentNFLWeek();
+  const props = await getPropsForWeek(week);
 
   return (
-    <div className="max-w-md mx-auto p-4 pb-24">
-      <h1 className="text-2xl font-bold mb-4">Bet Builder</h1>
-      
-      <div className="space-y-4">
-        {selections.map((leg) => (
-          <div key={leg.id} className="p-3 border rounded-lg bg-white shadow-sm">
-            <p className="font-bold">{leg.player}</p>
-            <p className="text-sm text-gray-500">{leg.prop}: {leg.line}</p>
-          </div>
-        ))}
-      </div>
-
-      {selections.length > 0 && (
-        <button 
-          onClick={clearSlip}
-          className="mt-4 text-red-500 text-sm font-medium"
-        >
-          Clear Selections
-        </button>
-      )}
-    </div>
+    <main>
+      <h1>Bet Builder — Week {week}</h1>
+      <PropsTable props={props} />
+    </main>
   );
 }

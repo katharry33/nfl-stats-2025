@@ -19,6 +19,7 @@ import {
   Edit, 
   MoreVertical,
   PlusCircle,
+  PlusIcon,
   ArrowUp, 
   ArrowDown
 } from 'lucide-react';
@@ -37,6 +38,7 @@ interface BetsTableProps {
   onAction?: (bet: Bet) => void;
   onDelete?: (id: string) => void;
   onEdit?: (id: string) => void;
+  isHistorical?: boolean;
 }
 
 const getStatusClass = (status: string) => {
@@ -85,7 +87,7 @@ const formatLegSelection = (leg: BetLeg) => {
   return parts.filter(p => p).join(' ');
 };
 
-export function BetsTable({ bets, onDelete, onEdit, onAction }: BetsTableProps) {
+export function BetsTable({ bets, onDelete, onEdit, onAction, isHistorical = false }: BetsTableProps) {
   const [expandedParlays, setExpandedParlays] = useState<Record<string, boolean>>({});
   const [sortConfig, setSortConfig] = useState<{ key: SortableKey; direction: SortDirection } | null>(null);
 
@@ -98,7 +100,7 @@ export function BetsTable({ bets, onDelete, onEdit, onAction }: BetsTableProps) 
 
   const sortedBets = useMemo(() => {
     let sortableItems = [...bets];
-    if (sortConfig !== null) {
+    if (sortConfig !== null && !isHistorical) {
       sortableItems.sort((a, b) => {
         let aValue: any;
         let bValue: any;
@@ -142,7 +144,7 @@ export function BetsTable({ bets, onDelete, onEdit, onAction }: BetsTableProps) 
       });
     }
     return sortableItems;
-  }, [bets, sortConfig]);
+  }, [bets, sortConfig, isHistorical]);
 
   const requestSort = (key: SortableKey) => {
     let direction: SortDirection = 'ascending';
@@ -189,6 +191,53 @@ export function BetsTable({ bets, onDelete, onEdit, onAction }: BetsTableProps) 
     return <span className={className}>{content}</span>;
   };
 
+  if (isHistorical) {
+    return (
+      <div className="border border-slate-800 rounded-xl">
+        <Table>
+          <TableHeader>
+            <TableRow className="border-slate-800 hover:bg-slate-900/75">
+              {onAction && <TableHead className="w-[50px]">Add</TableHead>}
+              <TableHead>Player</TableHead>
+              <TableHead>Prop</TableHead>
+              <TableHead>Matchup</TableHead>
+              <TableHead>Selection</TableHead>
+              <TableHead className="text-right">Odds</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {bets.map((bet) => (
+              <TableRow key={bet.id} className="border-slate-800">
+                {onAction && (
+                  <TableCell>
+                    <Button onClick={() => onAction(bet)} size="sm" variant="ghost">
+                       <PlusIcon className="w-4 h-4 text-emerald-500" />
+                    </Button>
+                  </TableCell>
+                )}
+                <TableCell className="capitalize font-medium text-white">
+                  {bet.legs[0].player}
+                </TableCell>
+                <TableCell className="capitalize text-slate-400">
+                  {bet.legs[0].prop}
+                </TableCell>
+                <TableCell className="uppercase font-mono text-xs text-slate-500">
+                  {bet.legs[0].matchup}
+                </TableCell>
+                <TableCell className="uppercase font-bold text-emerald-500">
+                  {bet.legs[0].selection} {bet.legs[0].line}
+                </TableCell>
+                <TableCell className="text-right font-mono text-slate-300">
+                  {bet.legs[0].odds > 0 ? `+${bet.legs[0].odds}` : bet.legs[0].odds}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    );
+  }
+
   return (
     <div className="border border-slate-800 rounded-xl">
       <Table>
@@ -200,9 +249,13 @@ export function BetsTable({ bets, onDelete, onEdit, onAction }: BetsTableProps) 
             <TableHead onClick={() => requestSort('gameDate')} className="cursor-pointer text-slate-400 hover:text-white"><div className='flex items-center'>Game Date {getSortIndicator('gameDate')}</div></TableHead>
             <TableHead onClick={() => requestSort('matchup')} className="cursor-pointer text-slate-400 hover:text-white"><div className='flex items-center'>Matchup {getSortIndicator('matchup')}</div></TableHead>
             <TableHead onClick={() => requestSort('odds')} className="cursor-pointer text-slate-400 hover:text-white"><div className='flex items-center'>Odds {getSortIndicator('odds')}</div></TableHead>
-            <TableHead onClick={() => requestSort('stake')} className="cursor-pointer text-slate-400 hover:text-white"><div className='flex items-center'>Stake {getSortIndicator('stake')}</div></TableHead>
-            <TableHead onClick={() => requestSort('potential')} className="cursor-pointer text-slate-400 hover:text-white"><div className='flex items-center'>Payout / Potential {getSortIndicator('potential')}</div></TableHead>
-            <TableHead onClick={() => requestSort('status')} className="cursor-pointer text-slate-400 hover:text-white"><div className='flex items-center'>Status {getSortIndicator('status')}</div></TableHead>
+            {!isHistorical && (
+              <>
+                <TableHead onClick={() => requestSort('stake')} className="cursor-pointer text-slate-400 hover:text-white"><div className='flex items-center'>Stake {getSortIndicator('stake')}</div></TableHead>
+                <TableHead onClick={() => requestSort('potential')} className="cursor-pointer text-slate-400 hover:text-white"><div className='flex items-center'>Payout / Potential {getSortIndicator('potential')}</div></TableHead>
+                <TableHead onClick={() => requestSort('status')} className="cursor-pointer text-slate-400 hover:text-white"><div className='flex items-center'>Status {getSortIndicator('status')}</div></TableHead>
+              </>
+            )}
             {showActions && <TableHead className="text-right text-slate-400">Actions</TableHead>}
           </TableRow>
         </TableHeader>
@@ -214,55 +267,63 @@ export function BetsTable({ bets, onDelete, onEdit, onAction }: BetsTableProps) 
                 <TableCell>{bet.legs.length > 1 && <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => toggleParlay(bet.id)}>{expandedParlays[bet.id] ? <ChevronDown className="h-4 w-4"/> : <ChevronRight className="h-4 w-4"/>}</Button>}</TableCell>
                 <TableCell className="font-medium text-white">{bet.legs.length > 1 ? `${bet.legs.length} Leg Parlay` : formatLegSelection(bet.legs[0])}</TableCell>
                 <TableCell className="text-slate-300">{normalizeAndFormatDate(bet)}</TableCell>
-                <TableCell className="text-slate-300">{bet.legs.length > 1 ? 'Multiple' : bet.legs[0]?.matchup ?? 'N/A'}</TableCell>
+                <TableCell className="uppercase font-mono text-slate-400">{bet.legs.length > 1 ? 'Multiple' : bet.legs[0]?.matchup ?? 'N/A'}</TableCell>
                 <TableCell className="text-slate-300">{bet.odds > 0 ? `+${bet.odds}` : bet.odds}</TableCell>
-                <TableCell className="text-slate-300">${bet.stake.toFixed(2)}</TableCell>
-                <TableCell><PayoutCell bet={bet} /></TableCell>
-                <TableCell>
-                  {bet.status === 'cashed out' ? (
-                    <div>
-                      <span className="text-amber-500 font-bold uppercase text-xs">Cashed Out</span>
-                      <div className="text-[10px] text-slate-400">
-                        ${(bet.cashedOutAmount ?? 0).toFixed(2)}
-                      </div>
-                    </div>
-                  ) : (
-                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusClass(bet.status)}`}>
-                      {bet.status}
-                    </span>
-                  )}
-                </TableCell>
+                {!isHistorical && (
+                  <>
+                    <TableCell className="text-slate-300">${bet.stake.toFixed(2)}</TableCell>
+                    <TableCell><PayoutCell bet={bet} /></TableCell>
+                    <TableCell>
+                      {bet.status === 'cashed out' ? (
+                        <div>
+                          <span className="text-amber-500 font-bold capitalize text-xs">Cashed Out</span>
+                          <div className="text-[10px] text-slate-400">
+                            ${(bet.cashedOutAmount ?? 0).toFixed(2)}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className={`px-2 py-1 rounded-full text-xs font-semibold capitalize ${getStatusClass(bet.status)}`}>
+                          {bet.status}
+                        </span>
+                      )}
+                    </TableCell>
+                  </>
+                )}
                 {showActions && <TableCell className="text-right">{(onEdit || onDelete) && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent className="bg-slate-900 border-slate-800 text-white">{onEdit && <DropdownMenuItem onClick={() => onEdit(bet.id)} className="hover:bg-slate-800"><Edit className="h-4 w-4 mr-2" /> Edit</DropdownMenuItem>}{onDelete && <DropdownMenuItem onClick={() => onDelete(bet.id)} className="text-red-500 hover:!text-red-500 hover:!bg-red-500/10"><Trash2 className="h-4 w-4 mr-2" /> Delete</DropdownMenuItem>}</DropdownMenuContent></DropdownMenu>}</TableCell>}
               </TableRow>
               {expandedParlays[bet.id] && bet.legs.map((leg, index) => (
                 <TableRow key={`${bet.id}-leg-${index}`} className="bg-slate-900/50 border-slate-800 hover:bg-slate-900/60">
                   <TableCell colSpan={showAdd ? 2 : 1} />
                   <TableCell className="pl-12 text-sm text-slate-300">
-                    <div className="font-medium text-white">{leg.player}</div>
+                    <div className="capitalize font-medium">{leg.player}</div>
                     <div>{leg.prop}</div>
                   </TableCell>
                   <TableCell className="text-xs text-slate-400">
                     {leg.gameDate ? new Date(leg.gameDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'N/A'}
                   </TableCell>
-                  <TableCell className="font-mono text-xs text-slate-400 uppercase">{leg.matchup}</TableCell>
+                  <TableCell className="uppercase font-mono text-xs text-slate-400">{leg.matchup}</TableCell>
                   <TableCell className="text-slate-300">{leg.odds > 0 ? `+${leg.odds}` : leg.odds}</TableCell>
-                  <TableCell colSpan={2}>
-                     <span className={cn(
-                      "inline-flex items-center rounded px-2 py-0.5 text-[10px] font-bold uppercase",
-                      leg.selection?.toLowerCase() === 'over' ? "bg-emerald-500/10 text-emerald-500" : "bg-red-500/10 text-red-500"
-                    )}>
-                      {leg.selection} {leg.line}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <span className={cn(
-                      "text-[10px] font-bold uppercase",
-                      leg.status === 'won' ? 'text-emerald-500' : 
-                      leg.status === 'lost' ? 'text-red-500' : 'text-slate-500'
-                    )}>
-                      {leg.status}
-                    </span>
-                  </TableCell>
+                  {!isHistorical && (
+                    <>
+                      <TableCell colSpan={2}>
+                         <span className={cn(
+                          "inline-flex items-center rounded px-2 py-0.5 text-[10px] font-bold uppercase",
+                          leg.selection?.toLowerCase() === 'over' ? "bg-emerald-500/10 text-emerald-500" : "bg-red-500/10 text-red-500"
+                        )}>
+                          <span className="uppercase font-bold text-emerald-500">{leg.selection}</span> {leg.line}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <span className={cn(
+                          "text-[10px] font-bold capitalize",
+                          leg.status === 'won' ? 'text-emerald-500' : 
+                          leg.status === 'lost' ? 'text-red-500' : 'text-slate-500'
+                        )}>
+                          {leg.status}
+                        </span>
+                      </TableCell>
+                    </>
+                  )}
                   {showActions && <TableCell></TableCell>}
                 </TableRow>
               ))}

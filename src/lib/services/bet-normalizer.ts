@@ -1,12 +1,15 @@
-import type { Bet, BetLeg } from '../types';
+import type { Bet, BetLeg, BetStatus } from '../types';
 
 /**
  * Normalizes bet and leg data to ensure consistent field names (lowercase)
  * and correct data types regardless of the source collection.
  */
 export function normalizeBet(data: any): Bet {
+  // Handle case where the bet itself might be a flat record representing a single leg
+  const isFlatRecord = !Array.isArray(data.legs) && !Array.isArray(data.Legs);
+  const rawLegs = isFlatRecord ? [data] : (data.legs || data.Legs || []);
+
   // 1. Normalize Legs first
-  const rawLegs = data.legs || data.Legs || [];
   const normalizedLegs: BetLeg[] = rawLegs.map((leg: any) => ({
     ...leg,
     id: leg.id || leg.Id || crypto.randomUUID(),
@@ -22,15 +25,18 @@ export function normalizeBet(data: any): Bet {
   }));
 
   // 2. Normalize the Top-Level Bet Object
+  const cashOutValue = data.cashedOutAmount || data.cashout;
+
   return {
     ...data,
     id: data.id || data.Id,
     userId: data.userId || data.UserId || 'dev-user',
     stake: Number(data.stake || data.Stake || 0),
     odds: Number(data.odds || data.Odds || 0),
-    betType: data.betType || data.BetType || 'Single',
-    status: (data.status || data.Status || 'pending').toLowerCase(),
+    betType: data.betType || data.BetType || (normalizedLegs.length > 1 ? 'Parlay' : 'Single'),
+    status: (data.status || data.Status || 'pending').toLowerCase() as BetStatus,
     legs: normalizedLegs,
+    cashedOutAmount: cashOutValue !== undefined ? Number(cashOutValue) : undefined,
     // Handle Firestore Timestamp vs ISO string vs Date.now()
     createdAt: data.createdAt || data.CreatedAt || Date.now(),
     updatedAt: data.updatedAt || data.UpdatedAt || null,

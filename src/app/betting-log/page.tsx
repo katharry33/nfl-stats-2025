@@ -1,11 +1,12 @@
-'use client';
+ 'use client';
 
 import { useState, useMemo } from "react";
-import { Bet, BetLeg, BetStatus } from "@/lib/types";
+import { Bet } from "@/lib/types";
 import { BetsTable } from "@/components/bets/bets-table";
 import { EditBetModal } from "@/components/bets/edit-bet-modal";
 import { useFirebaseBets } from "@/hooks/useBets"; 
 import { BettingStats } from "@/components/bets/betting-stats";
+import { normalizeBet } from "@/lib/services/bet-normalizer";
 
 import { 
   Search, 
@@ -22,43 +23,6 @@ import {
   SelectTrigger, 
   SelectValue 
 } from '@/components/ui/select';
-
-function normalizeBet(data: any): Bet {
-  const isFlatRecord = !Array.isArray(data.legs) || data.legs.length === 0;
-  const rawLegs = isFlatRecord ? [data] : data.legs;
-
-  const normalizedLegs: BetLeg[] = rawLegs.map((leg: any) => ({
-    id: leg.id || crypto.randomUUID(),
-    player: leg.player || leg.Player || 'Unknown',
-    team: leg.team || leg.Team || 'TBD',
-    prop: leg.prop || leg.Prop || '',
-    line: Number(leg.line ?? leg.Line ?? 0),
-    odds: Number(leg.odds ?? leg.Odds ?? -110),
-    selection: leg.selection || (leg.overunder === 'Over' || leg['Over/Under?'] === 'Over' ? 'Over' : 'Under'),
-    status: (leg.status || 'pending').toLowerCase(),
-    gameDate: leg.gameDate || (isFlatRecord ? data.date : null),
-    matchup: leg.matchup || (isFlatRecord ? data.matchup : 'N/A')
-  }));
-
-  const finalDate = data.manualDate || data.date;
-  const creation = data.createdAt?.seconds 
-      ? new Date(data.createdAt.seconds * 1000) 
-      : new Date(data.createdAt || data.date || Date.now());
-
-  return {
-    ...data,
-    id: data.id,
-    stake: Number(data.stake || 0),
-    odds: Number(data.odds || 0),
-    betType: data.betType || (normalizedLegs.length > 1 ? 'Parlay' : 'Single'),
-    status: (data.status || 'pending').toLowerCase() as BetStatus,
-    legs: normalizedLegs,
-    date: finalDate,
-    manualDate: data.manualDate,
-    createdAt: creation,
-    cashedOutAmount: data.cashedOutAmount || data.CashedOutAmount || undefined,
-  } as Bet;
-}
 
 export default function BettingLogPage() {
   const { 
@@ -89,6 +53,14 @@ export default function BettingLogPage() {
         return bDate - aDate;
     });
   }, [allBets]);
+  
+  const filtersAreActive = useMemo(() => 
+    appliedFilters.player || 
+    appliedFilters.team || 
+    appliedFilters.status !== 'all' || 
+    appliedFilters.betType !== 'all',
+    [appliedFilters]
+  );
 
   const handleSearch = () => {
     setAppliedFilters({ player: playerInput, team: teamInput, status: statusInput, betType: betTypeInput });
@@ -103,7 +75,7 @@ export default function BettingLogPage() {
   };
 
   const filteredBets = useMemo(() => {
-    if (appliedFilters.player || appliedFilters.team || appliedFilters.status !== 'all' || appliedFilters.betType !== 'all') {
+    if (filtersAreActive) {
       return processedBets.filter(bet => {
         const playerMatch = !appliedFilters.player || bet.legs.some(l => (l.player ?? "").toLowerCase().includes(appliedFilters.player.toLowerCase()));
         const teamMatch = !appliedFilters.team || bet.legs.some(l => (l.team ?? "").toLowerCase().includes(appliedFilters.team.toLowerCase()));
@@ -113,7 +85,7 @@ export default function BettingLogPage() {
       });
     } 
     return processedBets;
-  }, [processedBets, appliedFilters]);
+  }, [processedBets, appliedFilters, filtersAreActive]);
 
   const handleEditClick = (id: string) => {
     const bet = processedBets.find(b => b.id === id);
@@ -131,7 +103,7 @@ export default function BettingLogPage() {
   return (
     <div className="max-w-7xl mx-auto p-6 space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-white mb-2">Betting Log</h1>
+        <h1 className="text-2xl font-bold text-white mb-2">Betting Log <span className="text-slate-400 text-lg font-medium">({allBets.length} Bets)</span></h1>
         <p className="text-slate-400 text-sm">Track your performance and manage active plays.</p>
       </div>
 
@@ -158,7 +130,7 @@ export default function BettingLogPage() {
         />
       )}
 
-      {hasMore && (
+      {hasMore && !filtersAreActive && (
         <div className="flex justify-center mt-4">
           <Button 
             onClick={loadMore} 
@@ -175,7 +147,7 @@ export default function BettingLogPage() {
             )}
           </Button>
         </div>
-      )}
+    )}
 
       <EditBetModal 
         isOpen={isEditOpen} 

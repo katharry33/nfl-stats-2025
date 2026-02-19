@@ -193,7 +193,11 @@ export default function AllPropsPage() {
             ) : (
               <BetsTable 
                 bets={props} 
-                onAction={(bet: Bet) => addLeg(bet.legs[0])}
+                isHistorical={true}
+                onAction={(bet) => {
+                  addLeg(bet.legs[0]);
+                  toast.success("Leg added to parlay creator");
+                }}
               />
             )}
           </div>
