@@ -6,7 +6,7 @@ type AnyDate = FirestoreTimestamp | Date | string | number | null | undefined;
 export function resolveDate(value: AnyDate): Date | null {
   if (value == null) return null;
 
-  // Firestore Timestamp shape { seconds, nanoseconds }
+  // Firestore Timestamp { seconds, nanoseconds }
   if (typeof value === 'object' && !(value instanceof Date) && 'seconds' in value) {
     return new Date((value as FirestoreTimestamp).seconds * 1000);
   }
@@ -20,8 +20,17 @@ export function resolveDate(value: AnyDate): Date | null {
   }
 
   if (typeof value === 'string' && value.trim() !== '') {
-    // Strip Firestore's "at" connector: "January 18, 2026 at 7:00:00 AM UTC-5"
-    const cleaned = value.replace(' at ', ' ');
+    const s = value.trim();
+
+    // Pure YYYY-MM-DD from <input type="date"> — parse as LOCAL noon to avoid UTC rollback
+    // e.g. "2026-02-08" in ET would become Feb 7 UTC if parsed normally
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+      const [y, m, d] = s.split('-').map(Number);
+      return new Date(y, m - 1, d, 12, 0, 0); // local noon — never crosses day boundary
+    }
+
+    // Firestore "January 18, 2026 at 7:00:00 AM UTC-5" — strip the "at"
+    const cleaned = s.replace(' at ', ' ');
     const parsed = new Date(cleaned);
     return isNaN(parsed.getTime()) ? null : parsed;
   }
@@ -30,16 +39,15 @@ export function resolveDate(value: AnyDate): Date | null {
 }
 
 /**
- * Picks the best available date from a bet doc and formats it for display.
- * Priority: gameDate → manualDate → createdAt (app bets) → date (DK string)
- * Returns "—" if nothing resolves.
+ * Priority: gameDate → manualDate → date (DK/Legacy string) → createdAt → legs[0].gameDate
+ * Purposely puts `date` before `createdAt` for legacy bets where `date` is the actual game date.
  */
 export function formatBetDate(bet: any): string {
   const date =
     resolveDate(bet?.gameDate) ??
     resolveDate(bet?.manualDate) ??
-    resolveDate(bet?.createdAt) ??
     resolveDate(bet?.date) ??
+    resolveDate(bet?.createdAt) ??
     resolveDate(bet?.legs?.[0]?.gameDate) ??
     null;
 
@@ -53,9 +61,7 @@ export function formatBetDate(bet: any): string {
   });
 }
 
-/**
- * Returns YYYY-MM-DD string for <input type="date"> — avoids timezone shifts.
- */
+/** YYYY-MM-DD for <input type="date"> using LOCAL date parts — no UTC shift. */
 export function toDateInputValue(value: AnyDate): string {
   const date = resolveDate(value);
   if (!date) return new Date().toISOString().split('T')[0];
@@ -65,9 +71,7 @@ export function toDateInputValue(value: AnyDate): string {
   return `${y}-${m}-${d}`;
 }
 
-/**
- * Returns ms epoch from any date value — useful for sorting.
- */
+/** ms epoch for sort comparisons */
 export function resolveDateMs(value: AnyDate): number {
   return resolveDate(value)?.getTime() ?? 0;
 }

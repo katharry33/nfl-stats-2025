@@ -8,6 +8,19 @@ import { Input } from '@/components/ui/input';
 import { toDateInputValue } from '@/lib/utils/dates';
 import { getWeekFromDate } from '@/lib/utils/nfl-week';
 
+const BOOST_OPTIONS = [
+  { label: 'None', value: '' },
+  { label: '10%', value: '10' },
+  { label: '15%', value: '15' },
+  { label: '20%', value: '20' },
+  { label: '25%', value: '25' },
+  { label: '30%', value: '30' },
+  { label: '35%', value: '35' },
+  { label: '40%', value: '40' },
+  { label: '45%', value: '45' },
+  { label: '50%', value: '50' },
+];
+
 export function EditBetModal({ bet, isOpen, onClose, onSave }: any) {
   const router = useRouter();
   const [status, setStatus]                   = useState('');
@@ -20,15 +33,15 @@ export function EditBetModal({ bet, isOpen, onClose, onSave }: any) {
   const [isSaving, setIsSaving]               = useState(false);
   const [saveError, setSaveError]             = useState<string | null>(null);
 
+  const isParlay = (bet?.legs?.length ?? 0) > 1;
+
   useEffect(() => {
     if (!bet) return;
     setSaveError(null);
     setStatus(bet.status || 'pending');
-    setStake(bet.stake?.toString() || '0');
+    setStake((bet.stake ?? bet.wager ?? 0).toString());
     setCashedOutAmount(bet.cashedOutAmount?.toString() || '');
-
-    const resolvedOdds = bet.odds ?? bet.legs?.[0]?.odds ?? '';
-    setOdds(resolvedOdds.toString());
+    setOdds((bet.odds ?? bet.legs?.[0]?.odds ?? '').toString());
 
     const resolvedWeek =
       bet.week ??
@@ -37,11 +50,15 @@ export function EditBetModal({ bet, isOpen, onClose, onSave }: any) {
       '';
     setWeek(resolvedWeek?.toString() ?? '');
 
-    setBoost(bet.boostRaw?.toString() ?? bet.boost?.toString() ?? '');
+    // Boost: convert number→string for select, non-numeric string → ''
+    const rawBoost = bet.boostPct ?? bet.boostRaw ?? bet.boost ?? null;
+    const boostNum = typeof rawBoost === 'number' ? rawBoost
+      : typeof rawBoost === 'string' && /^\d+(\.\d+)?$/.test(rawBoost.trim()) ? parseFloat(rawBoost)
+      : null;
+    setBoost(boostNum !== null ? String(Math.round(boostNum)) : '');
 
-    const dateSource =
-      bet.gameDate ?? bet.manualDate ?? bet.date ??
-      bet.legs?.[0]?.gameDate ?? bet.createdAt ?? null;
+    // Date: priority gameDate → date (legacy) → createdAt
+    const dateSource = bet.gameDate ?? bet.date ?? bet.manualDate ?? bet.legs?.[0]?.gameDate ?? bet.createdAt ?? null;
     setGameDate(toDateInputValue(dateSource));
   }, [bet]);
 
@@ -59,17 +76,17 @@ export function EditBetModal({ bet, isOpen, onClose, onSave }: any) {
     try {
       const oddsNum = parseFloat(odds);
       const weekNum = parseInt(week, 10);
-      const boostVal = boost.trim();
 
       const payload: Record<string, any> = {
         id: bet.id,
         status,
         stake: parseFloat(stake) || 0,
-        gameDate,
+        gameDate,                  // YYYY-MM-DD — API parses as local noon
+        propagateToLegs: isParlay, // propagate gameDate to all legs
       };
-      if (!isNaN(oddsNum))  payload.odds  = oddsNum;
-      if (!isNaN(weekNum))  payload.week  = weekNum;
-      if (boostVal)         payload.boost = isNaN(Number(boostVal)) ? boostVal : Number(boostVal);
+      if (!isNaN(oddsNum))         payload.odds  = oddsNum;
+      if (!isNaN(weekNum))         payload.week  = weekNum;
+      if (boost)                   payload.boost = parseFloat(boost);
       if (status === 'cashed out') payload.cashedOutAmount = parseFloat(cashedOutAmount) || 0;
 
       const response = await fetch('/api/update-bet', {
@@ -84,7 +101,6 @@ export function EditBetModal({ bet, isOpen, onClose, onSave }: any) {
       router.refresh();
       onClose();
     } catch (err: any) {
-      console.error('[EditBetModal] save failed:', err);
       setSaveError(err.message ?? 'Failed to save. Please try again.');
     } finally {
       setIsSaving(false);
@@ -92,7 +108,6 @@ export function EditBetModal({ bet, isOpen, onClose, onSave }: any) {
   };
 
   if (!bet) return null;
-  const isParlay = (bet.legs?.length ?? 0) > 1;
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -102,7 +117,7 @@ export function EditBetModal({ bet, isOpen, onClose, onSave }: any) {
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          {/* Selection */}
+          {/* Selection summary */}
           <div className={`p-3 rounded-lg border ${status === 'won' ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-slate-800/50 border-slate-700'}`}>
             <p className="text-xs text-slate-400 uppercase font-bold mb-1">Selection</p>
             <p className="text-sm font-medium">
@@ -123,6 +138,7 @@ export function EditBetModal({ bet, isOpen, onClose, onSave }: any) {
           <div className="space-y-1.5 group">
             <label className="text-[10px] uppercase font-black text-slate-500 group-focus-within:text-emerald-500 transition-colors">
               Game Date
+              {isParlay && <span className="text-amber-500/70 ml-2 font-normal normal-case">(updates all legs)</span>}
             </label>
             <input
               type="date"
@@ -182,9 +198,7 @@ export function EditBetModal({ bet, isOpen, onClose, onSave }: any) {
                 {!bet.week && <span className="text-amber-500/70 ml-1 font-normal">(auto)</span>}
               </label>
               <Input
-                type="number"
-                min={1}
-                max={22}
+                type="number" min={1} max={22}
                 value={week}
                 onChange={(e) => setWeek(e.target.value)}
                 className="bg-slate-950 border-slate-800 text-white"
@@ -192,14 +206,16 @@ export function EditBetModal({ bet, isOpen, onClose, onSave }: any) {
               />
             </div>
             <div className="grid gap-1.5">
-              <label className="text-[10px] uppercase font-black text-slate-500">Boost</label>
-              <Input
-                type="text"
+              <label className="text-[10px] uppercase font-black text-slate-500">Boost %</label>
+              <select
                 value={boost}
                 onChange={(e) => setBoost(e.target.value)}
-                className="bg-slate-950 border-slate-800 text-white"
-                placeholder="25 or No Sweat"
-              />
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-sm focus:ring-1 focus:ring-emerald-500 outline-none text-white"
+              >
+                {BOOST_OPTIONS.map(o => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
             </div>
           </div>
 

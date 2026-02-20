@@ -1,65 +1,30 @@
 'use client';
 
 import { useState, useMemo } from "react";
-import { Bet } from "@/lib/types";
 import { BetsTable } from "@/components/bets/bets-table";
 import { EditBetModal } from "@/components/bets/edit-bet-modal";
 import { useFirebaseBets } from "@/hooks/useBets";
 import { BettingStats } from "@/components/bets/betting-stats";
-import { normalizeBet } from "@/lib/services/bet-normalizer";
+import { groupBets } from "@/lib/services/bet-normalizer";
 import { resolveDateMs } from "@/lib/utils/dates";
 import { Loader2 } from 'lucide-react';
 
 export default function BettingLogPage() {
-  const {
-    bets: allBets,
-    loading,
-    deleteBet,
-    updateBet,
-    loadMore,
-    hasMore,
-    loadingMore,
-  } = useFirebaseBets('dev-user');
+  const { bets: allBets, loading, deleteBet, updateBet, loadMore, hasMore, loadingMore } = useFirebaseBets('dev-user');
 
-  const [selectedBet, setSelectedBet] = useState<Bet | null>(null);
+  const [selectedBet, setSelectedBet] = useState<any>(null);
   const [isEditOpen, setIsEditOpen]   = useState(false);
   const [searchTerm, setSearchTerm]   = useState('');
   const [weekFilter, setWeekFilter]   = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [sortConfig, setSortConfig]   = useState<{ key: string; direction: 'asc' | 'desc' }>({
-    key: 'createdAt',
-    direction: 'desc',
-  });
+  const [sortConfig, setSortConfig]   = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'createdAt', direction: 'desc' });
 
   const toggleSort = (key: string) => {
-    setSortConfig(prev => ({
-      key,
-      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc',
-    }));
+    setSortConfig(prev => ({ key, direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc' }));
   };
 
-  // Group + normalize all bets — handles DK flat legs and app parlays
-  const groupedBets = useMemo(() => {
-    const groups: Record<string, any> = {};
-
-    allBets.forEach((raw: any) => {
-      const bet = normalizeBet(raw);
-
-      if (bet.legs && Array.isArray(bet.legs)) {
-        // Already a grouped document (parlay or single with legs array)
-        groups[bet.id] = bet;
-      } else {
-        // Flat leg record (some DK imports) — group by parlayid
-        const groupId = bet.parlayid || bet.id;
-        if (!groups[groupId]) {
-          groups[groupId] = { ...bet, id: groupId, legs: [] };
-        }
-        groups[groupId].legs.push(bet.legs?.[0] ?? bet);
-      }
-    });
-
-    return Object.values(groups);
-  }, [allBets]);
+  // Group flat DK leg docs + normalize app bets
+  const groupedBets = useMemo(() => groupBets(allBets), [allBets]);
 
   const processedBets = useMemo(() => {
     let filtered = [...groupedBets];
@@ -75,9 +40,8 @@ export default function BettingLogPage() {
 
     if (weekFilter !== 'all') {
       filtered = filtered.filter(b => {
-        // Check top-level week first (after normalizeBet derives it)
-        const bWeek = b.week ?? b.legs?.[0]?.week;
-        return bWeek?.toString() === weekFilter;
+        const w = b.week ?? b.legs?.[0]?.week;
+        return w?.toString() === weekFilter;
       });
     }
 
@@ -87,7 +51,6 @@ export default function BettingLogPage() {
 
     filtered.sort((a, b) => {
       let valA: any, valB: any;
-
       if (sortConfig.key === 'gameDate' || sortConfig.key === 'createdAt') {
         valA = resolveDateMs(a.gameDate ?? a.createdAt ?? a.date ?? a.legs?.[0]?.gameDate);
         valB = resolveDateMs(b.gameDate ?? b.createdAt ?? b.date ?? b.legs?.[0]?.gameDate);
@@ -98,7 +61,6 @@ export default function BettingLogPage() {
         valA = (a as any)[sortConfig.key];
         valB = (b as any)[sortConfig.key];
       }
-
       if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
       if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
       return 0;
@@ -106,17 +68,6 @@ export default function BettingLogPage() {
 
     return filtered;
   }, [groupedBets, searchTerm, weekFilter, statusFilter, sortConfig]);
-
-  const handleEditBet = (bet: any) => {
-    setSelectedBet(bet);
-    setIsEditOpen(true);
-  };
-
-  const handleDeleteBet = (id: string) => {
-    if (window.confirm('Are you sure you want to delete this bet?')) {
-      deleteBet(id);
-    }
-  };
 
   const handleSave = async (updates: any) => {
     await updateBet(updates);
@@ -129,15 +80,14 @@ export default function BettingLogPage() {
     <div className="max-w-7xl mx-auto p-6 space-y-8">
       <div>
         <h1 className="text-2xl font-bold text-white mb-2">
-          Betting Log{' '}
-          <span className="text-slate-400 text-lg font-medium">({allBets.length} Bets)</span>
+          Betting Log <span className="text-slate-400 text-lg font-medium">({allBets.length} Bets)</span>
         </h1>
         <p className="text-slate-400 text-sm">Track your performance and manage active plays.</p>
       </div>
 
-      <BettingStats bets={groupedBets} />
+      <BettingStats bets={processedBets} />
 
-      <div className="flex flex-wrap items-center gap-4 mb-6 bg-slate-900/60 p-4 rounded-xl border border-slate-800">
+      <div className="flex flex-wrap items-center gap-4 bg-slate-900/60 p-4 rounded-xl border border-slate-800">
         <input
           type="text"
           placeholder="Search player or matchup..."
@@ -177,20 +127,15 @@ export default function BettingLogPage() {
         <BetsTable
           bets={processedBets}
           isLibraryView={false}
-          onDelete={handleDeleteBet}
-          onEdit={handleEditBet}
+          onDelete={(id: string) => { if (window.confirm('Delete this bet?')) deleteBet(id); }}
+          onEdit={(bet: any) => { setSelectedBet(bet); setIsEditOpen(true); }}
           onSort={toggleSort}
         />
       )}
 
-      {/* Load More */}
       {hasMore && !activeFilters && (
         <div className="flex justify-center mt-8 pb-10">
-          <button
-            onClick={loadMore}
-            disabled={loadingMore}
-            className="bg-slate-800 hover:bg-slate-700 text-white min-w-[140px] py-2 px-4 rounded-lg"
-          >
+          <button onClick={loadMore} disabled={loadingMore} className="bg-slate-800 hover:bg-slate-700 text-white min-w-[140px] py-2 px-4 rounded-lg">
             {loadingMore ? <Loader2 className="animate-spin h-4 w-4 mx-auto" /> : 'Load More'}
           </button>
         </div>
@@ -202,12 +147,7 @@ export default function BettingLogPage() {
         </p>
       )}
 
-      <EditBetModal
-        isOpen={isEditOpen}
-        bet={selectedBet}
-        onClose={() => setIsEditOpen(false)}
-        onSave={handleSave}
-      />
+      <EditBetModal isOpen={isEditOpen} bet={selectedBet} onClose={() => setIsEditOpen(false)} onSave={handleSave} />
     </div>
   );
 }

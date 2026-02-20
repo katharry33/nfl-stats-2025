@@ -1,70 +1,143 @@
 // src/lib/services/bet-normalizer.ts
-// Normalizes both DK-imported and app-entered bets into a consistent Bet shape
 
 import { getWeekFromDate, parseLineField } from '@/lib/utils/nfl-week';
-import { resolveDate } from '@/lib/utils/dates';
 
 export function normalizeBet(raw: any): any {
-  const isLegacyOrDK = !raw.week && (raw.date || raw.parlayid || raw.bettype);
+  const gameDateRaw = raw.gameDate ?? raw.date ?? null;
 
-  // ── Derive week from date if not stored ───────────────────────────────────
   const derivedWeek =
     raw.week ??
     raw.legs?.[0]?.week ??
-    getWeekFromDate(raw.createdAt ?? raw.date ?? raw.gameDate) ??
+    getWeekFromDate(gameDateRaw ?? raw.createdAt) ??
     null;
 
-  // ── Normalize legs ────────────────────────────────────────────────────────
+  const stake = Number(raw.stake ?? raw.wager ?? 0);
+
+  const topOdds =
+    typeof raw.odds === 'string' ? parseFloat(raw.odds.replace('+', ''))
+    : typeof raw.odds === 'number' ? raw.odds
+    : null;
+
+  const status =
+    raw.status ||
+    (raw.result ? raw.result.toLowerCase() : 'pending');
+
+  const boostRaw = raw.boost ?? raw.boostpercentage ?? raw.boostPercentage ?? null;
+  const boostPct: number | null =
+    typeof boostRaw === 'number' ? boostRaw
+    : typeof boostRaw === 'string' && /^\d+(\.\d+)?$/.test(boostRaw.trim()) ? parseFloat(boostRaw)
+    : null;
+  const boostDisplay: string | null =
+    boostPct !== null ? `${boostPct}%`
+    : typeof boostRaw === 'string' && boostRaw && !['none', 'no', ''].includes(boostRaw.toLowerCase()) ? boostRaw
+    : null;
+
   const rawLegs: any[] = Array.isArray(raw.legs) ? raw.legs : [];
 
   const normalizedLegs = rawLegs.map((leg: any) => {
-    // DK bets embed Over/Under in the line field: "Under 250.5"
-    const parsed = parseLineField(leg.line ?? leg.Line);
-
-    // selection may be empty string on DK bets — fall back to parsed
+    const parsed    = parseLineField(leg.line ?? leg.Line);
     const selection = leg.selection || parsed.selection || '';
-
-    // player may be in leg.player or top-level playerteam (DK format)
-    const player = leg.player || raw.playerteam || leg.playerteam || 'Legacy Bet';
-
-    // week per leg: stored leg week → derived from bet date
-    const legWeek =
-      leg.week ??
-      getWeekFromDate(leg.gameDate ?? raw.createdAt ?? raw.date) ??
-      derivedWeek;
+    const player =
+      (!leg.player || leg.player === 'Legacy Bet')
+        ? (raw.playerteam || raw.player || 'Legacy Bet')
+        : leg.player;
+    const legOdds =
+      typeof leg.odds === 'string' ? parseFloat(leg.odds.replace('+', ''))
+      : typeof leg.odds === 'number' ? leg.odds
+      : topOdds;
+    const legStatus = leg.status || (leg.result ? leg.result.toLowerCase() : status);
+    const legWeek   = leg.week ?? getWeekFromDate(leg.gameDate ?? gameDateRaw ?? raw.createdAt) ?? derivedWeek;
 
     return {
       ...leg,
       player,
       line: parsed.line,
-      selection: selection || parsed.selection || '',
+      selection,
       week: legWeek,
-      // DK bets store odds as strings ("+850") — normalize to number
-      odds: typeof leg.odds === 'string' ? parseFloat(leg.odds.replace('+', '')) : (leg.odds ?? null),
+      matchup: leg.matchup || raw.matchup || '',
+      prop: leg.prop || raw.prop || '',
+      odds: legOdds,
+      status: legStatus,
+      gameDate: leg.gameDate ?? gameDateRaw,
     };
   });
 
-  // ── Top-level odds normalization ──────────────────────────────────────────
-  const topOdds =
-    typeof raw.odds === 'string'
-      ? parseFloat(raw.odds.replace('+', ''))
-      : (raw.odds ?? null);
-
-  // ── Boost: handle both string ("No Sweat") and number (15 → "15%") ───────
-  const boost = raw.boost ?? raw.boostpercentage ?? null;
-  const boostDisplay =
-    typeof boost === 'number'
-      ? `${boost}%`
-      : typeof boost === 'string' && boost && boost !== 'None' && boost !== 'No'
-        ? boost
-        : null;
-
   return {
     ...raw,
+    stake,
     week: derivedWeek,
     odds: topOdds,
-    boost: boostDisplay,           // normalized boost string or null
-    boostRaw: boost,               // original value for edit modal
+    status,
+    gameDate: gameDateRaw,
+    boost: boostDisplay,
+    boostPct,
+    boostRaw,
     legs: normalizedLegs,
   };
+}
+
+/**
+ * Groups Firestore documents into logical bets.
+ *
+ * KEY RULE: parlayid wins over everything.
+ *   - If a doc has a parlayid → always group with siblings by parlayid
+ *   - If a doc has no parlayid AND has a legs array → it's a self-contained app bet
+ *   - If a doc has no parlayid AND no legs → treat as a standalone single
+ */
+export function groupBets(rawDocs: any[]): any[] {
+  const groups: Record<string, any> = {};
+  const order: string[] = [];
+
+  rawDocs.forEach((raw) => {
+    const bet = normalizeBet(raw);
+
+    // ── Has parlayid → always group by it (DK/Legacy multi-leg bets) ──────
+    if (raw.parlayid) {
+      const groupId = raw.parlayid;
+
+      if (!groups[groupId]) {
+        groups[groupId] = {
+          ...bet,
+          id: groupId,
+          legs: [],
+          betType: raw.bettype || 'Parlay',
+        };
+        order.push(groupId);
+      }
+
+      const group = groups[groupId];
+
+      // Push all legs from this doc into the group
+      if (bet.legs.length > 0) {
+        group.legs.push(...bet.legs);
+      }
+
+      // Fill group-level fields from the first doc that has them
+      if (!group.stake    && bet.stake)  group.stake    = bet.stake;
+      if (!group.odds     && bet.odds)   group.odds     = bet.odds;
+      if (!group.boost    && bet.boost)  { group.boost = bet.boost; group.boostPct = bet.boostPct; }
+      if (!group.gameDate && bet.gameDate) group.gameDate = bet.gameDate;
+      if (!group.week     && bet.week)   group.week     = bet.week;
+      // Status: if any leg is "won", treat as partial; last seen wins for simplicity
+      group.status = bet.status || group.status;
+      return;
+    }
+
+    // ── No parlayid + has legs array → self-contained app bet ────────────
+    if (Array.isArray(raw.legs) && raw.legs.length > 0) {
+      if (!groups[bet.id]) {
+        groups[bet.id] = bet;
+        order.push(bet.id);
+      }
+      return;
+    }
+
+    // ── No parlayid, no legs → standalone single ──────────────────────────
+    if (!groups[bet.id]) {
+      groups[bet.id] = bet;
+      order.push(bet.id);
+    }
+  });
+
+  return order.map(id => groups[id]).filter(Boolean);
 }
