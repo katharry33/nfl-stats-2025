@@ -1,44 +1,70 @@
-import type { Bet, BetLeg, BetStatus } from '../types';
+// src/lib/services/bet-normalizer.ts
+// Normalizes both DK-imported and app-entered bets into a consistent Bet shape
 
-/**
- * Normalizes bet and leg data to ensure consistent field names (lowercase)
- * and correct data types regardless of the source collection.
- */
-export function normalizeBet(data: any): Bet {
-  // Handle case where the bet itself might be a flat record representing a single leg
-  const isFlatRecord = !Array.isArray(data.legs) && !Array.isArray(data.Legs);
-  const rawLegs = isFlatRecord ? [data] : (data.legs || data.Legs || []);
+import { getWeekFromDate, parseLineField } from '@/lib/utils/nfl-week';
+import { resolveDate } from '@/lib/utils/dates';
 
-  // 1. Normalize Legs first
-  const normalizedLegs: BetLeg[] = rawLegs.map((leg: any) => ({
-    ...leg,
-    id: leg.id || leg.Id || crypto.randomUUID(),
-    player: leg.player || leg.Player || 'Unknown',
-    team: leg.team || leg.Team || 'TBD',
-    prop: leg.prop || leg.Prop || '',
-    line: Number(leg.line || leg.Line || 0),
-    odds: Number(leg.odds || leg.Odds || -110),
-    selection: leg.selection || leg.Selection || (leg.overunder === 'Over' || leg.OverUnder === 'Over' ? 'Over' : 'Under'),
-    status: (leg.status || leg.Status || 'pending').toLowerCase(),
-    week: leg.week || leg.Week || null,
-    gameDate: leg.gameDate || leg.GameDate || null
-  }));
+export function normalizeBet(raw: any): any {
+  const isLegacyOrDK = !raw.week && (raw.date || raw.parlayid || raw.bettype);
 
-  // 2. Normalize the Top-Level Bet Object
-  const cashOutValue = data.cashedOutAmount || data.cashout;
+  // ── Derive week from date if not stored ───────────────────────────────────
+  const derivedWeek =
+    raw.week ??
+    raw.legs?.[0]?.week ??
+    getWeekFromDate(raw.createdAt ?? raw.date ?? raw.gameDate) ??
+    null;
+
+  // ── Normalize legs ────────────────────────────────────────────────────────
+  const rawLegs: any[] = Array.isArray(raw.legs) ? raw.legs : [];
+
+  const normalizedLegs = rawLegs.map((leg: any) => {
+    // DK bets embed Over/Under in the line field: "Under 250.5"
+    const parsed = parseLineField(leg.line ?? leg.Line);
+
+    // selection may be empty string on DK bets — fall back to parsed
+    const selection = leg.selection || parsed.selection || '';
+
+    // player may be in leg.player or top-level playerteam (DK format)
+    const player = leg.player || raw.playerteam || leg.playerteam || 'Legacy Bet';
+
+    // week per leg: stored leg week → derived from bet date
+    const legWeek =
+      leg.week ??
+      getWeekFromDate(leg.gameDate ?? raw.createdAt ?? raw.date) ??
+      derivedWeek;
+
+    return {
+      ...leg,
+      player,
+      line: parsed.line,
+      selection: selection || parsed.selection || '',
+      week: legWeek,
+      // DK bets store odds as strings ("+850") — normalize to number
+      odds: typeof leg.odds === 'string' ? parseFloat(leg.odds.replace('+', '')) : (leg.odds ?? null),
+    };
+  });
+
+  // ── Top-level odds normalization ──────────────────────────────────────────
+  const topOdds =
+    typeof raw.odds === 'string'
+      ? parseFloat(raw.odds.replace('+', ''))
+      : (raw.odds ?? null);
+
+  // ── Boost: handle both string ("No Sweat") and number (15 → "15%") ───────
+  const boost = raw.boost ?? raw.boostpercentage ?? null;
+  const boostDisplay =
+    typeof boost === 'number'
+      ? `${boost}%`
+      : typeof boost === 'string' && boost && boost !== 'None' && boost !== 'No'
+        ? boost
+        : null;
 
   return {
-    ...data,
-    id: data.id || data.Id,
-    userId: data.userId || data.UserId || 'dev-user',
-    stake: Number(data.stake || data.Stake || 0),
-    odds: Number(data.odds || data.Odds || 0),
-    betType: data.betType || data.BetType || (normalizedLegs.length > 1 ? 'Parlay' : 'Single'),
-    status: (data.status || data.Status || 'pending').toLowerCase() as BetStatus,
+    ...raw,
+    week: derivedWeek,
+    odds: topOdds,
+    boost: boostDisplay,           // normalized boost string or null
+    boostRaw: boost,               // original value for edit modal
     legs: normalizedLegs,
-    cashedOutAmount: cashOutValue !== undefined ? Number(cashOutValue) : undefined,
-    // Handle Firestore Timestamp vs ISO string vs Date.now()
-    createdAt: data.createdAt || data.CreatedAt || Date.now(),
-    updatedAt: data.updatedAt || data.UpdatedAt || null,
-  } as Bet;
+  };
 }

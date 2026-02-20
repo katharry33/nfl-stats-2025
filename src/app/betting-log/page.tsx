@@ -1,97 +1,120 @@
- 'use client';
+'use client';
 
 import { useState, useMemo } from "react";
 import { Bet } from "@/lib/types";
 import { BetsTable } from "@/components/bets/bets-table";
 import { EditBetModal } from "@/components/bets/edit-bet-modal";
-import { useFirebaseBets } from "@/hooks/useBets"; 
+import { useFirebaseBets } from "@/hooks/useBets";
 import { BettingStats } from "@/components/bets/betting-stats";
 import { normalizeBet } from "@/lib/services/bet-normalizer";
-
-import { 
-  Search, 
-  RotateCcw, 
-  Loader2, 
-} from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
-} from '@/components/ui/select';
+import { resolveDateMs } from "@/lib/utils/dates";
+import { Loader2 } from 'lucide-react';
 
 export default function BettingLogPage() {
-  const { 
-    bets: allBets, 
-    loading, 
-    deleteBet, 
-    updateBet, 
+  const {
+    bets: allBets,
+    loading,
+    deleteBet,
+    updateBet,
     loadMore,
     hasMore,
-    loadingMore 
+    loadingMore,
   } = useFirebaseBets('dev-user');
 
   const [selectedBet, setSelectedBet] = useState<Bet | null>(null);
-  const [isEditOpen, setIsEditOpen] = useState(false);
-
-  const [playerInput, setPlayerInput] = useState('');
-  const [teamInput, setTeamInput] = useState('');
-  const [statusInput, setStatusInput] = useState('all');
-  const [betTypeInput, setBetTypeInput] = useState('all');
-  const [appliedFilters, setAppliedFilters] = useState({ 
-    player: '', team: '', status: 'all', betType: 'all'
+  const [isEditOpen, setIsEditOpen]   = useState(false);
+  const [searchTerm, setSearchTerm]   = useState('');
+  const [weekFilter, setWeekFilter]   = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [sortConfig, setSortConfig]   = useState<{ key: string; direction: 'asc' | 'desc' }>({
+    key: 'createdAt',
+    direction: 'desc',
   });
 
-  const processedBets = useMemo(() => {
-    return allBets.map(normalizeBet).sort((a, b) => {
-        const aDate = new Date(a.date || a.createdAt).getTime();
-        const bDate = new Date(b.date || b.createdAt).getTime();
-        return bDate - aDate;
+  const toggleSort = (key: string) => {
+    setSortConfig(prev => ({
+      key,
+      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc',
+    }));
+  };
+
+  // Group + normalize all bets — handles DK flat legs and app parlays
+  const groupedBets = useMemo(() => {
+    const groups: Record<string, any> = {};
+
+    allBets.forEach((raw: any) => {
+      const bet = normalizeBet(raw);
+
+      if (bet.legs && Array.isArray(bet.legs)) {
+        // Already a grouped document (parlay or single with legs array)
+        groups[bet.id] = bet;
+      } else {
+        // Flat leg record (some DK imports) — group by parlayid
+        const groupId = bet.parlayid || bet.id;
+        if (!groups[groupId]) {
+          groups[groupId] = { ...bet, id: groupId, legs: [] };
+        }
+        groups[groupId].legs.push(bet.legs?.[0] ?? bet);
+      }
     });
+
+    return Object.values(groups);
   }, [allBets]);
-  
-  const filtersAreActive = useMemo(() => 
-    appliedFilters.player || 
-    appliedFilters.team || 
-    appliedFilters.status !== 'all' || 
-    appliedFilters.betType !== 'all',
-    [appliedFilters]
-  );
 
-  const handleSearch = () => {
-    setAppliedFilters({ player: playerInput, team: teamInput, status: statusInput, betType: betTypeInput });
-  };
+  const processedBets = useMemo(() => {
+    let filtered = [...groupedBets];
 
-  const handleReset = () => {
-    setPlayerInput('');
-    setTeamInput('');
-    setStatusInput('all');
-    setBetTypeInput('all');
-    setAppliedFilters({ player: '', team: '', status: 'all', betType: 'all' });
-  };
+    if (searchTerm) {
+      filtered = filtered.filter(b =>
+        b.legs?.some((l: any) =>
+          l.player?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          l.matchup?.toLowerCase().includes(searchTerm.toLowerCase())
+        )
+      );
+    }
 
-  const filteredBets = useMemo(() => {
-    if (filtersAreActive) {
-      return processedBets.filter(bet => {
-        const playerMatch = !appliedFilters.player || bet.legs.some(l => (l.player ?? "").toLowerCase().includes(appliedFilters.player.toLowerCase()));
-        const teamMatch = !appliedFilters.team || bet.legs.some(l => (l.team ?? "").toLowerCase().includes(appliedFilters.team.toLowerCase()));
-        const statusMatch = appliedFilters.status === 'all' || bet.status === appliedFilters.status;
-        const typeMatch = appliedFilters.betType === 'all' || bet.betType === appliedFilters.betType;
-        return playerMatch && teamMatch && statusMatch && typeMatch;
+    if (weekFilter !== 'all') {
+      filtered = filtered.filter(b => {
+        // Check top-level week first (after normalizeBet derives it)
+        const bWeek = b.week ?? b.legs?.[0]?.week;
+        return bWeek?.toString() === weekFilter;
       });
-    } 
-    return processedBets;
-  }, [processedBets, appliedFilters, filtersAreActive]);
+    }
 
-  const handleEditClick = (id: string) => {
-    const bet = processedBets.find(b => b.id === id);
-    if (bet) {
-      setSelectedBet(bet);
-      setIsEditOpen(true);
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter(b => b.status === statusFilter);
+    }
+
+    filtered.sort((a, b) => {
+      let valA: any, valB: any;
+
+      if (sortConfig.key === 'gameDate' || sortConfig.key === 'createdAt') {
+        valA = resolveDateMs(a.gameDate ?? a.createdAt ?? a.date ?? a.legs?.[0]?.gameDate);
+        valB = resolveDateMs(b.gameDate ?? b.createdAt ?? b.date ?? b.legs?.[0]?.gameDate);
+      } else if (sortConfig.key === 'week') {
+        valA = a.week ?? a.legs?.[0]?.week ?? 0;
+        valB = b.week ?? b.legs?.[0]?.week ?? 0;
+      } else {
+        valA = (a as any)[sortConfig.key];
+        valB = (b as any)[sortConfig.key];
+      }
+
+      if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
+      if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    return filtered;
+  }, [groupedBets, searchTerm, weekFilter, statusFilter, sortConfig]);
+
+  const handleEditBet = (bet: any) => {
+    setSelectedBet(bet);
+    setIsEditOpen(true);
+  };
+
+  const handleDeleteBet = (id: string) => {
+    if (window.confirm('Are you sure you want to delete this bet?')) {
+      deleteBet(id);
     }
   };
 
@@ -100,57 +123,87 @@ export default function BettingLogPage() {
     setIsEditOpen(false);
   };
 
+  const activeFilters = searchTerm || weekFilter !== 'all' || statusFilter !== 'all';
+
   return (
     <div className="max-w-7xl mx-auto p-6 space-y-8">
       <div>
-        <h1 className="text-2xl font-bold text-white mb-2">Betting Log <span className="text-slate-400 text-lg font-medium">({allBets.length} Bets)</span></h1>
+        <h1 className="text-2xl font-bold text-white mb-2">
+          Betting Log{' '}
+          <span className="text-slate-400 text-lg font-medium">({allBets.length} Bets)</span>
+        </h1>
         <p className="text-slate-400 text-sm">Track your performance and manage active plays.</p>
       </div>
 
-      <BettingStats bets={processedBets} />
+      <BettingStats bets={groupedBets} />
 
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-3 bg-slate-900/40 p-4 rounded-xl border border-slate-800/50 items-end">
-        <div className="space-y-1.5"><Label className="label-form">Player</Label><Input placeholder="Search..." value={playerInput} onChange={(e) => setPlayerInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} className="input-form" /></div>
-        <div className="space-y-1.5"><Label className="label-form">Team</Label><Input placeholder="LAL, SF..." value={teamInput} onChange={(e) => setTeamInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} className="input-form uppercase" /></div>
-        <div className="space-y-1.5"><Label className="label-form">Bet Status</Label><Select value={statusInput} onValueChange={setStatusInput}><SelectTrigger className="input-form"><SelectValue/></SelectTrigger><SelectContent className="select-content"><SelectItem value="all">All Statuses</SelectItem><SelectItem value="won">Won</SelectItem><SelectItem value="lost">Lost</SelectItem><SelectItem value="pending">Pending</SelectItem><SelectItem value="push">Push</SelectItem><SelectItem value="cashed out">Cashed Out</SelectItem></SelectContent></Select></div>
-        <div className="space-y-1.5"><Label className="label-form">Bet Type</Label><Select value={betTypeInput} onValueChange={setBetTypeInput}><SelectTrigger className="input-form"><SelectValue/></SelectTrigger><SelectContent className="select-content"><SelectItem value="all">All Types</SelectItem><SelectItem value="Single">Single</SelectItem><SelectItem value="Parlay">Parlay</SelectItem><SelectItem value="SGP">SGP</SelectItem><SelectItem value="SGPx">SGP+</SelectItem></SelectContent></Select></div>
-        <div className="flex gap-2">
-            <Button onClick={handleSearch} className="flex-1 bg-emerald-600 hover:bg-emerald-500 h-9"><Search className="h-4 w-4 mr-2"/>Filter</Button>
-            <Button variant="ghost" onClick={handleReset} className="text-slate-400 border border-slate-700 h-9 px-3"><RotateCcw className="h-4 w-4"/></Button>
-        </div>
+      <div className="flex flex-wrap items-center gap-4 mb-6 bg-slate-900/60 p-4 rounded-xl border border-slate-800">
+        <input
+          type="text"
+          placeholder="Search player or matchup..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="bg-slate-950 border border-slate-700 text-slate-200 text-xs rounded-lg px-4 py-2 w-64 focus:ring-1 focus:ring-emerald-500 outline-none"
+        />
+        <select
+          value={weekFilter}
+          onChange={(e) => setWeekFilter(e.target.value)}
+          className="bg-slate-950 border border-slate-700 text-emerald-400 text-xs rounded-lg px-3 py-2 outline-none"
+        >
+          <option value="all">ALL WEEKS</option>
+          {Array.from({ length: 22 }, (_, i) => (
+            <option key={i + 1} value={(i + 1).toString()}>WEEK {i + 1}</option>
+          ))}
+        </select>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="bg-slate-950 border border-slate-700 text-slate-300 text-xs rounded-lg px-3 py-2 outline-none"
+        >
+          <option value="all">ALL STATUS</option>
+          <option value="won">WON</option>
+          <option value="lost">LOST</option>
+          <option value="pending">PENDING</option>
+          <option value="cashed out">CASHED OUT</option>
+          <option value="void">VOID</option>
+        </select>
       </div>
 
       {loading ? (
-        <div className="text-center text-slate-400 py-10"><Loader2 className="h-6 w-6 mx-auto animate-spin"/></div>
+        <div className="text-center text-slate-400 py-10">
+          <Loader2 className="h-6 w-6 mx-auto animate-spin" />
+        </div>
       ) : (
-        <BetsTable 
-          bets={filteredBets} 
-          onDelete={deleteBet} 
-          onEdit={handleEditClick} 
+        <BetsTable
+          bets={processedBets}
+          isLibraryView={false}
+          onDelete={handleDeleteBet}
+          onEdit={handleEditBet}
+          onSort={toggleSort}
         />
       )}
 
-      {hasMore && !filtersAreActive && (
-        <div className="flex justify-center mt-4">
-          <Button 
-            onClick={loadMore} 
+      {/* Load More */}
+      {hasMore && !activeFilters && (
+        <div className="flex justify-center mt-8 pb-10">
+          <button
+            onClick={loadMore}
             disabled={loadingMore}
-            className="bg-slate-800 hover:bg-slate-700 text-white"
+            className="bg-slate-800 hover:bg-slate-700 text-white min-w-[140px] py-2 px-4 rounded-lg"
           >
-            {loadingMore ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Loading...
-              </>
-            ) : (
-              'Load More'
-            )}
-          </Button>
+            {loadingMore ? <Loader2 className="animate-spin h-4 w-4 mx-auto" /> : 'Load More'}
+          </button>
         </div>
-    )}
+      )}
 
-      <EditBetModal 
-        isOpen={isEditOpen} 
+      {!loading && allBets.length > 0 && (!hasMore || activeFilters) && (
+        <p className="text-center text-slate-500 text-xs py-10 uppercase tracking-widest">
+          {activeFilters ? `${processedBets.length} bets found` : '— All bets loaded —'}
+        </p>
+      )}
+
+      <EditBetModal
+        isOpen={isEditOpen}
         bet={selectedBet}
         onClose={() => setIsEditOpen(false)}
         onSave={handleSave}

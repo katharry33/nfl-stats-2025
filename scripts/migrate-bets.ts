@@ -1,65 +1,39 @@
-import { getAdminDb } from '@/lib/firebase/admin';
+// scripts/migrate-bets.ts
+import { config } from 'dotenv';
+import { join } from 'path';
 
-export async function normalizeBettingLog() {
-  const db = getAdminDb();
-  const bettingLogRef = db.collection('bettingLog');
+// Load .env.local from the root
+config({ path: join(process.cwd(), '.env.local') });
+
+// Using relative path to ensure it finds your existing admin initialization
+import { adminDb } from '../src/lib/firebase/admin';
+
+async function migrate() {
+  console.log("🚀 Starting migration...");
   
-  // 1. Fetch all documents from the legacy collection
-  const snapshot = await bettingLogRef.get();
-  console.log(`Found ${snapshot.size} documents to check...`);
+  try {
+    const snapshot = await adminDb.collection('bettingLog').get();
+    const batch = adminDb.batch();
+    let count = 0;
 
-  const batch = db.batch();
-  let count = 0;
+    snapshot.docs.forEach((doc) => {
+      const data = doc.data();
+      // Only stamp documents that don't have a userId
+      if (!data.userId) {
+        batch.update(doc.ref, { userId: 'dev-user' });
+        count++;
+      }
+    });
 
-  snapshot.forEach((doc) => {
-    const data = doc.data();
-    const updates: any = {};
-
-    // A. Fix User ID Mapping
-    // If the record has 'uid' but not 'userId', map it so your queries work
-    if (data.uid && !data.userId) {
-      updates.userId = data.uid;
+    if (count > 0) {
+      await batch.commit();
+      console.log(`✅ Success! Migrated ${count} bets to "dev-user".`);
+    } else {
+      console.log("ℹ️ All bets already have a userId. No changes made.");
     }
-
-    // B. Fix Schema (Legs Array)
-    // If it's a legacy flat record, wrap it into the new legs format
-    if (!data.legs || !Array.isArray(data.legs)) {
-      updates.legs = [{
-        player: data.player || 'Straight Bet',
-        prop: data.prop || '',
-        selection: data.selection || '',
-        line: data.line || '',
-        odds: Number(data.odds || 0),
-        matchup: data.matchup || '',
-        team: data.team || '',
-        status: data.status || data.result || 'pending'
-      }];
-      
-      // Clean up the top-level redundant fields if you want a clean schema
-      // updates.player = admin.firestore.FieldValue.delete();
-    }
-
-    // C. Fix Timestamp consistency
-    // If it has gameDate (string) but no createdAt (Timestamp)
-    if (data.gameDate && !data.createdAt) {
-      updates.createdAt = new Date(data.gameDate);
-    }
-
-    if (Object.keys(updates).length > 0) {
-      batch.update(doc.ref, updates);
-      count++;
-    }
-
-    // Firestore batch limit is 500
-    if (count >= 450) {
-      console.log('Batch limit approaching, consider splitting if data is huge');
-    }
-  });
-
-  if (count > 0) {
-    await batch.commit();
-    console.log(`Successfully normalized ${count} records.`);
-  } else {
-    console.log('No records required normalization.');
+  } catch (error) {
+    console.error("❌ Migration failed:", error);
   }
 }
+
+migrate();

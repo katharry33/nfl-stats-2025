@@ -1,178 +1,110 @@
+// src/hooks/useBets.ts
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { 
-  collection, 
-  query, 
-  where, 
-  onSnapshot, 
-  orderBy, 
-  limit, 
-  startAfter, 
-  getDocs, 
-  DocumentSnapshot
+import { useState, useEffect, useCallback, useRef } from 'react';
+import {
+  collection, query, orderBy, limit, startAfter,
+  getDocs, deleteDoc, doc, updateDoc, serverTimestamp,
+  DocumentSnapshot, QueryDocumentSnapshot,
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
-import { submitBet, deleteBet as deleteBetAction } from '../lib/actions/bet-actions';
-import { toast } from 'sonner';
-import type { Bet } from '../lib/types';
+import { db } from '@/lib/firebase/client';
 
-const BETS_PER_PAGE = 20;
+const PAGE_SIZE = 50;
 
-interface BetUpdatePayload {
-  id: string;
-  status?: string;
-  stake?: number;
-  manualDate?: string | Date;
-  cashedOutAmount?: number;
-}
-
-export function useFirebaseBets(userId: string | undefined) {
-  const [bets, setBets] = useState<Bet[]>([]);
-  const [loading, setLoading] = useState(true);
+export function useFirebaseBets(userId: string) {
+  const [bets, setBets]             = useState<any[]>([]);
+  const [loading, setLoading]       = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState<Error | null>(null);
-  const [lastVisible, setLastVisible] = useState<DocumentSnapshot | null>(null);
-  const [hasMore, setHasMore] = useState(true);
-  
-  const unsubscribeRef = useRef<() => void | undefined>();
+  const [hasMore, setHasMore]       = useState(true);
+  const lastDocRef = useRef<QueryDocumentSnapshot | null>(null);
 
-  useEffect(() => {
-    if (!userId) {
-      setBets([]);
-      setLoading(false);
-      setHasMore(false);
-      return;
+  const fetchBets = useCallback(async (reset = false) => {
+    if (reset) {
+      setLoading(true);
+      lastDocRef.current = null;
+    } else {
+      setLoadingMore(true);
     }
 
-    if (unsubscribeRef.current) {
-        unsubscribeRef.current();
-    }
-
-    setLoading(true);
-
-    const q = query(
-      collection(db, 'bettingLog'),
-      where('userId', '==', userId),
-      orderBy('createdAt', 'desc'),
-      limit(BETS_PER_PAGE)
-    );
-
-    unsubscribeRef.current = onSnapshot(q, 
-      (snapshot) => {
-        const betsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Bet[];
-        setBets(betsData);
-        setLastVisible(snapshot.docs[snapshot.docs.length - 1]);
-        setHasMore(snapshot.docs.length === BETS_PER_PAGE);
-        setLoading(false);
-        setError(null);
-      },
-      (err) => {
-        console.error("Error fetching bettingLog:", err);
-        setError(err as Error);
-        setLoading(false);
-      }
-    );
-
-    return () => {
-        if (unsubscribeRef.current) {
-            unsubscribeRef.current();
-        }
-    };
-  }, [userId]);
-
-  const loadMore = async () => {
-    if (!userId || !lastVisible || !hasMore) return;
-
-    setLoadingMore(true);
     try {
-      const q = query(
+      // Build query — paginate with startAfter cursor
+      let q = query(
         collection(db, 'bettingLog'),
-        where('userId', '==', userId),
         orderBy('createdAt', 'desc'),
-        startAfter(lastVisible),
-        limit(BETS_PER_PAGE)
+        limit(PAGE_SIZE)
       );
 
-      const documentSnapshots = await getDocs(q);
-      const newBets = documentSnapshots.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Bet[];
+      if (!reset && lastDocRef.current) {
+        q = query(
+          collection(db, 'bettingLog'),
+          orderBy('createdAt', 'desc'),
+          startAfter(lastDocRef.current),
+          limit(PAGE_SIZE)
+        );
+      }
 
-      setBets(prevBets => [...prevBets, ...newBets]);
-      setLastVisible(documentSnapshots.docs[documentSnapshots.docs.length - 1]);
-      setHasMore(documentSnapshots.docs.length === BETS_PER_PAGE);
+      const snapshot = await getDocs(q);
+      const newBets = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
 
+      // Update cursor for next page
+      if (snapshot.docs.length > 0) {
+        lastDocRef.current = snapshot.docs[snapshot.docs.length - 1];
+      }
+
+      // If we got fewer than PAGE_SIZE, there are no more pages
+      setHasMore(snapshot.docs.length === PAGE_SIZE);
+
+      setBets(prev => reset ? newBets : [...prev, ...newBets]);
     } catch (err) {
-      console.error("Failed to load more bets:", err);
-      setError(err as Error);
+      console.error('[useFirebaseBets] fetch error:', err);
     } finally {
+      setLoading(false);
       setLoadingMore(false);
     }
-  };
+  }, []);
 
-  const placeBet = async (betData: Partial<Bet>) => {
-    if (!userId) {
-      toast.error("Authentication required");
-      return;
-    }
-    try {
-      const result = await submitBet(userId, betData);
-      if (result.success) {
-        toast.success("Bet placed successfully!");
-      } else {
-        toast.error(result.error || "An unexpected error occurred");
-      }
-      return result;
-    } catch (err: any) {
-      toast.error(err.message || 'An unknown error occurred.');
-    }
-  };
+  // Initial load
+  useEffect(() => {
+    fetchBets(true);
+  }, [fetchBets]);
 
-  const removeBet = async (betId: string) => {
-    try {
-      const result = await deleteBetAction(betId);
-      if (result.success) {
-        toast.success("Bet deleted successfully");
-      } else {
-        toast.error(result.error || "An unexpected error occurred");
-      }
-    } catch (err: any) {
-      console.error("Failed to delete bet:", err);
-      toast.error(err.message || 'Failed to delete bet.');
-    }
-  };
+  const loadMore = useCallback(() => {
+    if (!loadingMore && hasMore) fetchBets(false);
+  }, [fetchBets, loadingMore, hasMore]);
 
-  const updateBet = async (updates: BetUpdatePayload) => {
+  const deleteBet = useCallback(async (id: string) => {
     try {
-      const payload: { [key: string]: any } = { ...updates };
-      if (payload.manualDate && payload.manualDate instanceof Date) {
-        payload.manualDate = payload.manualDate.toISOString();
-      }
-      const res = await fetch('/api/betting-log', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+      await deleteDoc(doc(db, 'bettingLog', id));
+      setBets(prev => prev.filter(b => b.id !== id));
+    } catch (err) {
+      console.error('[useFirebaseBets] delete error:', err);
+    }
+  }, []);
+
+  const updateBet = useCallback(async (updates: any) => {
+    const { id, ...rest } = updates;
+    if (!id) return;
+    try {
+      await updateDoc(doc(db, 'bettingLog', id), {
+        ...rest,
+        updatedAt: serverTimestamp(),
       });
-      const result = await res.json();
-      if (res.ok && result.success) {
-        toast.success("Bet updated successfully");
-      } else {
-        throw new Error(result.error || "Failed to update bet");
-      }
-    } catch (err: any) {
-      console.error("Update error:", err);
-      toast.error(err.message || "Failed to update bet");
+      // Optimistically update local state so UI refreshes immediately
+      setBets(prev => prev.map(b => b.id === id ? { ...b, ...rest } : b));
+    } catch (err) {
+      console.error('[useFirebaseBets] update error:', err);
+      throw err; // re-throw so modal can catch it
     }
-  };
+  }, []);
 
-  return { 
-    bets, 
-    loading, 
-    error, 
-    placeBet, 
-    deleteBet: removeBet,
+  return {
+    bets,
+    loading,
+    loadingMore,
+    hasMore,
+    deleteBet,
     updateBet,
     loadMore,
-    hasMore,
-    loadingMore
+    refresh: () => fetchBets(true),
   };
 }

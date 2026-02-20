@@ -1,19 +1,19 @@
-// apps/web/src/app/bet-builder/page.tsx  — Server Component
-import { getPropsForWeek } from '@/lib/firestore/props';
-import { PropsTable } from '@/components/PropsTable';
+// src/app/bet-builder/page.tsx
+import { getCurrentNFLWeek } from '@/hooks/useCurrentWeek';
+import { BetBuilderClient } from '@/features/bet-builder/BetBuilderClient';
 
-export default async function BetBuilderPage({
-  searchParams
-}: {
-  searchParams: { week?: string }
-}) {
-  const week = searchParams.week ? parseInt(searchParams.week) : getCurrentNFLWeek();
-  const props = await getPropsForWeek(week);
+interface PageProps {
+  searchParams: { week?: string };
+}
+
+export default function BetBuilderPage({ searchParams }: PageProps) {
+  const week = searchParams.week
+    ? parseInt(searchParams.week, 10)
+    : getCurrentNFLWeek();
 
   return (
-    <main>
-      <h1>Bet Builder — Week {week}</h1>
-      <PropsTable props={props} />
-    </main>
+    <div className="min-h-screen bg-gray-950 p-6">
+      <BetBuilderClient initialWeek={week} season={2025} />
+    </div>
   );
 }
