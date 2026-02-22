@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState, useCallback } from 'react';
 import { Edit2, Trash2, ArrowUpDown, ChevronDown } from 'lucide-react';
 import { cn, formatBetDate, calculateNetProfit } from '@/lib/utils';
@@ -185,8 +187,9 @@ export function BetsTable({
                   <td className="px-4 py-3 uppercase font-mono text-[10px] text-slate-500">
                     {isParlay ? 'MULTI' : firstLeg.matchup}
                   </td>
-                  <td className="px-4 py-3 text-sm text-slate-300 whitespace-nowrap">
-                    {formatBetDate(bet.createdAt)}
+                  <td className="px-4 py-3 text-slate-400">
+                    {/* Ensure this property name matches your DB exactly */}
+                    {formatBetDate(bet.date || bet.gameDate)} 
                   </td>
 
                   {/* Stake */}

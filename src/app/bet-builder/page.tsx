@@ -1,5 +1,5 @@
 // src/app/bet-builder/page.tsx
-import { getCurrentNFLWeek } from '@/hooks/useCurrentWeek';
+import { getCurrentNFLWeek } from '@/lib/utils/dates';
 import { BetBuilderClient } from '@/features/BetBuilderClient';
 
 interface PageProps {

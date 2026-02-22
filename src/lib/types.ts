@@ -83,6 +83,7 @@ export interface PropData {
   player?: string;
   Team?: string;
   team?: string;
+  pfrId?: string;
   Prop?: string;
   prop?: string;
   Line?: number;
@@ -109,6 +110,7 @@ export interface WeeklyProp {
   player?: string;
   Team?: string;
   team?: string;
+  pfrId?: string;
   Prop?: string;
   prop?: string;
   Line?: number;
@@ -134,13 +136,20 @@ export interface SearchCriteria {
   matchup?: string;
 }
 
-export interface ScheduleEntry {
-  id?: string;
-  week: number;
+export interface NFLSchedule {
+  id: string;
+  gameDate: string;
   homeTeam: string;
   awayTeam: string;
-  gameDate: string;
-  gameTime?: string;
+  week: number;
+}
+
+export interface PlayerStaticData {
+  id: string;
+  playerName: string;
+  pfrId: string;    // Pro Football Reference ID
+  team: string;     // Current Team
+  position: string;
 }
 
 export interface Wallet {

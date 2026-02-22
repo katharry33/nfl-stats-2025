@@ -4,9 +4,33 @@ import { BettingStats } from "@/components/bets/betting-stats";
 import { Button } from "@/components/ui/button";
 import { PlusCircle, Download } from "lucide-react";
 import Link from "next/link";
+import { Bet } from "@/lib/types";
 
 // 🚩 Force dynamic ensures we get fresh bets on every load
 export const dynamic = "force-dynamic";
+
+const serializeFirestoreTimestamps = (data: any): any => {
+  if (data === null || typeof data !== 'object') {
+    return data;
+  }
+
+  if (data.toDate && typeof data.toDate === 'function') {
+    return data.toDate().toISOString();
+  }
+
+  if (Array.isArray(data)) {
+    return data.map(serializeFirestoreTimestamps);
+  }
+
+  const serializedData: { [key: string]: any } = {};
+  for (const key in data) {
+    if (Object.prototype.hasOwnProperty.call(data, key)) {
+      serializedData[key] = serializeFirestoreTimestamps(data[key]);
+    }
+  }
+
+  return serializedData;
+};
 
 export default async function BettingLogPage() {
   // 1. Fetch data directly from Firestore on the server
@@ -17,14 +41,12 @@ export default async function BettingLogPage() {
 
   const bets = snapshot.docs.map(doc => {
     const data = doc.data();
-    return {
-      id: doc.id,
+    
+    return serializeFirestoreTimestamps({
       ...data,
-      // 🚩 CRITICAL: Convert Timestamps to ISO strings for Client Components
-      createdAt: data.createdAt?.toDate()?.toISOString() || null,
-      updatedAt: data.updatedAt?.toDate()?.toISOString() || null,
-    };
-  }) as any[];
+      id: doc.id,
+    });
+  }) as Bet[];
 
   return (
     <div className="p-6 space-y-6 max-w-[1600px] mx-auto">

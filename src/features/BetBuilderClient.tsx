@@ -4,7 +4,7 @@
 import { useRouter } from 'next/navigation';
 import { useProps } from '@/hooks/useProps';
 import { useBetSlip } from '@/hooks/useBetSlip';
-import { PropsTable } from './PropsTable';
+import PropsTable from './PropsTable'; // Corrected import
 import { BetSlipPanel } from './BetSlipPanel';
 import type { NFLProp } from '@/lib/enrichment/types';
 
@@ -66,7 +66,7 @@ export function BetBuilderClient({ initialWeek, season = 2025 }: BetBuilderClien
           propTypes={propTypes}
           teams={teams}
           isInBetSlip={isInBetSlip}
-          onAddToBetSlip={p => addToBetSlip(p as NFLProp & { id: string })}
+          onAddToBetSlip={(p: NFLProp & { id: string }) => addToBetSlip(p)}
           onRemoveFromBetSlip={removeFromBetSlip}
         />
       </div>

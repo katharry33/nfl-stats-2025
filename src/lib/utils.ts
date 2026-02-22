@@ -27,22 +27,20 @@ export function calculateNetProfit(stake: number | string, odds: number | string
 /**
  * 2. DATE UTILITIES
  */
-export function formatBetDate(dateInput: any): string {
-  if (!dateInput) return "—";
+export function formatBetDate(dateInput: any) {
+  if (!dateInput) return "—"; // Fallback for missing dates
   
-  // Handle Firestore Timestamp { seconds, nanoseconds }
-  const date = dateInput.seconds 
-    ? new Date(dateInput.seconds * 1000) 
-    : new Date(dateInput);
-
-  if (isNaN(date.getTime())) return "Invalid Date";
+  const date = new Date(dateInput);
+  
+  // Check if the date object is valid
+  if (isNaN(date.getTime())) {
+    console.warn("Invalid date received:", dateInput);
+    return "TBD"; 
+  }
 
   return new Intl.DateTimeFormat('en-US', {
     month: 'short',
     day: 'numeric',
-    year: '2-digit',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true
+    year: '2-digit'
   }).format(date);
 }

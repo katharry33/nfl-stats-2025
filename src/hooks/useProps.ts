@@ -15,9 +15,11 @@ export interface PropFilters {
   searchQuery?: string;
 }
 
+type PropWithId = NFLProp & { id: string; valueIcon?: string | null };
+
 export interface UsePropsReturn {
-  props: Array<NFLProp & { id: string }>;
-  filteredProps: Array<NFLProp & { id: string }>;
+  props: PropWithId[];
+  filteredProps: PropWithId[];
   isLoading: boolean;
   error: string | null;
   filters: PropFilters;
@@ -32,7 +34,7 @@ export interface UsePropsReturn {
 }
 
 export function useProps(week: number, season = 2025): UsePropsReturn {
-  const [props, setProps]       = useState<Array<NFLProp & { id: string }>>([]);
+  const [props, setProps]       = useState<PropWithId[]>([]);
   const [isLoading, setLoading] = useState(true);
   const [error, setError]       = useState<string | null>(null);
   const [filters, setFiltersState] = useState<PropFilters>({});
@@ -84,7 +86,7 @@ export function useProps(week: number, season = 2025): UsePropsReturn {
 
   // Apply filters + sort client-side
   const filteredProps = useMemo(() => {
-    let result = [...props];
+    let result: PropWithId[] = [...props];
 
     if (filters.prop) {
       result = result.filter(p => p.prop === filters.prop);

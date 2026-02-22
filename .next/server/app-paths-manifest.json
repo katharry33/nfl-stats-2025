@@ -1,1 +1,7 @@
-{}
+{
+  "/page": "app/page.js",
+  "/all-props/page": "app/all-props/page.js",
+  "/api/all-props/options/route": "app/api/all-props/options/route.js",
+  "/api/all-props/route": "app/api/all-props/route.js",
+  "/betting-log/page": "app/betting-log/page.js"
+}

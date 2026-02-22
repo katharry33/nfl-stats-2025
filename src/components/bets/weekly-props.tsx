@@ -1,10 +1,10 @@
 'use client';
 
-import { useBetSlip } from "../../context/betslip-context";
-import { Button } from "../../components/ui/button";
-import { Card, CardContent } from "../../components/ui/card";
+import { useBetSlip } from "@/context/betslip-context";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Plus, Trash2 } from "lucide-react";
-import { BetLeg, WeeklyProp } from "../../lib/types";
+import { BetLeg, WeeklyProp } from "@/lib/types";
 
 interface WeeklyPropsProps {
   props: WeeklyProp[];
@@ -15,28 +15,23 @@ export function WeeklyProps({ props, loading }: WeeklyPropsProps) {
   const { selections, addLeg, removeLeg } = useBetSlip();
 
   const handleToggleBet = (prop: WeeklyProp) => {
-    // Find if a leg for this specific prop already exists in the betslip.
     const existingLeg = selections.find((leg: BetLeg) => leg.propId === prop.id);
 
     if (existingLeg) {
-      // If it exists, remove it using its actual unique ID.
       removeLeg(existingLeg.id);
     } else {
-      // If it does not exist, create a new, fully-compliant BetLeg object.
       const newLeg: BetLeg = {
-        // Create a consistent, unique ID for the leg itself.
         id: `${prop.id}-${prop.overunder}`,
         propId: prop.id,
-        // Map from the WeeklyProp's PascalCase to BetLeg's camelCase.
-        player: prop.Player,
-        prop: prop.Prop,
-        line: prop.Line,
-        odds: prop.Odds,
+        player: prop.Player ?? "Unknown Player",
+        prop: prop.Prop ?? "Unknown Prop",
+        line: prop.Line ?? 0,
+        odds: prop.Odds ?? 0,
         selection: prop.overunder as 'Over' | 'Under',
         week: prop.Week,
-        team: prop.Team,
-        matchup: prop.Matchup || '',
-        gameDate: prop.GameDate,
+        team: prop.Team ?? "TBD",
+        matchup: prop.Matchup ?? '',
+        gameDate: prop.GameDate ?? '',
         source: 'weekly',
         status: 'pending'
       };
@@ -90,9 +85,9 @@ export function WeeklyProps({ props, loading }: WeeklyPropsProps) {
                   onClick={() => handleToggleBet(prop)}
                 >
                   {isInBetSlip ? (
-                    <><Trash2 className="h-4 w-4 mr-1" />Remove</>
+                    <><span className="mr-1"><Trash2 className="h-4 w-4" /></span>Remove</>
                   ) : (
-                    <><Plus className="h-4 w-4 mr-1" />Add</>
+                    <><span className="mr-1"><Plus className="h-4 w-4" /></span>Add</>
                   )}
                 </Button>
               </div>
