@@ -40,9 +40,9 @@ export async function saveProps(props: NFLProp[]): Promise<number> {
     const batch = db().batch();
     let batchCount = 0;
 
-    for (const prop of chunk) {
+    chunk.forEach(prop => {
       const key = `${prop.player}||${prop.prop}||${prop.matchup}`.toLowerCase();
-      if (existingKeys.has(key)) continue;
+      if (existingKeys.has(key)) return;
 
       batch.set(ref.doc(), {
         ...prop,
@@ -51,7 +51,7 @@ export async function saveProps(props: NFLProp[]): Promise<number> {
       });
       existingKeys.add(key);
       batchCount++;
-    }
+    });
 
     if (batchCount > 0) {
       await batch.commit();
@@ -73,9 +73,10 @@ export async function updateProps(
 
   for (let i = 0; i < updates.length; i += BATCH_SIZE) {
     const batch = db().batch();
-    for (const u of updates.slice(i, i + BATCH_SIZE)) {
+    const chunk = updates.slice(i, i + BATCH_SIZE);
+    chunk.forEach(u => {
       batch.update(ref.doc(u.id), { ...u.data, updatedAt: Timestamp.now() });
-    }
+    });
     await batch.commit();
   }
 
@@ -111,10 +112,10 @@ export async function getTopValueBets(
 export async function getPfrIdMap(): Promise<Record<string, string>> {
   const snapshot = await db().collection('pfr_id_map').get();
   const map: Record<string, string> = {};
-  for (const doc of snapshot.docs) {
+  snapshot.docs.forEach(doc => {
     const data = doc.data() as { playerName: string; pfrId: string };
     map[data.playerName] = data.pfrId;
-  }
+  });
   return map;
 }
 
@@ -125,9 +126,9 @@ export async function savePfrId(playerName: string, pfrId: string): Promise<void
 export async function getPlayerTeamMap(): Promise<Record<string, string>> {
   const snapshot = await db().collection('player_team_map').get();
   const map: Record<string, string> = {};
-  for (const doc of snapshot.docs) {
+  snapshot.docs.forEach(doc => {
     const data = doc.data() as { playerName: string; team: string };
     map[data.playerName.toLowerCase().trim()] = data.team.toUpperCase();
-  }
+  });
   return map;
 }

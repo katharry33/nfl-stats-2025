@@ -1,83 +1,84 @@
-'use client';
+"use client";
 
-import { useMemo } from 'react';
-import { Bet } from "@/lib/types";
-import { getBetPayout } from '@/lib/utils/payout';
-import { TrendingUp, TrendingDown, Target, Wallet } from "lucide-react";
+import { useMemo } from "react";
+import { TrendingUp, Target, Wallet, BarChart3 } from "lucide-react";
+import { KpiCard } from "@/features/tracker/kpi-card"; // Reusing your KpiCard
+import { calculateNetProfit } from "@/lib/utils";
+import type { Bet } from "@/lib/types";
 
-export function BettingStats({ bets }: { bets: Bet[] }) {
+interface BettingStatsProps {
+  bets: Bet[];
+}
 
+export function BettingStats({ bets }: BettingStatsProps) {
   const stats = useMemo(() => {
-    return bets.reduce((acc, bet) => {
-      const stake = Number(bet.stake || 0);
-      
-      if (bet.status === 'pending') {
-        acc.pendingStake += stake;
-        return acc;
-      }
-      
-      // Only include settled bets with a stake for profit/loss calculations
-      if (stake === 0) {
-        return acc;
-      }
-      
-      const payout = getBetPayout(bet);
+    const settledBets = bets.filter((b) => b.status !== "pending");
+    
+    let totalProfit = 0;
+    let totalStaked = 0;
+    let wins = 0;
 
-      switch (payout.type) {
-        case 'won':
-          acc.totalProfit += payout.amount;
-          acc.wins += 1;
-          acc.totalStaked += stake;
-          break;
-        case 'lost':
-          acc.totalProfit -= stake;
-          acc.losses += 1;
-          acc.totalStaked += stake;
-          break;
-        case 'cashout':
-          acc.totalProfit += (payout.amount - stake);
-          acc.totalStaked += stake;
-          if (payout.amount > stake) acc.wins += 1;
-          else if (payout.amount < stake) acc.losses += 1;
-          else acc.voids += 1;
-          break;
-        case 'void':
-          acc.voids += 1;
-          break;
-        default:
-          break;
-      }
+    settledBets.forEach((bet) => {
+      const stake = Number(bet.stake || bet.wager || 0);
+      totalStaked += stake;
+
+      const status = bet.status?.toLowerCase();
       
-      return acc;
-    }, { totalProfit: 0, wins: 0, losses: 0, voids: 0, totalStaked: 0, pendingStake: 0 });
+      if (status === "won") {
+        wins++;
+        totalProfit += calculateNetProfit(stake, bet.odds);
+      } else if (status === "lost") {
+        totalProfit -= stake;
+      } else if (status?.includes("cashed")) {
+        const cashedAmount = Number(bet.cashedOutAmount || bet.cashedAmount || 0);
+        const cashProfit = cashedAmount - stake;
+        totalProfit += cashProfit;
+        if (cashProfit > 0) wins++; // Count profitable cash-outs as wins
+      }
+    });
+
+    const winRate = settledBets.length > 0 ? (wins / settledBets.length) * 100 : 0;
+    const roi = totalStaked > 0 ? (totalProfit / totalStaked) * 100 : 0;
+
+    return {
+      totalProfit,
+      totalStaked,
+      winRate,
+      roi,
+      count: bets.length,
+    };
   }, [bets]);
 
-  const winRate = (stats.wins + stats.losses) > 0 
-    ? (stats.wins / (stats.wins + stats.losses)) * 100 
-    : 0;
-
-  const roi = stats.totalStaked > 0 
-    ? (stats.totalProfit / stats.totalStaked) * 100 
-    : 0;
-
-  const cards = [
-    { label: "Net Profit", value: `$${stats.totalProfit.toFixed(2)}`, icon: stats.totalProfit >= 0 ? TrendingUp : TrendingDown, color: stats.totalProfit >= 0 ? "text-emerald-500" : "text-red-500" },
-    { label: "Win Rate", value: `${winRate.toFixed(1)}%`, icon: Target, color: "text-blue-500" },
-    { label: "ROI", value: `${roi.toFixed(1)}%`, icon: Wallet, color: "text-yellow-500" },
-    { label: "Pending", value: `$${stats.pendingStake.toFixed(2)}`, icon: Wallet, color: "text-slate-400" },
-  ];
-
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-      {cards.map((card) => (
-        <div key={card.label} className="bg-slate-900/50 border border-slate-800 p-4 rounded-xl">
-          <div className="flex items-center gap-2 mb-1">
-            <card.icon className={`h-4 w-4 ${card.color}`} />
-            <span className="text-[10px] uppercase font-bold text-slate-500">{card.label}</span>
-          </div>
-          <p className={`text-xl font-mono font-bold ${card.color}`}>{card.value}</p>
-        </div>
-      ))}
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <KpiCard
+        title="Total Profit"
+        value={`$${stats.totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
+        icon={Wallet}
+        changeType={stats.totalProfit >= 0 ? "positive" : "negative"}
+        className={stats.totalProfit >= 0 ? "border-l-4 border-l-emerald-500" : "border-l-4 border-l-rose-500"}
+      />
+      
+      <KpiCard
+        title="Win Rate"
+        value={`${stats.winRate.toFixed(1)}%`}
+        icon={Target}
+        change={`${stats.count} Total Bets`}
+      />
+
+      <KpiCard
+        title="Total Staked"
+        value={`$${stats.totalStaked.toLocaleString()}`}
+        icon={BarChart3}
+      />
+
+      <KpiCard
+        title="Yield (ROI)"
+        value={`${stats.roi.toFixed(1)}%`}
+        icon={TrendingUp}
+        changeType={stats.roi >= 0 ? "positive" : "negative"}
+        change={stats.roi >= 0 ? "In the green" : "In the red"}
+      />
     </div>
   );
 }

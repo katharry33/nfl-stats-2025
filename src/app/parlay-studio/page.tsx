@@ -39,7 +39,7 @@ export default function ParlayStudioPage() {
   
   const calculatedParlayOdds = useMemo(() => {
     if (selections.length === 0) return 0;
-    const legsWithOdds = selections.map((leg: BetLeg) => leg.odds || -110);
+    const legsWithOdds = selections.map((leg: BetLeg) => Number(leg.odds || -110));
     // Round the final odds to a whole number
     return Math.round(calculateParlayOdds(legsWithOdds));
   }, [selections]);

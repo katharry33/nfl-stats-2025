@@ -18,16 +18,16 @@ if (!getApps().length) {
   }
 }
 
-import { getPropsForWeek, updateProps, getPfrIdMap } from '@/lib/enrichment/firestore';
-import { fetchSeasonLog, getPfrId, getStatFromGame } from '@/lib/enrichment/pfr';
-import { normalizeProp, splitComboProp } from '@/lib/enrichment/normalize';
-import { determineResult, calculateProfitLoss } from '@/lib/enrichment/scoring';
-import type { NFLProp } from '@/lib/enrichment/types';
+import { getPropsForWeek, updateProps, getPfrIdMap } from './firestore';
+import { fetchSeasonLog, getPfrId, getStatFromGame } from './pfr';
+import { normalizeProp, splitComboProp } from './normalize';
+import { determineResult, calculateProfitLoss } from './scoring';
+import type { NFLProp, PFRGame } from './types';
 
 const SEASON = 2025;
 
 async function main() {
-  const weekArg = process.argv.find(a => a.startsWith('--week='))?.split('=')[1] ?? process.env.WEEK;
+  const weekArg = process.argv.find((a: string) => a.startsWith('--week='))?.split('=')[1] ?? process.env.WEEK;
   if (!weekArg) { console.error('Usage: tsx scripts/postGame.ts --week=14'); process.exit(1); }
 
   const week = parseInt(weekArg, 10);
@@ -43,29 +43,31 @@ async function main() {
 
   console.log(`📋 ${props.length} props to process`);
 
-  const pfrCache = new Map<string, Awaited<ReturnType<typeof fetchSeasonLog>>>();
+  const pfrCache = new Map<string, PFRGame[]>();
 
-  async function getLogs(playerName: string) {
+  async function getLogs(playerName: string): Promise<PFRGame[]> {
     if (pfrCache.has(playerName)) return pfrCache.get(playerName)!;
-    const pfrId = await getPfrId(playerName, pfrIdMap);
+    const pfrId = await getPfrId(String(playerName), pfrIdMap);
     if (!pfrId) { pfrCache.set(playerName, []); return []; }
     const logs = await fetchSeasonLog(playerName, pfrId, SEASON);
     pfrCache.set(playerName, logs);
     return logs;
   }
 
-  // Track standard stats for combo calculation
-  const gameStatMap = new Map<string, number>(); // "player||propNorm" → stat
+  const playerSet = new Set(props.map((p: NFLProp) => p.player));
+  console.log(`Fetching data for ${playerSet.size} unique players...`);
+  await Promise.all(Array.from(playerSet).map((player: string) => getLogs(player)));
+
+  const gameStatMap = new Map<string, number>();
   const updates: Array<{ id: string; season: number; week: number; data: Partial<NFLProp> }> = [];
 
-  // Pass 1 — Standard props
-  for (const prop of props) {
+  for (const prop of props as NFLProp[]) {
     if (!prop.id) continue;
     const propNorm = normalizeProp(prop.prop);
     if (propNorm.includes('+')) continue;
 
     const logs = await getLogs(prop.player);
-    const game = logs.find(g => g.week === week);
+    const game = logs.find((g: PFRGame) => g.week === week);
     if (!game) { console.warn(`⚠️  No game: ${prop.player} Week ${week}`); continue; }
 
     const stat = getStatFromGame(game, propNorm);
@@ -88,9 +90,8 @@ async function main() {
 
   console.log(`✅ Pass 1 (standard): ${updates.length} props`);
 
-  // Pass 2 — Combo props
   let comboCount = 0;
-  for (const prop of props) {
+  for (const prop of props as NFLProp[]) {
     if (!prop.id) continue;
     const propNorm = normalizeProp(prop.prop);
     if (!propNorm.includes('+')) continue;
@@ -98,10 +99,12 @@ async function main() {
     const components = splitComboProp(propNorm);
     if (!components) continue;
 
-    const stats = components.map(c => gameStatMap.get(`${prop.player}||${c}`));
-    if (stats.some(s => s === undefined)) continue;
+    const stats = components.map((c: string) => gameStatMap.get(`${prop.player}||${c}`));
+    if (stats.some((s: number | undefined) => s === undefined)) continue;
 
-    const combinedStat = Math.round(stats.reduce((s, v) => (s ?? 0) + (v ?? 0), 0)! * 10) / 10;
+    const validStats = stats as number[];
+    const combinedStat = Math.round(validStats.reduce((acc: number, val: number) => acc + val, 0) * 10) / 10;
+    
     const update: Partial<NFLProp> = { gameStat: combinedStat };
 
     if (prop.overUnder) {
@@ -118,11 +121,11 @@ async function main() {
 
   console.log(`✅ Pass 2 (combos): ${comboCount} props`);
 
-  if (.length > 0) await updateProps(updates);
+  if (updates.length > 0) await updateProps(updates);
 
-  const wins   = updates.filter(u => u.data.actualResult === 'Win').length;
-  const losses = updates.filter(u => u.data.actualResult === 'Loss').length;
-  const pushes = updates.filter(u => u.data.actualResult === 'Push').length;
+  const wins   = updates.filter((u: any) => u.data.actualResult === 'Win').length;
+  const losses = updates.filter((u: any) => u.data.actualResult === 'Loss').length;
+  const pushes = updates.filter((u: any) => u.data.actualResult === 'Push').length;
 
   console.log('\n' + '='.repeat(50));
   console.log(`✅ Done: ${updates.length} props updated`);

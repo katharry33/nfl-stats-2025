@@ -1,6 +1,1 @@
-{
-  "/betting-log/page": "app/betting-log/page.js",
-  "/favicon.ico/route": "app/favicon.ico/route.js",
-  "/api/betting-log/route": "app/api/betting-log/route.js",
-  "/_not-found/page": "app/_not-found/page.js"
-}
+{}

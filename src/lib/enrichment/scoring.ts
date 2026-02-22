@@ -1,6 +1,8 @@
 // src/lib/enrichment/scoring.ts
 // Port of the spreadsheet formula columns L–AB
 
+import { calculateNetProfit } from '../utils';
+
 export interface ScoringInput {
     playerAvg: number;
     opponentRank: number;
@@ -117,11 +119,15 @@ export interface ScoringInput {
   export function calculateProfitLoss(
     result: 'Win' | 'Loss' | 'Push',
     betAmount: number,
-    odds: number
+    odds: number | string
   ): number {
-    if (result === 'Win') return odds > 0 ? betAmount * (odds / 100) : betAmount * (100 / Math.abs(odds));
-    if (result === 'Loss') return -betAmount;
-    return 0;
+    if (result === 'Win') {
+      return calculateNetProfit(betAmount, odds);
+    }
+    if (result === 'Loss') {
+      return -betAmount;
+    }
+    return 0; // Push
   }
   
   function getKellyCap(propNorm: string): number {

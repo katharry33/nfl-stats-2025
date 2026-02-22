@@ -1,3 +1,4 @@
+
 // src/lib/enrichment/types.ts
 
 export interface NFLProp {
@@ -12,70 +13,53 @@ export interface NFLProp {
     prop: string;
     line: number;
   
-    // Odds
-    fdOdds?: number | null;
-    dkOdds?: number | null;
-    bestOdds?: number | null;
+    // Odds - Widened to allow string for resilient importing
+    fdOdds?: number | string | null;
+    dkOdds?: number | string | null;
+    bestOdds?: number | string | null;
     bestBook?: string | null;
   
-    // Enriched — Player stats
-    playerAvg?: number | null;
-    opponentRank?: number | null;
-    opponentAvgVsStat?: number | null;
-    seasonHitPct?: number | null;
-    overUnder?: string | null;
-  
-    // Enriched — Scoring model
-    yardsScore?: number | null;
-    rankScore?: number | null;
-    totalScore?: number | null;
-    scoreDiff?: number | null;
-    adjustedScore?: number | null;
-    expFunction?: number | null;
-    projWinPct?: number | null;
-    avgWinProb?: number | null;
-  
-    // Enriched — Value metrics
-    bestImpliedProb?: number | null;
-    bestEdgePct?: number | null;
-    bestEV?: number | null;
-    bestKellyPct?: number | null;
-    valueIcon?: string | null;
+    // Projections & Grades
+    pinnacleClosingLine?: number | null; // e.g. -115
+    pinnacleClosingOdds?: number | null;
+    projection?: number | null;
+    grade?: number | null; // 1-100 scale
+    confidence?: number | null; // 1-100 scale
     confidenceScore?: number | null;
+    expectedValue?: number | null;
+    bestEdge?: string | null;
+    bestEdgePct?: number | null;
+    overUnder?: 'Over' | 'Under' | null;
   
     // Post-game
     gameStat?: number | null;
     actualResult?: 'Win' | 'Loss' | 'Push' | null;
     betAmount?: number | null;
     profitLoss?: number | null;
-    betStatus?: string | null;
-    parlayId?: string | null;
-    notes?: string | null;
-  
-    createdAt?: Date;
-    updatedAt?: Date;
-  }
-  
-  export interface PFRGame {
+    gradedBy?: string | null;
+    gradedAt?: string | null;
+
+    // Metadata
+    createdAt?: any; // Allow Timestamp
+    updatedAt?: any; // Allow Timestamp
+}
+
+// From Pro-Football-Reference
+export interface PFRGame {
     week: number;
     date: string;
+    opponent: string;
+    result: string;
+    passCmp: number;
     passAtt: number;
     passYds: number;
-    passTds: number;
-    passCmp: number;
+    passTD: number;
+    interceptions: number;
     rushAtt: number;
     rushYds: number;
-    rushTds: number;
+    rushTD: number;
     receptions: number;
     recYds: number;
-    recTds: number;
-  }
-  
-  export interface DefenseStats {
-    rank: number;
-    avg: number;
-  }
-  
-  export interface DefenseMap {
-    [key: string]: DefenseStats; // "propNorm||TEAM_ABBR"
-  }
+    recTD: number;
+    [key: string]: string | number; // For dynamic access
+}

@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Edit2, Trash2, ArrowUpDown, ChevronDown } from 'lucide-react';
-import { formatBetDate } from '@/lib/utils/dates';
-import { getBetPayout, formatPayout } from '@/lib/utils/payout';
+import { cn, formatBetDate, calculateNetProfit } from '@/lib/utils';
 
 // Helper Component 1: StatusBadge
 function StatusBadge({ status }: { status?: string }) {
@@ -23,22 +22,92 @@ function StatusBadge({ status }: { status?: string }) {
 
 // Helper Component 2: PayoutCell
 function PayoutCell({ bet }: { bet: any }) {
-  const payout = getBetPayout(bet);
-  const colorClass =
-    payout.type === 'won'     ? 'text-emerald-400' :
-    payout.type === 'cashout' ? 'text-amber-400'   :
-    payout.type === 'lost'    ? 'text-slate-500'   :
-    payout.type === 'pending' ? 'text-slate-400'   :
-                                'text-slate-500';
-  const strikethrough = payout.type === 'lost' ? 'line-through' : '';
-  return (
-    <div>
-      <div className={`font-mono text-xs font-semibold ${colorClass} ${strikethrough}`}>
-        {formatPayout(payout)}
+  const stake = Number(bet.stake || bet.wager || 0);
+  if (stake === 0) {
+    return (
+      <div>
+        <div className="text-slate-600">-</div>
+        <div className="text-[10px] text-slate-600 uppercase tracking-wide">NO STAKE</div>
       </div>
-      <div className="text-[10px] text-slate-600 uppercase tracking-wide">{payout.label}</div>
-    </div>
-  );
+    );
+  }
+
+  const status = (bet.status || '').toLowerCase();
+
+  switch (status) {
+    case 'won': {
+      const profit = calculateNetProfit(stake, bet.odds);
+      const payout = stake + profit;
+      return (
+        <div>
+          <div className="font-mono text-xs font-semibold text-emerald-400">
+            ${payout.toFixed(2)}
+          </div>
+          <div className="text-[10px] text-slate-600 uppercase tracking-wide">
+            +${profit.toFixed(2)} PROFIT
+          </div>
+        </div>
+      );
+    }
+    case 'lost': {
+      return (
+        <div>
+          <div className="font-mono text-xs font-semibold text-slate-500 line-through">
+            ${stake.toFixed(2)}
+          </div>
+          <div className="text-[10px] text-slate-600 uppercase tracking-wide">
+            -${stake.toFixed(2)} LOSS
+          </div>
+        </div>
+      );
+    }
+    case 'cashed out':
+    case 'cashed': {
+      const cashedAmount = Number(bet.cashedOutAmount || bet.cashedAmount || 0);
+      const profit = cashedAmount - stake;
+      return (
+        <div>
+          <div className="font-mono text-xs font-semibold text-amber-400">
+            ${cashedAmount.toFixed(2)}
+          </div>
+          <div className={cn(
+            "text-[10px] uppercase tracking-wide",
+            profit >= 0 ? "text-emerald-500" : "text-rose-500"
+          )}>
+            {profit >= 0 ? '+' : ''}${profit.toFixed(2)} NET
+          </div>
+        </div>
+      );
+    }
+    case 'void':
+    case 'push': {
+      return (
+        <div>
+          <div className="font-mono text-xs font-semibold text-slate-500">
+            ${stake.toFixed(2)}
+          </div>
+          <div className="text-[10px] text-slate-600 uppercase tracking-wide">
+            PUSH/VOID
+          </div>
+        </div>
+      );
+    }
+    case 'pending':
+    default: {
+      const profit = calculateNetProfit(stake, bet.odds);
+      const payout = stake + profit;
+      return (
+        <div>
+          <div className="font-medium text-slate-400">
+            ${payout.toFixed(2)}
+          </div>
+          <div className="text-[10px] text-slate-500 uppercase font-bold">
+            Profit: ${profit.toFixed(2)}
+          </div>
+        </div>
+      );
+    }
+  }
 }
 
 
@@ -57,7 +126,7 @@ export function BetsTable({
 }) {
   const [expandedParlays, setExpandedParlays] = useState<Set<string>>(new Set());
 
-  const toggleParlay = (betId: string) => {
+  const toggleParlay = useCallback((betId: string) => {
     setExpandedParlays(prev => {
       const newSet = new Set(prev);
       if (newSet.has(betId)) {
@@ -67,7 +136,7 @@ export function BetsTable({
       }
       return newSet;
     });
-  };
+  }, []);
 
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-hidden">
@@ -117,7 +186,7 @@ export function BetsTable({
                     {isParlay ? 'MULTI' : firstLeg.matchup}
                   </td>
                   <td className="px-4 py-3 text-sm text-slate-300 whitespace-nowrap">
-                    {formatBetDate(bet)}
+                    {formatBetDate(bet.createdAt)}
                   </td>
 
                   {/* Stake */}

@@ -1,0 +1,1 @@
+export const MOCK_BETS = []; // Just an empty array to stop the compiler error
