@@ -32,7 +32,21 @@ export function normalizeBet(raw: any): any {
     : typeof boostRaw === 'string' && boostRaw && !['none', 'no', ''].includes(boostRaw.toLowerCase()) ? boostRaw
     : null;
 
-  const rawLegs: any[] = Array.isArray(raw.legs) ? raw.legs : [];
+  let rawLegs: any[] = Array.isArray(raw.legs) ? raw.legs : [];
+
+  // FIX: If it's a flat leg (no legs array), create a synthetic leg
+  if (rawLegs.length === 0) {
+    const parsed = parseLineField(raw.line ?? '');
+    rawLegs = [{
+      ...raw,
+      player: raw.playerteam || raw.player || 'Legacy Bet',
+      prop: raw.prop || '',
+      line: parsed.line,
+      selection: raw.selection || parsed.selection || '',
+      status: raw.result?.toLowerCase() || raw.status || 'pending',
+      gameDate: raw.date || raw.createdAt,
+    }];
+  }
 
   const normalizedLegs = rawLegs.map((leg: any) => {
     const parsed    = parseLineField(leg.line ?? leg.Line);
@@ -76,67 +90,40 @@ export function normalizeBet(raw: any): any {
   };
 }
 
-/**
- * Groups Firestore documents into logical bets.
- *
- * KEY RULE: parlayid wins over everything.
- *   - If a doc has a parlayid → always group with siblings by parlayid
- *   - If a doc has no parlayid AND has a legs array → it's a self-contained app bet
- *   - If a doc has no parlayid AND no legs → treat as a standalone single
- */
 export function groupBets(rawDocs: any[]): any[] {
   const groups: Record<string, any> = {};
   const order: string[] = [];
 
   rawDocs.forEach((raw) => {
     const bet = normalizeBet(raw);
+    const parlayId = raw.parlayid || raw.dk_parlay_id;
 
-    // ── Has parlayid → always group by it (DK/Legacy multi-leg bets) ──────
-    if (raw.parlayid) {
-      const groupId = raw.parlayid;
+    const groupId = parlayId || bet.id;
 
-      if (!groups[groupId]) {
-        groups[groupId] = {
-          ...bet,
-          id: groupId,
-          legs: [],
-          betType: raw.bettype || 'Parlay',
-        };
-        order.push(groupId);
-      }
-
-      const group = groups[groupId];
-
-      // Push all legs from this doc into the group
-      if (bet.legs.length > 0) {
-        group.legs.push(...bet.legs);
-      }
-
-      // Fill group-level fields from the first doc that has them
-      if (!group.stake    && bet.stake)  group.stake    = bet.stake;
-      if (!group.odds     && bet.odds)   group.odds     = bet.odds;
-      if (!group.boost    && bet.boost)  { group.boost = bet.boost; group.boostPct = bet.boostPct; }
-      if (!group.gameDate && bet.gameDate) group.gameDate = bet.gameDate;
-      if (!group.week     && bet.week)   group.week     = bet.week;
-      // Status: if any leg is "won", treat as partial; last seen wins for simplicity
-      group.status = bet.status || group.status;
-      return;
+    if (!groups[groupId]) {
+      groups[groupId] = {
+        ...bet,
+        id: groupId,
+        betType: parlayId ? 'Parlay' : 'Single',
+        legs: [], // Legs will be merged from normalized bets
+      };
+      order.push(groupId);
     }
 
-    // ── No parlayid + has legs array → self-contained app bet ────────────
-    if (Array.isArray(raw.legs) && raw.legs.length > 0) {
-      if (!groups[bet.id]) {
-        groups[bet.id] = bet;
-        order.push(bet.id);
-      }
-      return;
+    const group = groups[groupId];
+
+    if (parlayId) {
+      group.legs.push(...bet.legs);
+    } else {
+      group.legs = bet.legs;
     }
 
-    // ── No parlayid, no legs → standalone single ──────────────────────────
-    if (!groups[bet.id]) {
-      groups[bet.id] = bet;
-      order.push(bet.id);
-    }
+    if (!group.stake && bet.stake) group.stake = bet.stake;
+    if (!group.odds && bet.odds) group.odds = bet.odds;
+    if (!group.boost && bet.boost) { group.boost = bet.boost; group.boostPct = bet.boostPct; }
+    if (!group.gameDate && bet.gameDate) group.gameDate = bet.gameDate;
+    if (!group.week && bet.week) group.week = bet.week;
+    group.status = bet.status || group.status; 
   });
 
   return order.map(id => groups[id]).filter(Boolean);

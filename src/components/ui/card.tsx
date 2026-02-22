@@ -1,6 +1,5 @@
 import * as React from "react";
-// Change @/ to a relative path to fix the TypeScript resolution error
-import { cn } from "../../lib/utils";
+import { cn } from "@/lib/utils";
 
 const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>((
   { className, ...props },

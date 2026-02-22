@@ -1,6 +1,6 @@
 {
   "/betting-log/page": "app/betting-log/page.js",
-  "/all-props/page": "app/all-props/page.js",
-  "/parlay-studio/page": "app/parlay-studio/page.js",
-  "/api/update-bet/route": "app/api/update-bet/route.js"
+  "/favicon.ico/route": "app/favicon.ico/route.js",
+  "/api/betting-log/route": "app/api/betting-log/route.js",
+  "/_not-found/page": "app/_not-found/page.js"
 }

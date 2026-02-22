@@ -1,9 +1,8 @@
-// src/lib/types.ts
-
-export type BetType = 'Single' | 'Parlay' | 'SGP' | 'Teaser';
+export type BetType = 'Single' | 'Parlay' | 'SGP' | 'SGP3' | 'Teaser'; // Added SGP3 for DK
 export type BetStatus = 'pending' | 'won' | 'lost' | 'void' | 'cashed out' | 'push';
 export type LegStatus = 'pending' | 'won' | 'lost' | 'void' | 'push';
-export type Selection = 'Over' | 'Under';
+// Widened Selection to allow uppercase and dashes for DK/Legacy compatibility
+export type Selection = 'Over' | 'Under' | 'OVER' | 'UNDER' | string; 
 
 export interface BetLeg {
   id: string;
@@ -11,14 +10,16 @@ export interface BetLeg {
   player: string;
   team: string;
   prop: string;
-  line: number;
+  line: number | string; // Widened to string to prevent NaN on "Under 215.5" imports
   selection: Selection;
-  odds: number;
+  odds: number | string;
   matchup?: string;
-  week?: number;
+  week?: number | string;
   status: LegStatus;
   source?: string;
-  gameDate: string | null;
+  gameDate: any; // Flexible for Timestamps or Strings
+  playerteam?: string; // Added for DK compatibility
+  result?: string;     // Added for DK compatibility
 }
 
 export interface Bet {
@@ -26,23 +27,25 @@ export interface Bet {
   userId: string;
   betType: BetType;
   stake: number;
-  odds: number;
+  wager?: number; // Added as optional alias to fix betting-stats.tsx error
+  odds: number | string;
   status: BetStatus;
   legs: BetLeg[];
-  createdAt: Date | any;
-  updatedAt?: Date | any;
-  date?: Date | any;
+  createdAt: any; 
+  updatedAt?: any;
+  date?: any;
   manualDate?: string;
   isLive?: boolean;
   isBonus?: boolean;
-  boost?: boolean;
+  boost?: string | boolean; 
   boostPercentage?: number;
-  payout?: number; // Legacy field for backwards compatibility
+  payout?: number; 
   potentialPayout?: number;
   actualPayout?: number;
   result?: string;
-  parlayid?: string; // For grouping parlay bets together
+  parlayid?: string; 
   cashedOutAmount?: number;
+  cashedAmount?: number; // Alias for different data sources
 }
 
 export type BetSubmissionData = Omit<Bet, "id" | "userId" | "payout" | "createdAt">;

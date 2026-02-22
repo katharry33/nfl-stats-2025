@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { format } from 'date-fns';
+import { BetResultsChart } from "@/components/performance/BetResultsChart";
 
 // Helper to calculate payout based on odds (decimal or American)
 const getPayout = (stake: number, odds: string | number): number => {
@@ -79,7 +80,7 @@ const BetCard = ({ bet }: { bet: Bet }) => {
                     </div>
                     <div>
                         <Label className="text-xs text-slate-400">Odds</Label>
-                        <p className="font-semibold text-lg">{bet.odds > 0 ? `+${bet.odds}` : bet.odds}</p>
+                        <p className="font-semibold text-lg">{Number(bet.odds) > 0 ? `+${bet.odds}` : bet.odds}</p>
                     </div>
                     <div>
                         <Label className="text-xs text-slate-400">Payout</Label>
@@ -203,6 +204,8 @@ export default function PerformancePage() {
           changeType={stats.roi >= 0 ? "positive" : "negative"}
         />
       </div>
+      
+      {/* <BetResultsChart bets={bets} /> */}
 
       <Card className="bg-slate-900 border-slate-800">
         <CardHeader>

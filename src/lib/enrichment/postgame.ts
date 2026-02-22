@@ -18,11 +18,11 @@ if (!getApps().length) {
   }
 }
 
-import { getPropsForWeek, updateProps, getPfrIdMap } from '../src/lib/enrichment/firestore';
-import { fetchSeasonLog, getPfrId, getStatFromGame } from '../src/lib/enrichment/pfr';
-import { normalizeProp, splitComboProp } from '../src/lib/enrichment/normalize';
-import { determineResult, calculateProfitLoss } from '../src/lib/enrichment/scoring';
-import type { NFLProp } from '../src/lib/enrichment/types';
+import { getPropsForWeek, updateProps, getPfrIdMap } from '@/lib/enrichment/firestore';
+import { fetchSeasonLog, getPfrId, getStatFromGame } from '@/lib/enrichment/pfr';
+import { normalizeProp, splitComboProp } from '@/lib/enrichment/normalize';
+import { determineResult, calculateProfitLoss } from '@/lib/enrichment/scoring';
+import type { NFLProp } from '@/lib/enrichment/types';
 
 const SEASON = 2025;
 
@@ -118,7 +118,7 @@ async function main() {
 
   console.log(`✅ Pass 2 (combos): ${comboCount} props`);
 
-  if (updates.length > 0) await updateProps(updates);
+  if (.length > 0) await updateProps(updates);
 
   const wins   = updates.filter(u => u.data.actualResult === 'Win').length;
   const losses = updates.filter(u => u.data.actualResult === 'Loss').length;

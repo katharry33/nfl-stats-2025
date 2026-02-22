@@ -22,10 +22,10 @@ if (!getApps().length) {
   }
 }
 
-import { formatMatchup, formatDate, formatTime, normalizeProp } from '../src/lib/enrichment/normalize';
-import { saveProps } from '../src/lib/enrichment/firestore';
-import { pickBestOdds } from '../src/lib/enrichment/scoring';
-import type { NFLProp } from '../src/lib/enrichment/types';
+import { formatMatchup, formatDate, formatTime, normalizeProp } from '@/lib/enrichment/normalize';
+import { saveProps } from '@/lib/enrichment/firestore';
+import { pickBestOdds } from '@/lib/enrichment/scoring';
+import type { NFLProp } from '@/lib/enrichment/types';
 
 const ODDS_API_KEY = process.env.ODDS_API_KEY!;
 const SEASON = 2025;

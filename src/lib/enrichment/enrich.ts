@@ -19,7 +19,7 @@ if (!getApps().length) {
   }
 }
 
-import { enrichPropsForWeek } from '../src/lib/enrichment/enrichProps';
+import { enrichPropsForWeek } from '@/lib/enrichment/enrichProps';
 
 const SEASON = 2025;
 
