@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Dialog,
   DialogContent,
@@ -15,32 +16,40 @@ interface EditBetModalProps {
   bet: any;
   isOpen: boolean;
   onClose: () => void;
-  onSave: (updates: any) => Promise<void>; // Add this line
 }
 
-export function EditBetModal({ bet, isOpen, onClose, onSave }: EditBetModalProps) {
-  const [gameDate, setGameDate] = useState('');
+export function EditBetModal({ bet, isOpen, onClose }: EditBetModalProps) {
+  const router = useRouter();
+  const [formData, setFormData] = useState({ gameDate: '' });
 
   useEffect(() => {
-    if (bet?.gameDate) {
-      const date = bet.gameDate.seconds
-        ? new Date(bet.gameDate.seconds * 1000)
-        : new Date(bet.gameDate);
-
-      if (!isNaN(date.getTime())) {
-        setGameDate(date.toISOString().split('T')[0]);
-      }
+    if (bet) {
+      const initialDate = bet.gameDate?.seconds
+        ? new Date(bet.gameDate.seconds * 1000).toISOString().split('T')[0]
+        : (bet.gameDate ? new Date(bet.gameDate).toISOString().split('T')[0] : '');
+      setFormData({ gameDate: initialDate });
     }
   }, [bet]);
 
   if (!bet) return null;
 
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
   const handleSave = async () => {
-    try {
-      await onSave({ gameDate });
+    const res = await fetch('/api/update-bet', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: bet.id, ...formData }),
+    });
+
+    if (res.ok) {
+      router.refresh(); 
       onClose();
-    } catch (error) {
-      console.error('Failed to save bet:', error);
+    } else {
+        console.error("Failed to save bet:", await res.text());
     }
   };
 
@@ -58,8 +67,9 @@ export function EditBetModal({ bet, isOpen, onClose, onSave }: EditBetModalProps
             <label className="text-[10px] font-bold uppercase text-slate-500">Game Date</label>
             <Input
               type="date"
-              value={gameDate}
-              onChange={(e) => setGameDate(e.target.value)}
+              name="gameDate"
+              value={formData.gameDate}
+              onChange={handleInputChange}
               className="bg-slate-950 border-slate-800 text-white focus:ring-emerald-500 [color-scheme:dark]"
             />
           </div>

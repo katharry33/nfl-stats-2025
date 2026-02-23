@@ -12,6 +12,7 @@ export interface NFLProp {
     team: string;
     prop: string;
     line: number;
+    pfrid: string; // Player ID from Pro-Football-Reference
   
     // Odds - Widened to allow string for resilient importing
     fdOdds?: number | string | null;

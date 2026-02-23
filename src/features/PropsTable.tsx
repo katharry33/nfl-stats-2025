@@ -60,7 +60,7 @@ export default function PropsTable({
                 <div className="flex flex-col">
                   <span className="font-bold text-white">{p.player}</span>
                   <span className="text-[10px] text-slate-500 font-mono uppercase">
-                    {p.team} • ID: {p.pfrId || 'N/A'}
+                    {p.team} • ID: {p.pfrid || 'N/A'}
                   </span>
                 </div>
               </td>

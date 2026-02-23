@@ -1,9 +1,17 @@
 import { getStaticSchedule } from '@/lib/firebase/server/queries';
 
+interface Game {
+  id: string;
+  week: number;
+  gameDate: string;
+  homeTeam: string;
+  awayTeam: string;
+}
+
 export const dynamic = 'force-dynamic';
 
 export default async function SchedulePage() {
-  const schedule = await getStaticSchedule();
+  const schedule: Game[] = await getStaticSchedule();
 
   return (
     <div className="p-8">

@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback } from 'react';
 import { Edit2, Trash2, ArrowUpDown, ChevronDown } from 'lucide-react';
-import { cn, formatBetDate, calculateNetProfit } from '@/lib/utils';
+import { cn, calculateNetProfit } from '@/lib/utils';
 
 // Helper Component 1: StatusBadge
 function StatusBadge({ status }: { status?: string }) {
@@ -112,7 +112,6 @@ function PayoutCell({ bet }: { bet: any }) {
   }
 }
 
-
 export function BetsTable({
   bets,
   isLibraryView = false,
@@ -139,6 +138,26 @@ export function BetsTable({
       return newSet;
     });
   }, []);
+
+  const renderDate = (dateField: any) => {
+    if (!dateField) return '—';
+    
+    try {
+      // Handle Firestore Timestamp
+      if (dateField.seconds) {
+        return new Date(dateField.seconds * 1000).toLocaleDateString('en-US', { 
+          month: 'short', day: 'numeric' 
+        });
+      }
+      // Handle String or Date object
+      const d = new Date(dateField);
+      if (isNaN(d.getTime())) return '—';
+      
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    } catch (e) {
+      return '—';
+    }
+  };
 
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-hidden">
@@ -187,9 +206,8 @@ export function BetsTable({
                   <td className="px-4 py-3 uppercase font-mono text-[10px] text-slate-500">
                     {isParlay ? 'MULTI' : firstLeg.matchup}
                   </td>
-                  <td className="px-4 py-3 text-slate-400">
-                    {/* Ensure this property name matches your DB exactly */}
-                    {formatBetDate(bet.date || bet.gameDate)} 
+                  <td className="px-4 py-3 text-slate-400 text-xs">
+                    {renderDate(bet.gameDate || firstLeg?.gameDate)}
                   </td>
 
                   {/* Stake */}

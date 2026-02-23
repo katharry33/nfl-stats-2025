@@ -14,6 +14,8 @@ import { calculateParlayOdds, calculatePayout } from '@/lib/utils/odds';
 import { toast } from 'sonner';
 import type { BetLeg } from '@/lib/types';
 import { useSearchParams } from 'next/navigation';
+// Ensure this line is present and spelled correctly
+import { americanToProbability, formatProb } from '@/lib/utils/odds';
 
 export default function ParlayStudioPage() {
   const { selections, removeLeg, clearSlip, updateLeg, submitBet } = useBetSlip();
