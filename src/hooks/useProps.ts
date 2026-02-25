@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import type { NFLProp } from '@/lib/enrichment/types';
 
-export type SortKey = 'confidenceScore' | 'bestEdgePct' | 'seasonHitPct' | 'projWinPct' | 'line' | 'player';
+export type SortKey = 'confidenceScore' | 'bestEdgePct' | 'seasonHitPct' | 'projWinPct' | 'line' | 'Player';
 export type SortDir = 'asc' | 'desc';
 
 export interface PropFilters {
@@ -33,7 +33,7 @@ export interface UsePropsReturn {
   teams: string[];
 }
 
-export function useProps(week: number, season = 2025): UsePropsReturn {
+export function useProps(week: number, seasons: number[] = [2025, 2024]): UsePropsReturn {
   const [props, setProps]       = useState<PropWithId[]>([]);
   const [isLoading, setLoading] = useState(true);
   const [error, setError]       = useState<string | null>(null);
@@ -47,17 +47,23 @@ export function useProps(week: number, season = 2025): UsePropsReturn {
     setError(null);
 
     try {
-      const params = new URLSearchParams({ week: String(week), season: String(season) });
-      const res = await fetch(`/api/props?${params}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      setProps(data.props ?? []);
+      const allProps: PropWithId[] = [];
+      for (const season of seasons) {
+        const params = new URLSearchParams({ week: String(week), season: String(season) });
+        const res = await fetch(`/api/props?${params}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (data.props) {
+          allProps.push(...data.props);
+        }
+      }
+      setProps(allProps);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load props');
     } finally {
       setLoading(false);
     }
-  }, [week, season]);
+  }, [week, seasons]);
 
   useEffect(() => { fetchProps(); }, [fetchProps]);
 
@@ -75,12 +81,12 @@ export function useProps(week: number, season = 2025): UsePropsReturn {
 
   // Derived filter options from the raw data
   const propTypes = useMemo(() => {
-    const set = new Set(props.map(p => p.prop).filter(Boolean));
+    const set = new Set(props.map(p => p.Prop).filter(Boolean));
     return Array.from(set).sort();
   }, [props]);
 
   const teams = useMemo(() => {
-    const set = new Set(props.map(p => p.team).filter(Boolean));
+    const set = new Set(props.map(p => p.Team).filter(Boolean));
     return Array.from(set).sort();
   }, [props]);
 
@@ -89,10 +95,10 @@ export function useProps(week: number, season = 2025): UsePropsReturn {
     let result: PropWithId[] = [...props];
 
     if (filters.prop) {
-      result = result.filter(p => p.prop === filters.prop);
+      result = result.filter(p => p.Prop === filters.prop);
     }
     if (filters.team) {
-      result = result.filter(p => p.team === filters.team);
+      result = result.filter(p => p.Team === filters.team);
     }
     if (filters.valueOnly) {
       result = result.filter(p => p.valueIcon === '🔥' || p.valueIcon === '⚠️');
@@ -103,9 +109,9 @@ export function useProps(week: number, season = 2025): UsePropsReturn {
     if (filters.searchQuery) {
       const q = filters.searchQuery.toLowerCase();
       result = result.filter(p =>
-        p.player.toLowerCase().includes(q) ||
-        p.team?.toLowerCase().includes(q) ||
-        p.matchup?.toLowerCase().includes(q)
+        p.Player.toLowerCase().includes(q) ||
+        p.Team?.toLowerCase().includes(q) ||
+        p.Matchup?.toLowerCase().includes(q)
       );
     }
 

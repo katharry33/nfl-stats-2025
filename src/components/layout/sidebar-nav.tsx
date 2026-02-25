@@ -26,7 +26,6 @@ const NAV: NavItem[] = [
   { label: 'Market Insights',  href: '/market-insights', icon: LineChart },
   { label: 'Historical Props', href: '/all-props',       icon: BarChart2 },
   { label: 'Betting Log',      href: '/betting-log',     icon: Database },
-  { label: 'Schedule',         href: '/schedule',        icon: Calendar },
   {
     label: 'Static Data',
     icon: Server,

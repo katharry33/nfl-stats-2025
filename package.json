@@ -9,9 +9,9 @@
     "clean": "fuser -k 3000/tcp && rm -rf .next tsconfig.tsbuildinfo",
     "migrate:props": "node migrate-weekly-props.js",
     "load-props": "tsx scripts/loadProps.ts",
-    "enrich":     "tsx scripts/enrich.ts",
-    "post-game":  "tsx scripts/postGame.ts",
-    "load weekly props": "tsx scripts/Loadweeklyprops.ts"
+    "enrich": "tsx scripts/enrich.ts",
+    "post-game": "tsx scripts/postGame.ts",
+    "load weekly props": "tsx scripts/loadweeklyprops.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.37.4",
@@ -36,6 +36,8 @@
     "@radix-ui/react-tabs": "^1.0.0",
     "@radix-ui/react-toast": "^1.0.0",
     "@radix-ui/react-tooltip": "^1.0.0",
+    "axios": "^1.13.5",
+    "cheerio": "^1.2.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.0",
     "cmdk": "^0.2.0",
@@ -51,6 +53,7 @@
     "react-dom": "18.3.1",
     "react-firebase-hooks": "^5.1.1",
     "react-hook-form": "^7.50.0",
+    "react-intersection-observer": "^10.0.3",
     "recharts": "^2.10.3",
     "sonner": "^2.0.7",
     "tailwind-merge": "^2.0.0",
@@ -61,7 +64,9 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.0.0",
+    "@types/axios": "^0.14.4",
     "@types/node": "^20",
+    "@types/node-fetch": "^2.6.13",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "autoprefixer": "^10.4.16",

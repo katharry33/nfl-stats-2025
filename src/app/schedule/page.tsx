@@ -1,41 +1,51 @@
-import { getStaticSchedule } from '@/lib/firebase/server/queries';
+'use client';
 
-export const dynamic = 'force-dynamic';
+import React, { useState, useEffect } from "react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Card } from "@/components/ui/card";
+import { Loader2 } from "lucide-react";
 
-export default async function SchedulePage() {
-  const schedule = await getStaticSchedule();
+export default function SchedulePage() {
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchSchedule() {
+      const res = await fetch('/api/static-data?type=schedule');
+      const json = await res.json();
+      setData(json);
+      setLoading(false);
+    }
+    fetchSchedule();
+  }, []);
 
   return (
-    <div className="p-8">
-      <h1 className="text-2xl font-black uppercase mb-6">NFL Schedule</h1>
-      <div className="border border-slate-800 rounded-lg overflow-hidden">
-        <table className="w-full text-sm text-left">
-          <thead className="bg-slate-900 text-slate-400 uppercase text-[10px] font-bold">
-            <tr>
-              <th className="p-4">Week</th>
-              <th className="p-4">Date</th>
-              <th className="p-4">Matchup</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-800">
-            {schedule.map((game) => (
-              <tr key={game.id} className="hover:bg-slate-800/50 transition-colors">
-                <td className="p-4 font-mono">{game.week}</td>
-                <td className="p-4 text-slate-300">
-                  {new Date(game.gameDate + 'T00:00:00').toLocaleDateString('en-US', {
-                    weekday: 'short',
-                    month: 'short',
-                    day: 'numeric',
-                  })}
-                </td>
-                <td className="p-4 font-bold">
-                  {game.awayTeam} @ {game.homeTeam}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+    <div className="p-6 bg-slate-950 min-h-screen">
+      <h1 className="text-2xl font-bold text-white mb-6 uppercase italic">2025 NFL Schedule</h1>
+      <Card className="bg-slate-900 border-slate-800">
+        <Table>
+          <TableHeader>
+            <TableRow className="border-slate-800">
+              <TableHead className="text-slate-400">Week</TableHead>
+              <TableHead className="text-slate-400">Matchup</TableHead>
+              <TableHead className="text-slate-400">Date</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {loading ? (
+              <TableRow><TableCell colSpan={3} className="text-center py-10"><Loader2 className="animate-spin mx-auto"/></TableCell></TableRow>
+            ) : (
+              data.map((item: any) => (
+                <TableRow key={item.id} className="border-slate-800">
+                  <TableCell className="text-white font-mono">W{item.Week}</TableCell>
+                  <TableCell className="text-white">{item.AwayTeam} @ {item.HomeTeam}</TableCell>
+                  <TableCell className="text-slate-400">{item.Date}</TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </Card>
     </div>
   );
 }

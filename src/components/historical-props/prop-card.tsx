@@ -15,7 +15,7 @@ interface PropCardProps {
 }
 
 export function PropCard({ prop }: PropCardProps) {
-  const { addLeg, selections } = useBetSlip();
+  const { addSelection, selections } = useBetSlip();
 
   // A type guard to check if the prop is a BetLeg.
   const isBetLeg = 'selection' in prop;
@@ -49,22 +49,24 @@ export function PropCard({ prop }: PropCardProps) {
   }, [prop, isBetLeg]);
 
   // Default the selection to the original bet's selection if it exists.
-  const [selection, setSelection] = useState<'Over' | 'Under'>(displayProp.originalSelection || 'Over');
+  const [selection, setSelection] = useState<'Over' | 'Under'>(
+    ((displayProp.overUnder ?? (displayProp as any)['Over/Under?']) as 'Over' | 'Under') || 
+    (displayProp.originalSelection as 'Over' | 'Under') || 
+    'Over'
+  );
 
-  const isInBetSlip = useMemo(() => {
-    const legId = `${displayProp.id}-${selection}`;
-    return selections.some(leg => leg.id === legId);
-  }, [selections, displayProp.id, selection]);
+  const isSelected = useMemo(() => {
+    return selections?.some((item: any) => item.id === displayProp.id);
+  }, [selections, displayProp.id]);
   
-  const handleAdd = () => {
-    if (isInBetSlip) {
+  const handleAddSelection = () => {
+    if (isSelected) {
       toast.info("This selection is already in your bet slip.");
       return;
     }
 
     const odds = selection === 'Over' ? displayProp.overOdds : displayProp.underOdds;
 
-    // If for some reason odds are not available (e.g., trying to bet the other side of a leg), prevent it.
     if (odds === undefined) {
       toast.error('Odds not available for this selection.');
       return;
@@ -73,20 +75,20 @@ export function PropCard({ prop }: PropCardProps) {
     const legToAdd: BetLeg = {
       id: `${displayProp.id}-${selection}`,
       propId: displayProp.id,
-      player: displayProp.player,
-      prop: displayProp.prop,
-      line: displayProp.line,
+      player: (prop as PropData).player ?? (prop as any).Player ?? 'Unknown Player',
+      prop: (prop as PropData).prop ?? (prop as any).Prop ?? 'Unknown Prop',
+      line: (prop as PropData).line ?? (prop as any).Line ?? 0,
+      team: (prop as PropData).team ?? (prop as any).Team ?? 'TBD',
       selection: selection,
-      odds: odds,
+      odds: Number(odds ?? -110),
       matchup: displayProp.matchup,
-      team: displayProp.team,
       week: displayProp.week,
       gameDate: displayProp.gameDate,
       source: 'historical-props',
       status: 'pending',
     };
 
-    addLeg(legToAdd);
+    addSelection(legToAdd);
     toast.success(
       `${displayProp.player} (${selection} ${displayProp.line}) added to bet slip.`
     );
@@ -118,25 +120,25 @@ export function PropCard({ prop }: PropCardProps) {
               <SelectItem value="Over" disabled={displayProp.overOdds === undefined}>
                 <div className="flex justify-between w-full gap-8">
                   <span>Over {displayProp.line}</span>
-                  {displayProp.overOdds !== undefined && <span className="font-mono text-emerald-400">{displayProp.overOdds > 0 ? `+${displayProp.overOdds}` : displayProp.overOdds}</span>}
+                  {displayProp.overOdds !== undefined && <span className="font-mono text-emerald-400">{Number(displayProp.overOdds) > 0 ? `+${displayProp.overOdds}` : displayProp.overOdds}</span>}
                 </div>
               </SelectItem>
               <SelectItem value="Under" disabled={displayProp.underOdds === undefined}>
                 <div className="flex justify-between w-full gap-8">
                   <span>Under {displayProp.line}</span>
-                  {displayProp.underOdds !== undefined && <span className="font-mono text-emerald-400">{displayProp.underOdds > 0 ? `+${displayProp.underOdds}` : displayProp.underOdds}</span>}
+                  {displayProp.underOdds !== undefined && <span className="font-mono text-emerald-400">{Number(displayProp.underOdds) > 0 ? `+${displayProp.underOdds}` : displayProp.underOdds}</span>}
                 </div>
               </SelectItem>
             </SelectContent>
           </Select>
 
           <Button
-            onClick={handleAdd}
-            disabled={isInBetSlip}
+            onClick={handleAddSelection}
+            disabled={isSelected}
             className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-700 disabled:text-slate-400"
             size="sm"
           >
-            {isInBetSlip ? "In Slip" : `Add ${selection}`}
+            {isSelected ? "In Slip" : `Add ${selection}`}
           </Button>
         </div>
       </CardContent>

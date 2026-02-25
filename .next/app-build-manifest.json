@@ -1,9 +1,9 @@
 {
   "pages": {
-    "/page": [
+    "/all-props/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/page.js"
+      "static/chunks/app/all-props/page.js"
     ],
     "/layout": [
       "static/chunks/webpack.js",
@@ -26,10 +26,10 @@
       "static/chunks/main-app.js",
       "static/chunks/app/not-found.js"
     ],
-    "/all-props/page": [
+    "/_not-found/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/all-props/page.js"
+      "static/chunks/app/_not-found/page.js"
     ],
     "/betting-log/page": [
       "static/chunks/webpack.js",

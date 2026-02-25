@@ -1,3 +1,4 @@
+
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
@@ -44,3 +45,13 @@ export function formatBetDate(dateInput: any) {
     year: '2-digit'
   }).format(date);
 }
+
+// src/lib/utils.ts
+// Barrel re-export so legacy imports like `from "@/lib/utils"` keep working.
+
+export * from '@/lib/utils/payout';
+export * from '@/lib/utils/dates';
+export * from '@/lib/utils/nfl-week';
+
+// Alias: roi-chart imports getPayout but the function is getBetPayout
+export { getBetPayout as getPayout } from '@/lib/utils/payout';

@@ -10,6 +10,8 @@ const SEASON = 2025;
 
 const db = getFirestore();
 
+const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
+
 // ─── ODDS API ──────────────────────────────────────────────
 
 export async function loadPropsForWeek(week: number) {

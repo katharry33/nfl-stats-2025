@@ -1,113 +1,69 @@
-import { NextResponse } from "next/server";
-import { getAdminDb } from "@/lib/firebase/admin";
-import { FieldValue } from 'firebase-admin/firestore';
+// Add these to the very top of the file
+import { NextRequest, NextResponse } from 'next/server';
+import { adminDb } from '@/lib/firebase/admin';
 
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
+const PAGE_SIZE = 20;
 
-export async function PUT(req: Request) {
+export async function GET(request: NextRequest) {
   try {
-    const { id, ...updates } = await req.json();
-    
-    if (!id) {
-      return NextResponse.json({ success: false, error: "Bet ID is required" }, { status: 400 });
-    }
-
-    console.log(`📝 Updating bet ${id} with:`, updates);
-    
-    const db = getAdminDb();
-    const betRef = db.collection('bettingLog').doc(id);
-
-    const updatePayload: { [key: string]: any } = {
-      ...updates,
-      updatedAt: FieldValue.serverTimestamp(),
-    };
-    
-    await betRef.update(updatePayload);
-    
-    console.log(`✅ Bet ${id} updated successfully.`);
-    
-    return NextResponse.json({ success: true, message: 'Bet updated' }, { status: 200 });
-
-  } catch (error: any) {
-    console.error("❌ API Error: Failed to update bet", error);
-    return NextResponse.json(
-      { success: false, error: error.message || "Internal server error" },
-      { status: 500 }
-    );
-  }
-}
-
-
-export async function POST(req: Request) {
-  try {
-    const betData = await req.json();
-    const userId = betData.userId || "dev-user";
-    
-    console.log('📝 Saving bet to bettingLog:', betData);
-    
-    const db = getAdminDb();
-    
-    const betDoc = {
-      ...betData,
-      userId,
-      uid: userId,
-      createdAt: betData.createdAt ? new Date(betData.createdAt) : FieldValue.serverTimestamp(),
-      status: betData.status || 'pending',
-    };
-    
-    const betRef = await db.collection('bettingLog').add(betDoc);
-    
-    console.log('✅ Bet saved with ID:', betRef.id);
-    
-    return NextResponse.json({ 
-      success: true, 
-      betId: betRef.id,
-      message: 'Bet saved successfully'
-    }, { status: 201 });
-    
-  } catch (error: any) {
-    console.error("❌ API Error: Failed to save bet", error);
-    return NextResponse.json(
-      { 
-        success: false,
-        error: error.message || "Internal server error" 
-      },
-      { status: 500 }
-    );
-  }
-}
-
-export async function GET(request: Request) {
-  try {
-    const db = getAdminDb();
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
+    const limit = parseInt(searchParams.get('limit') || String(PAGE_SIZE));
+    const cursor = searchParams.get('cursor');
 
-    if (!userId) {
-      return NextResponse.json({ error: 'userId parameter is required' }, { status: 400 });
-    }
+    // 1. Fetch from both collections
+    const [modernSnap, legacySnap] = await Promise.all([
+      adminDb.collection('bettingLog').orderBy('createdAt', 'desc').limit(limit).get(),
+      adminDb.collection('bets').orderBy('createdAt', 'desc').limit(limit).get()
+    ]);
 
-    // FIX: Pointing to the correct 'bettingLog' collection
-    const snapshot = await db.collection('bettingLog')
-      .where('userId', '==', userId)
-      .orderBy('createdAt', 'desc')
-      .get();
+    const uniqueMap = new Map();
 
-    const bets = snapshot.docs.map(doc => {
+    // 2. Process Modern Logs
+    modernSnap.docs.forEach((doc: any) => {
       const data = doc.data();
-      return {
+      uniqueMap.set(doc.id, {
         id: doc.id,
         ...data,
-        // Ensure timestamps are converted to ISO strings for client-side consistency
-        createdAt: data.createdAt?.toDate?.().toISOString() || new Date().toISOString(),
-        updatedAt: data.updatedAt?.toDate?.().toISOString() || null,
-      };
+        // Ensure standard keys
+        player: data.player || data.playerteam, 
+        createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : data.createdAt,
+      });
     });
 
-    return NextResponse.json({ bets });
-  } catch (error) {
-    console.error('Error fetching from bettingLog:', error);
-    return NextResponse.json({ error: 'Failed to fetch betting log' }, { status: 500 });
+    // 3. Process 2025 Bets (Normalizing to modern schema)
+    legacySnap.docs.forEach((doc: any) => {
+      const data = doc.data();
+      // Use parlayid or doc.id as the unique key to prevent duplicates
+      const uniqueKey = data.parlayid || doc.id;
+
+      if (!uniqueMap.has(uniqueKey)) {
+        uniqueMap.set(uniqueKey, {
+          id: uniqueKey,
+          player: data.playerteam || data.player,
+          prop: data.prop,
+          line: data.line,
+          odds: data.odds,
+          selection: data.selection || "", // 2025 data might not have separate selection
+          status: data.result || data.status || 'pending',
+          matchup: data.matchup,
+          week: data.week,
+          createdAt: data.createdAt, // 2025 'bets' usually store strings or timestamps
+          isLegacy: true
+        });
+      }
+    });
+
+    // 4. Sort and Paginate the merged result
+    const allLogs = Array.from(uniqueMap.values()).sort((a: any, b: any) => {
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+
+    return NextResponse.json({ 
+      logs: allLogs,
+      hasMore: allLogs.length >= limit 
+    });
+
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

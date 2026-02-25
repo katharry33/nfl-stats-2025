@@ -1,37 +1,20 @@
-import { collection, getDocs, query, where, orderBy } from "firebase/firestore";
-import { db } from "./client"; // Import from client
-import type { ScheduleEntry } from "@/lib/types";
 
-// MOVED: Declare constant before using it
-const STATIC_SCHEDULE_COLLECTION = "schedule";
+// src/lib/firebase/schedule.ts
+// ScheduleEntry is defined here since it's specific to schedule data.
 
-/**
- * Fetch schedule entries from Firestore (client-side)
- */
-export async function getSchedule(
-  weekFilter?: number,
-  leagueFilter?: string
-): Promise<ScheduleEntry[]> {
-  try {
-    const scheduleRef = collection(db, STATIC_SCHEDULE_COLLECTION);
-    let q = query(scheduleRef, orderBy("gameTime", "asc"));
-    
-    if (weekFilter) {
-      q = query(q, where("week", "==", weekFilter));
-    }
-    
-    if (leagueFilter) {
-      q = query(q, where("league", "==", leagueFilter));
-    }
-    
-    const snapshot = await getDocs(q);
-    
-    return snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    })) as ScheduleEntry[];
-  } catch (error) {
-    console.error("Error fetching schedule:", error);
-    return [];
-  }
+export interface ScheduleEntry {
+  id?:          string;
+  week:         number;
+  season?:      number;
+  gameDate?:    string;
+  homeTeam:     string;
+  awayTeam:     string;
+  matchup?:     string;
+  gameTime?:    string;
+  stadium?:     string;
+  broadcast?:   string;
+  [key: string]: any;
 }
+
+// Re-export so any file that imports ScheduleEntry from here keeps working
+export type { ScheduleEntry as default };

@@ -12,7 +12,8 @@ interface BettingStatsProps {
 
 export function BettingStats({ bets }: BettingStatsProps) {
   const stats = useMemo(() => {
-    const settledBets = bets.filter((b) => b.status !== "pending");
+    const betsArray = Array.isArray(bets) ? bets : [];
+    const settledBets = betsArray.filter((b) => b.status !== "pending");
     
     let totalProfit = 0;
     let totalStaked = 0;

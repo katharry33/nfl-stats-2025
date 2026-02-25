@@ -50,22 +50,26 @@ export function HistoricalBetSlip() {
             <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1 custom-scrollbar">
               {selections.map((leg: any) => {
                 const numericOdds = Number(leg.odds);
-                // Use propId falling back to id if necessary for the key
-                const uniqueKey = leg.propId || leg.id || Math.random().toString();
+                const uniqueKey = leg.propId || leg.id || `${leg.player}-${leg.prop}-${leg.line}`;
                 
                 return (
                   <div
                     key={uniqueKey}
-                    className="group flex items-start justify-between gap-2 p-3 bg-slate-950 rounded-lg border border-slate-800 hover:border-emerald-500/50 transition-colors"
+                    className="relative group flex items-start justify-between gap-2 p-3 bg-slate-950 rounded-lg border border-slate-800 hover:border-emerald-500/50 transition-colors"
                   >
+                    {leg.source === 'historical-props' && (
+                      <div className="absolute -left-1 top-2 w-1 h-8 bg-amber-500 rounded-full" title="Historical Prop" />
+                    )}
                     <div className="flex-1 min-w-0">
                       <p className="font-bold text-sm text-slate-100 truncate">{leg.player}</p>
                       <div className="flex items-center gap-1.5 mt-0.5">
-                        <span className="text-[10px] font-bold px-1 rounded bg-slate-800 text-slate-400 uppercase">
-                          {leg.selection}
-                        </span>
+                        {leg.selection && (
+                            <span className="text-[10px] font-bold px-1 rounded bg-slate-800 text-slate-400 uppercase">
+                            {leg.selection}
+                            </span>
+                        )}
                         <p className="text-xs text-slate-400">
-                          {leg.prop} {leg.line}
+                            {leg.prop} {leg.line}
                         </p>
                       </div>
                       <p className="text-xs font-mono text-emerald-500 mt-1">

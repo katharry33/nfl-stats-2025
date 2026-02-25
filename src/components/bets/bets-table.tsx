@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback } from 'react';
 import { Edit2, Trash2, ArrowUpDown, ChevronDown } from 'lucide-react';
-import { cn, formatBetDate, calculateNetProfit } from '@/lib/utils';
+import { cn, calculateNetProfit } from '@/lib/utils';
 
 // Helper Component 1: StatusBadge
 function StatusBadge({ status }: { status?: string }) {
@@ -112,7 +112,6 @@ function PayoutCell({ bet }: { bet: any }) {
   }
 }
 
-
 export function BetsTable({
   bets,
   isLibraryView = false,
@@ -140,22 +139,54 @@ export function BetsTable({
     });
   }, []);
 
+  const renderDate = (dateField: any) => {
+    if (!dateField) return '—';
+    
+    try {
+      // Handle Firestore Timestamp
+      if (dateField.seconds) {
+        return new Date(dateField.seconds * 1000).toLocaleDateString('en-US', { 
+          month: 'short', day: 'numeric' 
+        });
+      }
+      // Handle String or Date object
+      const d = new Date(dateField);
+      if (isNaN(d.getTime())) return '—';
+      
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    } catch (e) {
+      return '—';
+    }
+  };
+
+  const SortableHeader = ({ label, sortKey }: { label: string, sortKey: string }) => (
+    <th 
+      className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase cursor-pointer group hover:text-white"
+      onClick={() => onSort?.(sortKey)}
+    >
+      <div className="flex items-center gap-1">
+        {label}
+        <ArrowUpDown size={12} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+      </div>
+    </th>
+  );
+
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-hidden">
       <table className="w-full">
         <thead className="bg-slate-900/80 border-b border-slate-800">
           <tr>
             <th className="w-8 px-4 py-3" />
-            <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase">Player / Prop</th>
+            <SortableHeader label="Player / Prop" sortKey="player" />
             <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase">Selection</th>
-            <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase cursor-pointer" onClick={() => onSort?.('matchup')}>Matchup</th>
-            <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase cursor-pointer" onClick={() => onSort?.('gameDate')}>Game Date</th>
-            <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase cursor-pointer" onClick={() => onSort?.('stake')}>Stake</th>
+            <SortableHeader label="Matchup" sortKey="matchup" />
+            <SortableHeader label="Game Date" sortKey="gameDate" />
+            <SortableHeader label="Stake" sortKey="stake" />
             <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase">Boost</th>
-            <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase cursor-pointer" onClick={() => onSort?.('week')}>Week</th>
-            <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase cursor-pointer" onClick={() => onSort?.('status')}>Status</th>
+            <SortableHeader label="Week" sortKey="week" />
+            <SortableHeader label="Status" sortKey="status" />
             <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase">Payout / Paid</th>
-            <th className="px-4 py-3 text-right text-[10px] font-bold text-slate-500 uppercase">Actions</th>
+            {(onEdit || onDelete) && <th className="px-4 py-3 text-right text-[10px] font-bold text-slate-500 uppercase">Actions</th>}
           </tr>
         </thead>
         <tbody>
@@ -187,9 +218,8 @@ export function BetsTable({
                   <td className="px-4 py-3 uppercase font-mono text-[10px] text-slate-500">
                     {isParlay ? 'MULTI' : firstLeg.matchup}
                   </td>
-                  <td className="px-4 py-3 text-slate-400">
-                    {/* Ensure this property name matches your DB exactly */}
-                    {formatBetDate(bet.date || bet.gameDate)} 
+                  <td className="px-4 py-3 text-slate-400 text-xs">
+                    {renderDate(bet.gameDate || firstLeg?.gameDate)}
                   </td>
 
                   {/* Stake */}
@@ -210,8 +240,8 @@ export function BetsTable({
 
                   {/* Week */}
                   <td className="px-4 py-3 text-sm text-slate-400 whitespace-nowrap font-mono">
-                    {(bet.week ?? bet.legs?.[0]?.week)
-                      ? `WK ${bet.week ?? bet.legs?.[0]?.week}`
+                    {(bet.week ?? firstLeg?.week)
+                      ? `WK ${bet.week ?? firstLeg?.week}`
                       : <span className="text-slate-700">—</span>
                     }
                   </td>
@@ -225,20 +255,26 @@ export function BetsTable({
                   <td className="px-4 py-3 whitespace-nowrap">
                     <PayoutCell bet={bet} />
                   </td>
-
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex justify-end gap-1">
-                      <button onClick={(e) => { e.stopPropagation(); onEdit?.(bet); }} className="p-1 text-slate-500 hover:text-white"><Edit2 size={14}/></button>
-                      <button onClick={(e) => { e.stopPropagation(); onDelete?.(bet.id); }} className="p-1 text-slate-500 hover:text-rose-400"><Trash2 size={14}/></button>
-                    </div>
-                  </td>
+                  {(onEdit || onDelete) && (
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex justify-end gap-1">
+                        {onEdit && <button onClick={(e) => { e.stopPropagation(); onEdit(bet); }} className="p-1 text-slate-500 hover:text-white"><Edit2 size={14}/></button>}
+                        {onDelete && <button onClick={(e) => { e.stopPropagation(); onDelete(bet.id); }} className="p-1 text-slate-500 hover:text-rose-400"><Trash2 size={14}/></button>}
+                      </div>
+                    </td>
+                  )}
                 </tr>
 
                 {isParlay && isExpanded && bet.legs?.map((leg: any, i: number) => (
                   <tr key={leg.id || i} className="bg-slate-950/60 border-b border-slate-800/50">
                     <td className="pl-10 pr-4 py-2" colSpan={1} />
                     <td className="px-4 py-2">
-                      <div className="text-xs text-slate-300 font-medium">{leg.player || leg.playerteam}</div>
+                      <div className="text-xs text-slate-300 font-medium flex items-center">
+                        <span>{leg.player || leg.playerteam}</span>
+                        <span className="ml-2 text-[9px] bg-blue-900/50 text-blue-300 px-1.5 py-0.5 rounded border border-blue-700/50">
+                            PARLAY LEG
+                        </span>
+                      </div>
                       <div className="text-[10px] text-slate-600">{leg.prop}</div>
                     </td>
                     <td className="px-4 py-2 text-xs">
@@ -258,7 +294,15 @@ export function BetsTable({
                       <StatusBadge status={leg.status} />
                     </td>
                     <td className="px-4 py-2" />
-                    <td className="px-4 py-2" />
+                    <td className="px-4 py-2 text-right">
+                        {onDelete && leg.id && (
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); onDelete(leg.id); }}
+                                className="p-1 text-slate-500 hover:text-rose-400">
+                                <Trash2 size={14}/>
+                            </button>
+                        )}
+                    </td>
                   </tr>
                 ))}
               </React.Fragment>

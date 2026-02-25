@@ -1,65 +1,48 @@
-
-// src/lib/enrichment/types.ts
-
 export interface NFLProp {
-    id?: string;
-    week: number;
-    season: number;
-    gameDate: string;
-    gameTime: string;
-    matchup: string;
-    player: string;
-    team: string;
-    prop: string;
-    line: number;
-  
-    // Odds - Widened to allow string for resilient importing
-    fdOdds?: number | string | null;
-    dkOdds?: number | string | null;
-    bestOdds?: number | string | null;
-    bestBook?: string | null;
-  
-    // Projections & Grades
-    pinnacleClosingLine?: number | null; // e.g. -115
-    pinnacleClosingOdds?: number | null;
-    projection?: number | null;
-    grade?: number | null; // 1-100 scale
-    confidence?: number | null; // 1-100 scale
-    confidenceScore?: number | null;
-    expectedValue?: number | null;
-    bestEdge?: string | null;
-    bestEdgePct?: number | null;
-    overUnder?: 'Over' | 'Under' | null;
-  
-    // Post-game
-    gameStat?: number | null;
-    actualResult?: 'Win' | 'Loss' | 'Push' | null;
-    betAmount?: number | null;
-    profitLoss?: number | null;
-    gradedBy?: string | null;
-    gradedAt?: string | null;
+  // Core Data (Firestore PascalCase)
+  id: string;
+  Player: string;
+  Team: string;
+  Prop: string;
+  Line: number;
+  'Over/Under?': string;
+  Matchup?: string;
+  Week?: number;
+  Season?: string;
 
-    // Metadata
-    createdAt?: any; // Allow Timestamp
-    updatedAt?: any; // Allow Timestamp
+  // Frontend/Enrichment Aliases (Lowercase)
+  player?: string;
+  team?: string;
+  prop?: string;
+  line?: number | string;
+  overUnder?: 'Over' | 'Under';
+  matchup?: string;
+  week?: number;
+  season?: string;
+
+  // Enrichment & Analytics Fields
+  bestOdds?: number;
+  bestBook?: string;
+  bestEV?: number;
+  bestEdgePct?: number;
+  bestImpliedProb?: number;
+  avgWinProb?: number;
+  projWinPct?: number;
+  playerAvg?: number;
+  seasonHitPct?: number;
+  opponentRank?: number;
+  opponentAvgVsStat?: number;
+  valueIcon?: string;
+  
+  // Post-Game / Settlement Fields
+  gameStat?: number;
+  actualResult?: 'won' | 'lost' | 'push' | 'pending';
+  profitLoss?: number;
+  betAmount?: number;
+  
+  // External IDs
+  pfrid?: string; // Pro Football Reference ID
 }
 
-// From Pro-Football-Reference
-export interface PFRGame {
-    week: number;
-    date: string;
-    opponent: string;
-    result: string;
-    passCmp: number;
-    passAtt: number;
-    passYds: number;
-    passTD: number;
-    interceptions: number;
-    rushAtt: number;
-    rushYds: number;
-    rushTD: number;
-    receptions: number;
-    recYds: number;
-    recTD: number;
-    [key: string]: string | number; // For dynamic access
-}
+// Add this to fix the "Module has no exported member 'DefenseMap'" error
+export type DefenseMap = Record<string, { rank: number; avg: number }>;
