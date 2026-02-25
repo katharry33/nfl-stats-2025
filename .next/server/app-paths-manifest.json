@@ -1,7 +1,9 @@
 {
   "/all-props/page": "app/all-props/page.js",
-  "/betting-log/page": "app/betting-log/page.js",
-  "/_not-found/page": "app/_not-found/page.js",
   "/api/betting-log/route": "app/api/betting-log/route.js",
-  "/api/wallet/route": "app/api/wallet/route.js"
+  "/betting-log/page": "app/betting-log/page.js",
+  "/favicon.ico/route": "app/favicon.ico/route.js",
+  "/api/wallet/route": "app/api/wallet/route.js",
+  "/api/all-props/route": "app/api/all-props/route.js",
+  "/api/delete-bet/route": "app/api/delete-bet/route.js"
 }
