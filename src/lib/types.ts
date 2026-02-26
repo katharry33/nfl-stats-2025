@@ -1,11 +1,11 @@
-
 export interface BetLeg {
   id?: string;
   player: string;
   prop: string;
-  line: number;
-  odds?: number;
-  result?: 'won' | 'lost' | 'push' | '';
+  line: number | string;
+  odds?: number | string;
+  result?: 'won' | 'lost' | 'push' | 'pending' | '';
+  status?: string; 
   matchup?: string;
 }
 
@@ -13,6 +13,7 @@ export interface Bet {
   id: string;
   userId?: string;
   type?: 'Single' | 'Parlay';
+  betType?: 'Single' | 'Parlay'; // Added to fix the BetsTable error
   stake: number;
   odds: number | string;
   potentialPayout?: number;
@@ -32,15 +33,13 @@ export interface BetslipContextType {
   selections: BetLeg[];
   bets: Bet[];
   loading: boolean;
-  loadingMore?: boolean;
-  hasMore?: boolean;
-  error?: string | null;
+  loadingMore: boolean;
+  hasMore: boolean;
+  error: string | null;
   
-  // METHODS
   fetchBets: (search?: string, isLoadMore?: boolean) => Promise<void>;
-  loadMoreBets?: () => Promise<void>;
+  loadMoreBets: () => Promise<void>;
   addLeg: (leg: any) => void;
-  addSelection?: (leg: any) => void; 
   removeLeg: (legId: string) => void;
   clearSlip: () => void;
   updateLeg: (legId: string, updates: Partial<BetLeg>) => void;

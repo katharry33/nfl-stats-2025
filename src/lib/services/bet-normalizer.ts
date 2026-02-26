@@ -2,26 +2,38 @@
 
 import { getWeekFromDate, parseLineField } from '@/lib/utils/nfl-week';
 
+const renderDate = (dateVal: any) => {
+    if (!dateVal) return '—';
+    try {
+        if (dateVal.seconds) {
+            return new Date(dateVal.seconds * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
+        }
+        const d = new Date(dateVal);
+        return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
+    } catch {
+        return '—';
+    }
+};
+
+/**
+ * Takes a raw bet object from any data source and cleans it into a single,
+ * consistent format for use throughout the application.
+ */
 export function normalizeBet(raw: any): any {
-  const gameDateRaw = raw.gameDate ?? raw.date ?? raw.createdAt ?? new Date().toISOString();
-
-  const derivedWeek =
-    raw.week ??
-    raw.legs?.[0]?.week ??
-    getWeekFromDate(gameDateRaw) ??
-    null;
-
+  // --- NORMALIZE TOP-LEVEL FIELDS ---
+  const gameDateRaw = raw.gameDate ?? raw.date ?? raw.createdAt ?? raw.updatedAt ?? new Date().toISOString();
+  const week = raw.Week ?? raw.week ?? getWeekFromDate(gameDateRaw) ?? null;
   const stake = Number(raw.stake ?? raw.wager ?? 0);
+  
+  // Normalize status, checking all known variations including 'Actual Result'.
+  const status = (raw["Actual Result"] ?? raw.result ?? raw.status ?? 'pending').toLowerCase();
 
-  const topOdds =
-    typeof raw.odds === 'string' ? parseFloat(raw.odds.replace('+', ''))
-    : typeof raw.odds === 'number' ? raw.odds
-    : null;
+  const odds = typeof raw.odds === 'string' ? parseFloat(raw.odds.replace('+', '')) : typeof raw.odds === 'number' ? raw.odds : null;
+  const player = raw.Player ?? raw.player ?? raw.playerteam ?? 'Legacy Bet';
+  const prop = raw.Prop ?? raw.prop ?? '';
+  const matchup = raw.Matchup ?? raw.matchup ?? 'N/A';
 
-  const status =
-    raw.status ||
-    (raw.result ? raw.result.toLowerCase() : 'pending');
-
+  // --- NORMALIZE BOOST ---
   const boostRaw = raw.boost ?? raw.boostpercentage ?? raw.boostPercentage ?? null;
   const boostPct: number | null =
     typeof boostRaw === 'number' ? boostRaw
@@ -32,75 +44,112 @@ export function normalizeBet(raw: any): any {
     : typeof boostRaw === 'string' && boostRaw && !['none', 'no', ''].includes(boostRaw.toLowerCase()) ? boostRaw
     : null;
 
+  // --- NORMALIZE LEGS ---
   let rawLegs: any[] = Array.isArray(raw.legs) ? raw.legs : [];
 
   if (rawLegs.length === 0) {
-    const parsed = parseLineField(raw.line ?? '');
+    const lineRaw = raw.Line ?? raw.line ?? '';
+    const parsed = parseLineField(lineRaw);
     rawLegs = [{
       ...raw,
-      player: raw.playerteam || raw.player || 'Legacy Bet',
-      prop: raw.prop || '',
+      player: player,     
+      prop: prop,
+      matchup: matchup,
       line: parsed.line,
       selection: raw.selection || parsed.selection || '',
-      status: raw.result?.toLowerCase() || raw.status || 'pending',
-      gameDate: raw.date || raw.createdAt,
+      status: status,
+      gameDate: gameDateRaw,
     }];
   }
 
   const normalizedLegs = rawLegs.map((leg: any) => {
-    const parsed    = parseLineField(leg.line ?? leg.Line);
-    const selection = leg.selection || parsed.selection || '';
-    const player =
-      (!leg.player || leg.player === 'Legacy Bet')
-        ? (raw.playerteam || raw.player || 'Legacy Bet')
-        : leg.player;
-    const legOdds =
-      typeof leg.odds === 'string' ? parseFloat(leg.odds.replace('+', ''))
-      : typeof leg.odds === 'number' ? leg.odds
-      : topOdds;
-    const legStatus = leg.status || (leg.result ? leg.result.toLowerCase() : status);
-    const legWeek   = leg.week ?? getWeekFromDate(leg.gameDate ?? gameDateRaw) ?? derivedWeek;
+    const legLineRaw = leg.Line ?? leg.line ?? '';
+    const parsed = parseLineField(legLineRaw);
+    
+    const legPlayer = leg.Player ?? leg.player ?? player;
+    const legProp = leg.Prop ?? leg.prop ?? prop;
+    const legMatchup = leg.Matchup ?? leg.matchup ?? matchup;
+    const legSelection = leg.selection ?? parsed.selection ?? '';
+    
+    const legOdds = typeof leg.odds === 'string' ? parseFloat(leg.odds.replace('+', ''))
+                  : typeof leg.odds === 'number' ? leg.odds
+                  : odds; 
+                  
+    const legStatus = (leg["Actual Result"] ?? leg.result ?? leg.status ?? status).toLowerCase();
+    const legWeek = leg.Week ?? leg.week ?? getWeekFromDate(leg.gameDate ?? gameDateRaw) ?? week;
 
     const legOddsDisplay = typeof legOdds === 'number' 
-      ? (legOdds > 0 ? `+${legOdds}` : legOdds) 
-      : legOdds;
-      
-    const impliedBonus = typeof legOdds === 'number'
-      ? (legOdds > 0 ? 5 * (legOdds / 100) : 5 * (100 / Math.abs(legOdds)))
+      ? (legOdds > 0 ? `+${legOdds}` : `${legOdds}`) 
       : null;
 
     return {
       ...leg,
-      player,
+      player: legPlayer,
+      prop: legProp,
+      matchup: legMatchup,
       line: parsed.line,
-      selection,
-      week: legWeek,
-      matchup: leg.matchup || raw.matchup || 'N/A',
-      prop: leg.prop || raw.prop || '',
+      selection: legSelection,
       odds: legOdds,
-      legOddsDisplay,
-      impliedBonus,
+      legOddsDisplay: legOddsDisplay,
       status: legStatus,
+      week: legWeek,
       gameDate: leg.gameDate ?? gameDateRaw,
     };
   });
-
+  
+  // --- RETURN FINAL NORMALIZED OBJECT ---
   return {
     ...raw,
+    player,
+    prop,
+    matchup,
     stake,
-    week: derivedWeek,
-    odds: topOdds,
+    week,
+    odds,
     status,
     gameDate: gameDateRaw,
     boost: boostDisplay,
     boostPct,
     boostRaw,
     legs: normalizedLegs,
-    matchup: raw.matchup || 'N/A',
-    team: raw.team || 'TBD',
+    displayDate: renderDate(gameDateRaw),
+    displayWeek: week ? `WK ${week}` : '—',
+    betType: (raw.parlayid || raw.dk_parlay_id) ? 'Parlay' : 'Single',
   };
 }
 
+/**
+ * Groups raw documents into parlays or single bets.
+ */
 export function groupBets(rawDocs: any[]): any[] {
-  return rawDocs.map(doc => normalizeBet(doc));
+  const groups: Record<string, any> = {};
+  const singles: any[] = [];
+
+  // First pass: group all the legs of parlays.
+  rawDocs.forEach((raw) => {
+    const parlayId = raw.parlayid || raw.dk_parlay_id;
+    if (parlayId) {
+      if (!groups[parlayId]) {
+        groups[parlayId] = {
+          ...raw, // Use the first doc as the base for the parlay.
+          id: parlayId,
+          legs: [],
+          betType: 'Parlay'
+        };
+      }
+      // A parlay is composed of multiple documents, each representing a leg.
+      // We normalize the doc as a stand-alone bet to get its leg info.
+      const legDocAsBet = normalizeBet(raw);
+      groups[parlayId].legs.push(...legDocAsBet.legs);
+    } else {
+      // If it has no parlay ID, it's a single bet.
+      singles.push(raw);
+    }
+  });
+  
+  const groupedParlays = Object.values(groups).map(p => normalizeBet(p));
+  const normalizedSingles = singles.map(s => normalizeBet(s));
+
+  // Combine and return.
+  return [...groupedParlays, ...normalizedSingles];
 }

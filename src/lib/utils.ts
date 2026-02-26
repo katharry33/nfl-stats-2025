@@ -1,21 +1,17 @@
-
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
-// Shadcn UI helper
+// 1. Core UI Helper
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-/**
- * 1. PAYOUT UTILITIES
- */
+// 2. Direct Logic (If you want them here)
 export function getOddsMultiplier(odds: string | number | null | undefined): number {
   if (!odds) return 0;
   const oddsStr = String(odds).replace(/\+/g, '').trim();
   const numericOdds = parseFloat(oddsStr);
   if (isNaN(numericOdds) || numericOdds === 0) return 0;
-
   return numericOdds > 0 ? numericOdds / 100 : 100 / Math.abs(numericOdds);
 }
 
@@ -25,19 +21,13 @@ export function calculateNetProfit(stake: number | string, odds: number | string
   return parseFloat((s * multiplier).toFixed(2));
 }
 
-/**
- * 2. DATE UTILITIES
- */
 export function formatBetDate(dateInput: any) {
-  if (!dateInput) return "—"; // Fallback for missing dates
+  if (!dateInput) return "—";
+  const date = (dateInput?.toDate && typeof dateInput.toDate === 'function') 
+    ? dateInput.toDate() 
+    : new Date(dateInput);
   
-  const date = new Date(dateInput);
-  
-  // Check if the date object is valid
-  if (isNaN(date.getTime())) {
-    console.warn("Invalid date received:", dateInput);
-    return "TBD"; 
-  }
+  if (isNaN(date.getTime())) return "TBD"; 
 
   return new Intl.DateTimeFormat('en-US', {
     month: 'short',
@@ -46,12 +36,6 @@ export function formatBetDate(dateInput: any) {
   }).format(date);
 }
 
-// src/lib/utils.ts
-// Barrel re-export so legacy imports like `from "@/lib/utils"` keep working.
-
-export * from '@/lib/utils/payout';
-export * from '@/lib/utils/dates';
-export * from '@/lib/utils/nfl-week';
-
-// Alias: roi-chart imports getPayout but the function is getBetPayout
-export { getBetPayout as getPayout } from '@/lib/utils/payout';
+// 3. Re-exports (Only if these files exist separately)
+// export * from './utils/payout'; 
+// export * from './utils/nfl-week';

@@ -1,484 +1,213 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, Plus, ChevronDown, Loader2, X, Check, ShoppingCart, AlertCircle, RefreshCw } from 'lucide-react';
-import { useBetSlip } from '@/context/betslip-context';
-import { ManualEntryModal } from '@/components/bets/manual-entry-modal';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { HistoricalBetSlip } from '@/components/bets/historical-betslip';
-
-// ── Static filter options ─────────────────────────────────────────────────────
-
-const PROP_TYPES = [
-  'Passing Yards',
-  'Pass Attempts',
-  'Pass TDs',
-  'Completions',
-  'Interceptions',
-  'Rush Yards',
-  'Rush Attempts',
-  'Receptions',
-  'Receiving Yards',
-  'Rush TDs',
-  'Rec TDs',
-  'Pass + Rush Yards',
-  'Rush + Rec Yards',
-];
-
-const WEEKS = Array.from({ length: 22 }, (_, i) => i + 1);
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function fmtLine(n: number | null | undefined): string {
-  if (n == null || isNaN(n)) return '—';
-  return n.toFixed(1);
-}
-
-function fmtDate(raw: string | null | undefined): string {
-  if (!raw) return '—';
-  try {
-    const d = new Date(raw);
-    if (isNaN(d.getTime())) return '—';
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
-  } catch { return '—'; }
-}
-
-// ── Main page ─────────────────────────────────────────────────────────────────
+import { AddToBetslipButton } from '@/components/bets/add-to-betslip-button';
+import { X } from 'lucide-react';
 
 export default function AllPropsPage() {
-  const { addLeg, selections } = useBetSlip();
+  const [allLegs, setAllLegs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [seasonFilter, setSeasonFilter] = useState('all'); // New season filter
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filters, setFilters] = useState({
+    prop: '',
+    week: '',
+  });
 
-  // Data state
-  const [legs,        setLegs]        = useState<any[]>([]);
-  const [loading,     setLoading]     = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore,     setHasMore]     = useState(false);
-  const [nextCursor,  setNextCursor]  = useState<string | null>(null);
-  const [error,       setError]       = useState<string | null>(null);
-
-  // Pending input state (not yet submitted)
-  const [playerInput, setPlayerInput] = useState('');
-  const [weekInput,   setWeekInput]   = useState('');
-  const [propInput,   setPropInput]   = useState('');
-
-  // Applied (submitted) filter state
-  const [appliedPlayer, setAppliedPlayer] = useState('');
-  const [appliedWeek,   setAppliedWeek]   = useState('');
-  const [appliedProp,   setAppliedProp]   = useState('');
-
-  const [manualOpen, setManualOpen] = useState(false);
-  const [slipIds,    setSlipIds]    = useState<Set<string>>(new Set());
-
-  const playerRef = useRef<HTMLInputElement>(null);
-
-  // ── Fetch ─────────────────────────────────────────────────────────────────
-
-  const fetchLegs = useCallback(async (opts: {
-    append?: boolean;
-    player?: string;
-    week?: string;
-    prop?: string;
-    cursor?: string | null;
-  } = {}) => {
-    const {
-      append = false,
-      player = '',
-      week   = '',
-      prop   = '',
-      cursor = null,
-    } = opts;
-
-    if (!append) { setLoading(true); setError(null); }
-    else           setLoadingMore(true);
-
+  const fetchHistoricalProps = useCallback(async () => {
+    setLoading(true);
     try {
-      const params = new URLSearchParams({ limit: '50' });
-      if (player)                    params.set('player', player);
-      if (week && week !== 'all')    params.set('week',   week);
-      if (prop  && prop  !== 'all')  params.set('prop',   prop);
-      if (cursor)                    params.set('cursor', cursor);
+      const params = new URLSearchParams({
+        season: seasonFilter, // Use seasonFilter
+        prop: filters.prop,
+        week: filters.week,
+      });
 
-      const res  = await fetch(`/api/all-props?${params}`);
-      const data = await res.json();
-
-      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-
-      console.log('📊 all-props debug:', data.debug);
-
-      const incoming: any[] = Array.isArray(data.props) ? data.props : [];
-      setLegs(prev => append ? [...prev, ...incoming] : incoming);
-      setHasMore(data.hasMore    ?? false);
-      setNextCursor(data.nextCursor ?? null);
-    } catch (err: any) {
-      setError(err.message ?? 'Failed to load props');
+      const response = await fetch(`/api/all-props?${params.toString()}`);
+      const data = await response.json();
+      
+      if (data.props) {
+        setAllLegs(data.props);
+      }
+    } catch (error) {
+      console.error("Failed to fetch props:", error);
     } finally {
       setLoading(false);
-      setLoadingMore(false);
     }
-  }, []);
+  }, [seasonFilter, filters]);
 
-  // Initial load — no filters
   useEffect(() => {
-    fetchLegs();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    fetchHistoricalProps();
+  }, [fetchHistoricalProps]);
 
-  // ── Search actions ────────────────────────────────────────────────────────
+  const filteredLegs = useMemo(() => {
+    if (!searchTerm) return allLegs;
+    
+    const lcSearch = searchTerm.toLowerCase();
+    return allLegs.filter(item => 
+      (item.player && item.player.toLowerCase().includes(lcSearch)) || 
+      (item.prop && item.prop.toLowerCase().includes(lcSearch)) ||
+      (item.matchup && item.matchup.toLowerCase().includes(lcSearch))
+    );
+  }, [searchTerm, allLegs]);
 
-  const applySearch = useCallback(() => {
-    setLegs([]);
-    setNextCursor(null);
-    setHasMore(false);
-    setAppliedPlayer(playerInput);
-    setAppliedWeek(weekInput);
-    setAppliedProp(propInput);
-    fetchLegs({ player: playerInput, week: weekInput, prop: propInput, cursor: null });
-  }, [playerInput, weekInput, propInput, fetchLegs]);
-
-  const clearFilters = useCallback(() => {
-    setPlayerInput('');
-    setWeekInput('');
-    setPropInput('');
-    setAppliedPlayer('');
-    setAppliedWeek('');
-    setAppliedProp('');
-    setLegs([]);
-    setNextCursor(null);
-    fetchLegs({ player: '', week: '', prop: '', cursor: null });
-    setTimeout(() => playerRef.current?.focus(), 50);
-  }, [fetchLegs]);
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') applySearch();
+  const handleFilterChange = (key: string, value: string) => {
+    setFilters(prev => ({ ...prev, [key]: value }));
   };
 
-  // ── Bet slip ──────────────────────────────────────────────────────────────
-
-  const toggleSlip = useCallback((leg: any) => {
-    const inSlip = slipIds.has(leg.id);
-    setSlipIds(prev => {
-      const next = new Set(prev);
-      inSlip ? next.delete(leg.id) : next.add(leg.id);
-      return next;
-    });
-    if (!inSlip) {
-      addLeg({
-        id:       leg.id,
-        player:   leg.player,
-        team:     leg.team    ?? '',
-        prop:     leg.prop,
-        line:     leg.line,
-        selection:'Over',
-        odds:     leg.odds    ?? -110,
-        matchup:  leg.matchup,
-        week:     leg.week    ?? undefined,
-        gameDate: leg.gameDate ?? '',
-        status:   'pending',
-      });
-    }
-  }, [slipIds, addLeg]);
-
-  const hasFilters     = playerInput || weekInput || propInput;
-  const filtersApplied = appliedPlayer || appliedWeek || appliedProp;
-
-  // ── Render ────────────────────────────────────────────────────────────────
-
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-950">
-      <div className="flex-1 overflow-y-auto">
-        <div className="max-w-7xl mx-auto px-6 pt-8 pb-20 space-y-5">
+    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 p-6 min-h-screen bg-slate-950 text-slate-200">
+      <div className="lg:col-span-3 space-y-6">
+        <header className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+            <h1 className="text-2xl font-bold text-white tracking-tight">Historical Props</h1>
+        </header>
 
-          {/* Header */}
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <h1 className="text-2xl font-bold text-white tracking-tight">Historical Props</h1>
-              <p className="text-sm text-slate-500 mt-1">
-                {loading
-                  ? 'Loading…'
-                  : `${legs.length.toLocaleString()} legs loaded`}
-                {slipIds.size > 0 && (
-                  <span className="ml-3 inline-flex items-center gap-1.5 text-emerald-400 font-semibold">
-                    <ShoppingCart className="h-3 w-3" />
-                    {slipIds.size} in bet slip
-                  </span>
-                )}
-              </p>
-            </div>
-
-            <button
-              onClick={() => setManualOpen(true)}
-              className="shrink-0 flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-semibold text-sm transition-colors shadow-lg shadow-emerald-900/30"
+        {/* Filter and Search Controls */}
+        <div className="flex flex-wrap items-end gap-4 bg-slate-900/60 p-4 rounded-xl border border-slate-800">
+          {/* SEASON FILTER */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Season</label>
+            <select 
+              value={seasonFilter} 
+              onChange={(e) => setSeasonFilter(e.target.value)}
+              className="bg-slate-950 border border-slate-700 text-slate-200 text-xs rounded-lg px-4 py-2 outline-none w-40 h-[34px]"
             >
-              <Plus className="h-4 w-4" />
-              Manual Entry
-            </button>
+              <option value="all">All Seasons</option>
+              <option value="2025">2025</option>
+              <option value="2024">2024</option>
+            </select>
           </div>
 
-          {/* Error banner */}
-          {error && (
-            <div className="flex items-center gap-3 px-4 py-3 bg-red-950/40 border border-red-800/50 rounded-xl text-red-400 text-sm">
-              <AlertCircle className="h-4 w-4 shrink-0" />
-              <span>{error}</span>
-              <button
-                onClick={() => fetchLegs()}
-                className="ml-auto flex items-center gap-1 text-xs underline hover:no-underline"
-              >
-                <RefreshCw className="h-3 w-3" /> Retry
-              </button>
-            </div>
-          )}
-
-          {/* ── Filter bar */}
-          <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-4 space-y-3">
-            <div className="flex flex-wrap gap-3 items-end">
-
-              {/* Player */}
-              <div className="flex flex-col gap-1 flex-1 min-w-[160px]">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                  Player
-                </label>
+          {/* CLIENT-SIDE SEARCH */}
+          <div className="flex flex-col gap-1.5 flex-grow min-w-[200px]">
+            <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Search</label>
+            <div className="relative">
                 <input
-                  ref={playerRef}
                   type="text"
-                  placeholder="e.g. Patrick Mahomes"
-                  value={playerInput}
-                  onChange={e => setPlayerInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none"
+                  placeholder="Filter by player, team, or prop..."
+                  className="bg-slate-950 border border-slate-700 rounded-lg pl-4 pr-10 py-2 text-xs text-white outline-none focus:ring-1 focus:ring-emerald-500 w-full h-[34px]"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
                 />
-              </div>
-
-              {/* Week */}
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                  Week
-                </label>
-                <div className="relative">
-                  <select
-                    value={weekInput}
-                    onChange={e => setWeekInput(e.target.value)}
-                    className="appearance-none bg-slate-950 border border-slate-700 text-white rounded-lg pl-3 pr-8 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer h-[38px]"
-                  >
-                    <option value="">All Weeks</option>
-                    {WEEKS.map(w => (
-                      <option key={w} value={String(w)}>Week {w}</option>
-                    ))}
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500" />
-                </div>
-              </div>
-
-              {/* Prop Type */}
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                  Prop Type
-                </label>
-                <div className="relative">
-                  <select
-                    value={propInput}
-                    onChange={e => setPropInput(e.target.value)}
-                    className="appearance-none bg-slate-950 border border-slate-700 text-white rounded-lg pl-3 pr-8 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer h-[38px] max-w-[190px]"
-                  >
-                    <option value="">All Prop Types</option>
-                    {PROP_TYPES.map(p => (
-                      <option key={p} value={p}>{p}</option>
-                    ))}
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500" />
-                </div>
-              </div>
-
-              {/* Search + Clear */}
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] font-bold text-transparent uppercase select-none">&nbsp;</label>
-                <div className="flex gap-2">
-                  <button
-                    onClick={applySearch}
-                    disabled={loading}
-                    className="flex items-center gap-2 px-5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-lg font-semibold text-sm transition-colors h-[38px]"
-                  >
-                    <Search className="h-4 w-4" />
-                    Search
-                  </button>
-
-                  {(hasFilters || filtersApplied) && (
+                {searchTerm && (
                     <button
-                      onClick={clearFilters}
-                      className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white border border-slate-700 rounded-lg text-xs font-bold transition-colors h-[38px]"
+                        onClick={() => setSearchTerm("")}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-200"
                     >
-                      <X className="h-3.5 w-3.5" />
-                      Clear
+                        <X className="h-3 w-3" />
                     </button>
-                  )}
-                </div>
-              </div>
+                )}
             </div>
+          </div>
 
-            {/* Applied filter chips */}
-            {filtersApplied && (
-              <div className="flex flex-wrap gap-2 pt-0.5">
-                {appliedPlayer && (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-900/30 border border-emerald-700/40 rounded-full text-emerald-300 text-[10px] font-semibold">
-                    Player: {appliedPlayer}
-                  </span>
-                )}
-                {appliedWeek && appliedWeek !== 'all' && (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-900/30 border border-blue-700/40 rounded-full text-blue-300 text-[10px] font-semibold">
-                    Week {appliedWeek}
-                  </span>
-                )}
-                {appliedProp && appliedProp !== 'all' && (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-purple-900/30 border border-purple-700/40 rounded-full text-purple-300 text-[10px] font-semibold">
-                    {appliedProp}
-                  </span>
-                )}
+          {/* Prop Dropdown */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Prop Type</label>
+            <select 
+              value={filters.prop} 
+              onChange={(e) => handleFilterChange('prop', e.target.value)}
+              className="bg-slate-950 border border-slate-700 text-slate-200 text-xs rounded-lg px-4 py-2 outline-none w-40 h-[34px]"
+            >
+              <option value="">All Props</option>
+              <option value="REC YARDS">REC YARDS</option>
+              <option value="RUSH YARDS">RUSH YARDS</option>
+              <option value="PASS YARDS">PASS YARDS</option>
+              <option value="ANYTIME TD">ANYTIME TD</option>
+            </select>
+          </div>
+
+          {/* Week Dropdown */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Week</label>
+            <select 
+              value={filters.week} 
+              onChange={(e) => handleFilterChange('week', e.target.value)}
+              className="bg-slate-950 border border-slate-700 text-slate-200 text-xs rounded-lg px-4 py-2 outline-none w-32 h-[34px]"
+            >
+              <option value="">All Weeks</option>
+              {Array.from({ length: 18 }, (_, i) => (
+                <option key={i + 1} value={String(i + 1)}>Week {i + 1}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between mb-4 bg-slate-900/50 p-3 rounded-lg border border-slate-800">
+            <div className="flex items-center gap-2">
+                <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                <p className="text-sm text-slate-300">
+                Displaying <span className="font-mono text-emerald-400 font-bold">{filteredLegs.length}</span> 
+                <span className="text-slate-500 mx-2">of</span>
+                <span className="font-mono text-slate-200">{allLegs.length}</span> records
+                </p>
+            </div>
+            
+            {seasonFilter !== 'all' && (
+                <span className="text-[10px] uppercase tracking-widest bg-emerald-500/10 text-emerald-500 px-2 py-1 rounded">
+                Season {seasonFilter}
+                </span>
+            )}
+        </div>
+
+        {/* Data Table */}
+        {loading ? (
+          <div className="flex justify-center py-20">
+            <span className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></span>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-slate-800 bg-slate-900/20 overflow-hidden shadow-2xl">
+            <table className="w-full text-left">
+              <thead className="bg-slate-900/80 text-[10px] uppercase font-black text-slate-500 tracking-widest border-b border-slate-800">
+                <tr>
+                  <th className="px-6 py-4">Player</th>
+                  <th className="px-6 py-4">Prop</th>
+                  <th className="px-6 py-4">Line</th>
+                  <th className="px-6 py-4">Matchup / Wk</th>
+                  <th className="px-6 py-4">Game Date</th>
+                  <th className="px-6 py-4 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/40">
+                {filteredLegs.map((leg, i) => (
+                  <tr key={leg.id || i} className="hover:bg-slate-800/30 transition-colors group">
+                    <td className="px-6 py-4">
+                      <div className="font-bold text-slate-200">{leg.player}</div>
+                    </td>
+                    <td className="px-6 py-4 text-xs text-slate-400 font-medium">{leg.prop}</td>
+                    <td className="px-6 py-4 font-mono text-sm text-emerald-400">{leg.line}</td>
+                    <td className="px-6 py-4">
+                      <div className="text-[10px] text-slate-500 font-mono uppercase">{leg.matchup}</div>
+                      <div className="text-[10px] text-slate-400">Week {leg.week}</div>
+                    </td>
+                    <td className="px-6 py-4 text-xs text-slate-400">{leg.gameDate ? new Date(leg.gameDate).toLocaleDateString() : 'N/A'}</td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="w-24 ml-auto">
+                         <AddToBetslipButton prop={leg} selection={leg.selection || 'Over'} />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            
+            {!loading && filteredLegs.length === 0 && (
+               <div className="p-8 text-center text-slate-500 text-sm italic">
+                {allLegs.length > 0 && searchTerm ? 
+                  `No results for "${searchTerm}"` : 
+                  `No historical data found for your filters in ${seasonFilter}.`
+                }
               </div>
             )}
           </div>
-
-          {/* ── Table */}
-          <div className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-x-auto">
-            <table className="w-full min-w-[600px]">
-              <thead className="bg-slate-900/80 border-b border-slate-800">
-                <tr>
-                  {/* Add to slip */}
-                  <th className="w-12 px-4 py-3" />
-                  <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Player</th>
-                  <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Prop</th>
-                  <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Line</th>
-                  <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Matchup</th>
-                  <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Game Date</th>
-                  <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Week</th>
-                </tr>
-              </thead>
-
-              <tbody className="divide-y divide-slate-800/50">
-                {loading ? (
-                  <tr>
-                    <td colSpan={7} className="py-24 text-center">
-                      <Loader2 className="h-6 w-6 animate-spin text-emerald-500 mx-auto mb-2" />
-                      <p className="text-slate-600 text-xs">Loading props…</p>
-                    </td>
-                  </tr>
-                ) : legs.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="py-24 text-center">
-                      <p className="text-slate-600 text-sm">
-                        {filtersApplied ? 'No props matched your search.' : 'No props found.'}
-                      </p>
-                      {filtersApplied && (
-                        <button onClick={clearFilters} className="mt-2 text-xs text-emerald-500 hover:underline">
-                          Clear filters
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ) : (
-                  legs.map((leg, i) => {
-                    const inSlip = slipIds.has(leg.id);
-                    return (
-                      <tr
-                        key={leg.id ?? i}
-                        className={`transition-colors hover:bg-slate-800/20 ${inSlip ? 'bg-emerald-950/20' : ''}`}
-                      >
-                        {/* Bet slip toggle */}
-                        <td className="px-4 py-3 text-center">
-                          <button
-                            onClick={() => toggleSlip(leg)}
-                            title={inSlip ? 'Remove from bet slip' : 'Add to bet slip'}
-                            className={`w-7 h-7 rounded-full flex items-center justify-center mx-auto transition-all border ${
-                              inSlip
-                                ? 'bg-emerald-600 border-emerald-500 text-white'
-                                : 'bg-slate-800 border-slate-700 text-slate-500 hover:border-emerald-500 hover:text-emerald-400'
-                            }`}
-                          >
-                            {inSlip ? <Check className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-                          </button>
-                        </td>
-
-                        {/* Player */}
-                        <td className="px-4 py-3">
-                          <div className="font-semibold text-slate-100 text-sm leading-tight">
-                            {leg.player || '—'}
-                          </div>
-                          {leg.team && (
-                            <div className="text-[10px] text-slate-600 uppercase font-mono mt-0.5">
-                              {leg.team}
-                            </div>
-                          )}
-                        </td>
-
-                        {/* Prop */}
-                        <td className="px-4 py-3 text-xs text-slate-400 capitalize">
-                          {leg.prop || '—'}
-                        </td>
-
-                        {/* Line */}
-                        <td className="px-4 py-3 font-mono font-bold text-white text-sm">
-                          {fmtLine(leg.line)}
-                        </td>
-
-                        {/* Matchup */}
-                        <td className="px-4 py-3 text-[11px] font-mono text-slate-500 uppercase">
-                          {leg.matchup || '—'}
-                        </td>
-
-                        {/* Game Date */}
-                        <td className="px-4 py-3 text-xs text-slate-400">
-                          {fmtDate(leg.gameDate)}
-                        </td>
-
-                        {/* Week */}
-                        <td className="px-4 py-3 text-xs font-mono text-slate-400">
-                          {leg.week
-                            ? `WK ${leg.week}`
-                            : <span className="text-slate-700">—</span>}
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Load More */}
-          <div className="flex flex-col items-center gap-2 pt-2 pb-4">
-            {hasMore ? (
-              <button
-                onClick={() => fetchLegs({
-                  append: true,
-                  player: appliedPlayer,
-                  week:   appliedWeek,
-                  prop:   appliedProp,
-                  cursor: nextCursor,
-                })}
-                disabled={loadingMore}
-                className="px-8 py-3 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-semibold text-sm transition-colors flex items-center gap-2 border border-slate-700"
-              >
-                {loadingMore
-                  ? <><Loader2 className="h-4 w-4 animate-spin" /> Loading…</>
-                  : <><ChevronDown className="h-4 w-4" /> Load More Props</>
-                }
-              </button>
-            ) : !loading && legs.length > 0 ? (
-              <p className="text-slate-700 text-xs">
-                All {legs.length.toLocaleString()} props loaded
-              </p>
-            ) : null}
-          </div>
-
-        </div>
+        )}
       </div>
 
-      {/* Bet Slip sidebar */}
-      {selections.length > 0 && <HistoricalBetSlip />}
-
-      {/* Manual Entry modal */}
-      <ManualEntryModal
-        isOpen={manualOpen}
-        onClose={() => setManualOpen(false)}
-        onAddLeg={addLeg}
-      />
+      <div className="lg:col-span-1">
+        <aside className="sticky top-20">
+          <HistoricalBetSlip />
+        </aside>
+      </div>
     </div>
   );
 }

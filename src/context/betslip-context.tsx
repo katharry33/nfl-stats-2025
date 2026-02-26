@@ -1,23 +1,23 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback } from 'react';
+import { Bet } from "@/lib/types"; // Using the global Bet type
 
-export interface Bet {
-  id: string;
-  createdAt: string;
-  [key: string]: any;
-}
-
+// The new, more detailed context type
 export interface BetSlipContextType {
+  // Bet management
   bets: Bet[];
+  totalCount: number;
   loading: boolean;
   loadingMore: boolean;
   hasMore: boolean;
   error: string | null;
-  fetchBets: () => Promise<void>;
-  loadMoreBets: () => Promise<void>;
+  fetchBets: (search: string, season: string) => Promise<void>;
+  loadMoreBets: (search: string, season: string) => Promise<void>;
   updateBet: (id: string, updates: Partial<Bet>) => Promise<void>;
-  deleteBet: (id: string) => Promise<void>;
+  deleteBet: (id: string) => void; // Made this synchronous for optimistic updates
+  
+  // Betslip selections management
   selections: any[];
   addLeg: (leg: any) => void;
   removeLeg: (legId: string) => void;
@@ -38,25 +38,42 @@ export const useBetSlip = () => {
 const PAGE_SIZE = 50;
 
 export const BetSlipProvider = ({ children }: { children: React.ReactNode }) => {
+  // State for betslip selections
   const [selections, setSelections] = useState<any[]>([]);
   const [totalParlayOdds, setTotalParlayOdds] = useState(0);
 
+  // State for historical bets
   const [bets, setBets] = useState<Bet[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
 
-  const fetchBets = useCallback(async () => {
-    if (loading) return;
+  // --- API Functions for Historical Bets ---
+
+  const fetchBets = useCallback(async (search: string, season: string) => {
     setLoading(true);
     setError(null);
+    // We keep the previous bets if we want a smoother transition, 
+    // but clearing is fine for a fresh search/season filter.
+    setBets([]); 
     try {
-      const response = await fetch(`/api/betting-log?limit=${PAGE_SIZE}`);
+      const params = new URLSearchParams({ 
+        limit: String(PAGE_SIZE), 
+        season: season === 'all' ? '' : season,
+        // Change 'search' to 'player' or 'status' based on your API route needs
+        player: search 
+      });
+
+      const response = await fetch(`/api/betting-log?${params.toString()}`);
       const data = await response.json();
+
       if (response.ok) {
-        setBets(data.logs || []);
+        // FIX: The unified API returns 'data.bets', not 'data.logs'
+        setBets(data.bets || []);
+        setTotalCount(data.totalCount || 0);
         setHasMore(data.hasMore || false);
         setNextCursor(data.nextCursor || null);
       } else {
@@ -67,36 +84,49 @@ export const BetSlipProvider = ({ children }: { children: React.ReactNode }) => 
     } finally {
       setLoading(false);
     }
-  }, [loading]);
+  }, []);
 
-  const loadMoreBets = useCallback(async () => {
+  const loadMoreBets = useCallback(async (search: string, season: string) => {
     if (loadingMore || !hasMore || !nextCursor) return;
     setLoadingMore(true);
-    setError(null);
     try {
-      const response = await fetch(`/api/betting-log?limit=${PAGE_SIZE}&cursor=${nextCursor}`);
+      const params = new URLSearchParams({
+        limit: String(PAGE_SIZE),
+        season: season === 'all' ? '' : season,
+        cursor: nextCursor,
+        player: search
+      });
+
+      const response = await fetch(`/api/betting-log?${params.toString()}`);
       const data = await response.json();
+
       if (response.ok) {
-        setBets(prev => [...prev, ...(data.logs || [])]); 
+        // FIX: Append 'data.bets' to existing state
+        setBets(prev => [...prev, ...(data.bets || [])]);
         setHasMore(data.hasMore || false);
         setNextCursor(data.nextCursor || null);
       } else {
         throw new Error(data.error || 'Failed to load more bets');
       }
     } catch (err: any) {
-      setError(err.message);
+      console.error("Load more error:", err);
     } finally {
       setLoadingMore(false);
     }
   }, [loadingMore, hasMore, nextCursor]);
 
+
   const updateBet = async (id: string, updates: Partial<Bet>) => {
+    // Note: This is an optimistic update. The actual API call should be handled separately.
     setBets(prev => prev.map(b => b.id === id ? { ...b, ...updates } : b));
   };
 
-  const deleteBet = async (id: string) => {
+  const deleteBet = (id: string) => {
+    // Optimistic update
     setBets(prev => prev.filter(b => b.id !== id));
   };
+
+  // --- Betslip Selection Functions (no changes here) ---
 
   const calculateTotalOdds = (currentSelections: any[]) => {
     if (currentSelections.length === 0) return 0;
@@ -131,13 +161,10 @@ export const BetSlipProvider = ({ children }: { children: React.ReactNode }) => 
     setTotalParlayOdds(0);
   };
 
-  useEffect(() => {
-    fetchBets();
-  }, [fetchBets]);
-
   return (
     <BetSlipContext.Provider value={{
       bets,
+      totalCount,
       loading,
       loadingMore,
       hasMore,
