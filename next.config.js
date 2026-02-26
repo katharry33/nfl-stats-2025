@@ -1,13 +1,18 @@
 // next.config.js
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'export',
+  // ❌ REMOVED: output: 'export'
+  // Static export mode disables API routes, server components, and all SSR.
+  // This was causing the 404 on every page. Your app uses Firebase Admin SDK
+  // in server components and API routes — those require a running Node server.
+
   experimental: {
     serverComponentsExternalPackages: ['firebase-admin'],
   },
+
   webpack: (config, { isServer }) => {
     if (!isServer) {
-      // Don't bundle firebase-admin in client
+      // Prevent firebase-admin from being bundled into the client
       config.resolve.fallback = {
         ...config.resolve.fallback,
         'firebase-admin': false,

@@ -1,4 +1,3 @@
-// src/app/bonuses/page.tsx
 'use client';
 
 import { useState, useEffect } from "react";
@@ -14,15 +13,7 @@ import { PlusCircle, Gift, Calendar, Percent, Edit, CheckCircle, XCircle } from 
 import { format } from "date-fns";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { Bonus } from "@/lib/types";
-
-// Bulletproof helper to safely convert a flexible timestamp to a Date object.
-const ensureDate = (ts: any): Date => {
-  if (!ts) return new Date();
-  if (ts && typeof ts.toDate === 'function') {
-    return ts.toDate();
-  }
-  return new Date(ts);
-};
+import { resolveFirestoreDate } from "@/lib/types"; // PATCH: Use centralized helper
 
 export default function BonusesPage() {
   const [bonuses, setBonuses] = useState<Bonus[]>([]);
@@ -37,23 +28,23 @@ export default function BonusesPage() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const updatedBonuses = snapshot.docs.map((doc) => {
         const data = doc.data();
-        const expiration = ensureDate(data.expirationDate);
+        const expiration = resolveFirestoreDate(data.expirationDate);
         const now = new Date();
         
         let status = data.status || 'active';
-        // Only trigger update if it hasn't been marked expired yet
-        if (status === 'active' && expiration < now) {
+        if (status === 'active' && expiration && expiration < now) {
           status = 'expired';
           updateDoc(doc.ref, { status: 'expired' });
         }
         
+        // PATCH: Spread all fields and use safer type assertion
         return {
           id: doc.id,
           ...data,
           status,
           expirationDate: expiration,
-          usedAt: data.usedAt ? ensureDate(data.usedAt) : undefined,
-        } as Bonus;
+          usedAt: data.usedAt ? resolveFirestoreDate(data.usedAt) : undefined,
+        } as unknown as Bonus;
       });
 
       setBonuses(updatedBonuses);
@@ -93,8 +84,10 @@ export default function BonusesPage() {
   const usedBonuses = bonuses.filter(b => b.status === 'used');
   const expiredBonuses = bonuses.filter(b => b.status === 'expired');
 
+  // PATCH: Updated BonusCard to handle nullable dates from resolveFirestoreDate
   const BonusCard = ({ bonus, showActions = true }: { bonus: Bonus; showActions?: boolean }) => {
-    const expirationDate = ensureDate(bonus.expirationDate);
+    const expirationDate = resolveFirestoreDate(bonus.expirationDate);
+    const usedDate = bonus.usedAt ? resolveFirestoreDate(bonus.usedAt) : null;
 
     return (
       <div className={`p-4 border rounded-lg transition-shadow 
@@ -128,13 +121,13 @@ export default function BonusesPage() {
             <div className="flex items-center gap-4 text-xs text-slate-500">
               <span className="flex items-center gap-1">
                 <Calendar className="h-3 w-3" />
-                Expires: {format(expirationDate, "MMM d, yyyy 'at' h:mm a")}
+                Expires: {expirationDate ? format(expirationDate, "MMM d, yyyy 'at' h:mm a") : 'N/A'}
               </span>
             </div>
 
-            {bonus.usedAt && (
+            {usedDate && (
               <div className="text-xs text-slate-500 mt-2">
-                Used: {format(ensureDate(bonus.usedAt), "MMM d, yyyy")}
+                Used: {format(usedDate, "MMM d, yyyy")}
               </div>
             )}
           </div>

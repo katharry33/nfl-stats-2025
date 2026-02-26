@@ -1,12 +1,14 @@
-import { db } from '@/lib/firebase/admin';
-import { Bet } from "../../types";
+import { adminDb } from '@/lib/firebase/admin';
+import { Bet } from '../../types';
 import { FieldValue } from 'firebase-admin/firestore';
 
 /**
  * Add a bet to Firestore (server-side)
- * Used by API routes
  */
-export async function addBet(userId: string, betData: Partial<Bet>): Promise<{ id: string } & Partial<Bet>> {
+export async function addBet(
+  userId: string,
+  betData: Partial<Bet>,
+): Promise<{ id: string } & Partial<Bet>> {
   try {
     const dataToSave = {
       ...betData,
@@ -14,15 +16,13 @@ export async function addBet(userId: string, betData: Partial<Bet>): Promise<{ i
       createdAt: FieldValue.serverTimestamp(),
       status: betData.status || 'pending',
     };
-    const betRef = await db.collection('bettingLog').add(dataToSave);
-    
-    // Return a complete object with a client-side timestamp for immediate UI use
+    const betRef = await adminDb.collection('bettingLog').add(dataToSave);
+
     return {
       id: betRef.id,
       ...betData,
-      createdAt: new Date().toISOString(), // Return a serializable timestamp
+      createdAt: new Date().toISOString(),
     };
-
   } catch (error) {
     console.error('Error adding bet:', error);
     throw new Error('Failed to add bet');
@@ -33,11 +33,11 @@ export async function addBet(userId: string, betData: Partial<Bet>): Promise<{ i
  * Update bet status (server-side)
  */
 export async function updateBetStatus(
-  betId: string, 
-  status: Bet['status']
+  betId: string,
+  status: Bet['status'],
 ): Promise<void> {
   try {
-    await db.collection('bettingLog').doc(betId).update({
+    await adminDb.collection('bettingLog').doc(betId).update({
       status,
       updatedAt: FieldValue.serverTimestamp(),
     });
@@ -52,23 +52,28 @@ export async function updateBetStatus(
  */
 export async function getBetById(betId: string): Promise<Bet | null> {
   try {
-    const doc = await db.collection('bettingLog').doc(betId).get();
-    
-    if (!doc.exists) {
-      return null;
-    }
-    
+    const doc = await adminDb.collection('bettingLog').doc(betId).get();
+    if (!doc.exists) return null;
+
     const data = doc.data();
 
+    // The returned object doesn't fully satisfy Bet at compile time because
+    // Firestore data is untyped — cast via unknown to avoid the TS2352 error.
     return {
-      id: doc.id,
+      id:        doc.id,
       ...data,
-      createdAt: data?.createdAt?.toDate?.().toISOString() || null,
-      updatedAt: data?.updatedAt?.toDate?.().toISOString() || null,
-    } as Bet;
-
+      createdAt: data?.createdAt?.toDate?.().toISOString() ?? null,
+      updatedAt: data?.updatedAt?.toDate?.().toISOString() ?? null,
+    } as unknown as Bet;
   } catch (error) {
     console.error('Error fetching bet:', error);
     return null;
   }
+}
+
+/**
+ * Delete a bet by ID (server-side)
+ */
+export async function deleteBet(id: string) {
+  return adminDb.collection('bettingLog').doc(id).delete();
 }

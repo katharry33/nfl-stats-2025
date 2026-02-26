@@ -12,8 +12,8 @@ interface EditBetModalProps {
 export function EditBetModal({ isOpen, bet, onClose, onSave }: EditBetModalProps) {
   const [formData, setFormData] = useState<Partial<Bet>>({
     id: '',
-    week: '',
-    date: '', // Added date field
+    week: 0, // PATCH: Use 0 as the empty value
+    date: '', 
     stake: 0,
     odds: 0,
     status: 'pending',
@@ -26,8 +26,7 @@ export function EditBetModal({ isOpen, bet, onClose, onSave }: EditBetModalProps
     if (bet) {
       setFormData({
         ...bet,
-        week: bet.week?.toString() || '',
-        // Ensure date is in YYYY-MM-DD format for the input
+        week: bet.week ?? 0, // PATCH: Use 0 as the empty value
         date: bet.date ? new Date(bet.date).toISOString().split('T')[0] : '',
         stake: bet.stake || bet.betAmount || 0,
         legs: bet.legs || [],
@@ -35,7 +34,7 @@ export function EditBetModal({ isOpen, bet, onClose, onSave }: EditBetModalProps
     } else {
       setFormData({
         id: '',
-        week: '',
+        week: 0, // PATCH: Use 0 as the empty value
         date: new Date().toISOString().split('T')[0],
         stake: 0,
         odds: 0,
@@ -66,7 +65,7 @@ export function EditBetModal({ isOpen, bet, onClose, onSave }: EditBetModalProps
       profit: calculatedProfit, 
       stake: stakeNum, 
       odds: oddsNum,
-      // Pass the date back as a string or Date object depending on your BE needs
+      week: Number(formData.week || 0), // PATCH: Ensure week is a number on save
       date: formData.date 
     });
   };
@@ -118,9 +117,10 @@ export function EditBetModal({ isOpen, bet, onClose, onSave }: EditBetModalProps
                 Week
               </label>
               <input
-                type="text"
-                value={formData.week || ''}
-                onChange={(e) => setFormData({ ...formData, week: e.target.value })}
+                type="number" // PATCH: Use number type for better UX
+                value={formData.week || 0}
+                // PATCH: Parse input value to number
+                onChange={(e) => setFormData({ ...formData, week: e.target.value === '' ? 0 : Number(e.target.value) })}
                 className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
                 placeholder="e.g. 18"
               />

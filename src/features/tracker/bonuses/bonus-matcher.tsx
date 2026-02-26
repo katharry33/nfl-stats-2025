@@ -1,5 +1,7 @@
-// src/lib/utils/bonus-matcher.ts
+'use client';
+
 import type { Bonus, BetType } from "@/lib/types";
+import { resolveFirestoreDate } from "@/lib/types"; // Using the centralized helper
 
 export interface BonusMatchCriteria {
   betType: BetType;
@@ -22,13 +24,12 @@ export function findBestBonus(
     if (!matchesType) return false;
     
     // Check if stake is within max wager
-    if (criteria.stake && criteria.stake > (bonus.maxWager ?? 0)) return false;
+    if (criteria.stake && bonus.maxWager && criteria.stake > bonus.maxWager) return false;
     
     // Check if not expired
-    const expirationDate = bonus.expirationDate instanceof Date 
-      ? bonus.expirationDate 
-      : new Date(bonus.expirationDate);
-    if (expirationDate < new Date()) return false;
+    // *** FIXED: Use the helper to safely parse the date object ***
+    const expirationDate = resolveFirestoreDate(bonus.expirationDate);
+    if (!expirationDate || expirationDate < new Date()) return false;
     
     return true;
   });

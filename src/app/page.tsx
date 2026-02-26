@@ -1,27 +1,20 @@
-"use client";
+'use client';
 
-import React, { useState } from 'react';
-// ❌ Remove the mock-data import causing error 2307
-import { BettingStats } from "@/components/bets/betting-stats";
-import { RoiChart } from "@/components/performance/RoiChart";
-import type { Bet } from "@/lib/types";
+import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
 
-export default function Dashboard() {
-  // Fixes 7006 by providing an initial type to useState
-  const [bets, setBets] = useState<Bet[]>([]); 
+// Root page — redirects to the main dashboard view.
+// Change '/bet-builder' to whatever your primary landing route should be.
+export default function HomePage() {
+  const router = useRouter();
 
-  const handleUpdate = (newBet: Bet) => {
-    // Fixes 7006: Explicitly type 'prev' and 'b'
-    setBets((prev: Bet[]) => 
-      prev.map((b: Bet) => b.id === newBet.id ? newBet : b)
-    );
-  };
+  useEffect(() => {
+    router.replace('/bet-builder');
+  }, [router]);
 
   return (
-    <main className="p-6 space-y-6">
-       <BettingStats bets={bets} />
-       <RoiChart bets={bets} />
-       {/* Other dashboard components */}
+    <main className="flex items-center justify-center min-h-screen bg-slate-950">
+      <p className="text-slate-400 text-sm animate-pulse">Loading…</p>
     </main>
   );
 }

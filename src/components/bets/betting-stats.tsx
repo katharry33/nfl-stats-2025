@@ -20,7 +20,7 @@ export function BettingStats({ bets }: BettingStatsProps) {
     let wins = 0;
 
     settledBets.forEach((bet) => {
-      const stake = Number(bet.stake || bet.wager || 0);
+      const stake = Number(bet.stake || (bet as any).wager || 0);
       totalStaked += stake;
 
       const status = bet.status?.toLowerCase();
@@ -31,10 +31,9 @@ export function BettingStats({ bets }: BettingStatsProps) {
       } else if (status === "lost") {
         totalProfit -= stake;
       } else if (status?.includes("cashed")) {
-        const cashedAmount = Number(bet.cashedOutAmount || bet.cashedAmount || 0);
-        const cashProfit = cashedAmount - stake;
-        totalProfit += cashProfit;
-        if (cashProfit > 0) wins++; // Count profitable cash-outs as wins
+        const profit = Number(bet.payout || 0) - Number(bet.stake || 0);
+        totalProfit += profit;
+        if (profit > 0) wins++; // Count profitable cash-outs as wins
       }
     });
 

@@ -14,7 +14,7 @@ import {
   ChartTooltipContent,
   ChartConfig,
 } from "../../components/ui/chart";
-import { getPayout } from "../../lib/utils";
+import { calculateNetProfit } from "../../lib/utils"; // getPayout doesn't exist — use calculateNetProfit
 import type { Bet } from "../../lib/types";
 
 const chartConfig = {
@@ -45,19 +45,21 @@ export function RoiChart({ bets }: { bets: Bet[] }) {
 
       if (key in monthlyData) {
         const stake = Number(bet.stake) || 0;
-        const odds = parseFloat(String(bet.odds)) || 0;
+        const odds  = bet.odds ?? 0;
 
         switch (status) {
           case "won":
-            monthlyData[key].profit += getPayout(stake, odds);
+            // calculateNetProfit(stake, odds) returns the net profit (not including stake back)
+            monthlyData[key].profit += calculateNetProfit(stake, odds);
             break;
           case "lost":
             monthlyData[key].profit -= stake;
             break;
-          case "cashed":
+          case "cashed": {
             const cashedAmount = Number((bet as any).cashedAmount) || stake;
             monthlyData[key].profit += cashedAmount - stake;
             break;
+          }
           case "push":
           case "void":
             break;
@@ -77,7 +79,7 @@ export function RoiChart({ bets }: { bets: Bet[] }) {
     <Card>
       <CardHeader>
         <CardTitle>Return on Investment (ROI)</CardTitle>
-        <CardDescription>Monthly Net Profit: Sep 2025 - Jan 2026</CardDescription>
+        <CardDescription>Monthly Net Profit: Sep 2025 – Jan 2026</CardDescription>
       </CardHeader>
       <CardContent>
         <ChartContainer config={chartConfig} className="min-h-[200px] w-full">
@@ -92,7 +94,11 @@ export function RoiChart({ bets }: { bets: Bet[] }) {
             <YAxis tickFormatter={(value: number) => `$${value}`} />
             <ChartTooltip
               cursor={false}
-              content={<ChartTooltipContent formatter={(value: any) => [`$${Number(value)}`, "Profit"]} />}
+              content={
+                <ChartTooltipContent
+                  formatter={(value: any) => [`$${Number(value).toFixed(2)}`, "Profit"]}
+                />
+              }
             />
             <Bar dataKey="profit" fill="var(--color-profit)" radius={4} />
           </BarChart>

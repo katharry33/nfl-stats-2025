@@ -17,11 +17,10 @@ export function propToLeg(
       : (prop.underOdds ?? prop.UnderOdds ?? prop.odds ?? prop.Odds ?? -110);
 
   return {
-    id:        `${propId}-${selection}`,
-    propId,
+    id:        propId,
     player:    prop.player    ?? prop.Player    ?? '',
     team:      (prop.team     ?? prop.Team      ?? '').toString().toUpperCase(),
-    prop:      prop.prop      ?? prop.Prop      ?? '',
+    prop:      propId,
     line:      Number(prop.line ?? prop.Line ?? 0),
     selection,
     odds:      Number(odds),
@@ -60,11 +59,10 @@ export function normalizedPropToLeg(
       : Number(prop.underOdds ?? prop.odds ?? -110);
 
   const leg: BetLeg = {
-    id:       `${propId}-${selection}`,
-    propId,
+    id:       propId,
     player:   prop.player  ?? '',
     team:     (prop.team   ?? '').toUpperCase(),
-    prop:     prop.prop    ?? '',
+    prop:     propId,
     line:     Number(prop.line ?? 0),
     selection,
     odds,
@@ -85,10 +83,11 @@ export function legToBet(leg: BetLeg): Bet {
     id:       leg.id,
     userId:   'dev-user',
     betType:  'Single',
+    isParlay: false,
     stake:    0,
     odds:     Number(leg.odds),
     status:   leg.status ?? 'pending',
     legs:     [leg],
-    createdAt: new Date(),
+    createdAt: new Date().toISOString(),
   };
 }

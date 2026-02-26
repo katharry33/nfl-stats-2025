@@ -2,8 +2,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import type { NFLProp } from '@/lib/enrichment/types';
-
+import { NFLProp, DefenseMap, SortKey } from '@/lib/types';
 export interface BetSlipItem {
   prop: NFLProp & { id: string };
   betAmount: number;

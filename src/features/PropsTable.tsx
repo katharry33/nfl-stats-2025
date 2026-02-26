@@ -1,8 +1,6 @@
 
 import React from 'react';
-import { NFLProp } from '@/lib/enrichment/types';
-
-type SortKey = 'player' | 'prop' | 'line' | 'team';
+import { NFLProp, DefenseMap, SortKey } from '@/lib/types';
 type SortDir = 'asc' | 'desc';
 
 interface PropsTableProps {

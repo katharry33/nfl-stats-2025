@@ -25,7 +25,8 @@ if (!getApps().length) {
 import { formatMatchup, formatDate, formatTime, normalizeProp } from '@/lib/enrichment/normalize';
 import { saveProps } from '@/lib/enrichment/firestore';
 import { pickBestOdds } from '@/lib/enrichment/scoring';
-import type { NFLProp } from '@/lib/enrichment/types';
+// Import NFLProp from @/lib/types (the canonical source) so gameDate etc. exist
+import type { NFLProp } from '@/lib/types';
 
 const ODDS_API_KEY = process.env.ODDS_API_KEY!;
 const SEASON = 2025;
@@ -80,7 +81,8 @@ async function main() {
   const week = parseInt(weekArg, 10);
   if (isNaN(week) || week < 1 || week > 22) { console.error('Invalid week (1-22)'); process.exit(1); }
 
-  console.log(`\n🏈 Loading props — Week ${week}, Season ${SEASON}`);
+  // FIX: use \n escape instead of a literal newline inside a single-quoted string
+  console.log('\n🏈 Loading props — Week ' + week + ', Season ' + SEASON);
   console.log('='.repeat(50));
 
   const start = WEEK_STARTS[week];
@@ -88,7 +90,6 @@ async function main() {
   const end = new Date(start);
   end.setDate(end.getDate() + 7);
 
-  // Fetch all NFL events, filter to this week
   const eventsRes = await fetch(
     `https://api.the-odds-api.com/v4/sports/americanfootball_nfl/events?apiKey=${ODDS_API_KEY}`
   );
@@ -106,16 +107,16 @@ async function main() {
     const event = weekEvents[i];
     if (i > 0 && i % 3 === 0) await sleep(2000);
 
-    const matchup = formatMatchup(event.away_team, event.home_team);
+    const matchup  = formatMatchup(event.away_team, event.home_team);
     const gameDate = formatDate(new Date(event.commence_time));
     const gameTime = formatTime(new Date(event.commence_time));
 
-    // Accumulate odds per player+prop across bookmakers
     const oddsAccum = new Map<string, { fd?: number; dk?: number; line?: number; prop?: string }>();
 
     for (const market of MARKETS) {
       try {
-        const url = `https://api.the-odds-api.com/v4/sports/americanfootball_nfl/events/${event.id}/odds?` +
+        const url =
+          `https://api.the-odds-api.com/v4/sports/americanfootball_nfl/events/${event.id}/odds?` +
           `apiKey=${ODDS_API_KEY}&regions=us&markets=${market}&bookmakers=fanduel,draftkings`;
 
         const res = await fetch(url);
@@ -149,17 +150,30 @@ async function main() {
     for (const [key, data] of oddsAccum) {
       const [player] = key.split('||');
       const best = pickBestOdds(data.fd, data.dk);
+
       allProps.push({
-        week, season: SEASON, gameDate, gameTime, matchup,
-        player, team: '', prop: data.prop ?? '',
-        line: data.line ?? 0,
-        fdOdds: data.fd ?? null, dkOdds: data.dk ?? null,
-        bestOdds: best.odds, bestBook: best.book,
-        playerAvg: null, opponentRank: null, opponentAvgVsStat: null,
-        seasonHitPct: null, projWinPct: null, avgWinProb: null,
-        bestImpliedProb: null, bestEdgePct: null, bestEV: null,
-        bestKellyPct: null, valueIcon: null, confidenceScore: null,
-        actualResult: null, gameStat: null,
+        // MANDATORY CORE FIELDS (PascalCase)
+        id: `${SEASON}-${week}-${player}-${data.prop}`.replace(/\s+/g, '-'), 
+        Player: player,
+        Team: '', // Script doesn't have team data yet, providing empty string
+        Prop: data.prop ?? '',
+        Line: data.line ?? 0,
+        'Over/Under?': 'Over', // Odds API "point" usually refers to the Over
+
+        // APP ALIASES (camelCase)
+        week,
+        season: String(SEASON),
+        gameDate,
+        gameTime,
+        matchup,
+        player, // Alias for Player
+        team: '', // Alias for Team
+        prop: data.prop ?? '', // Alias for Prop
+        line: data.line ?? 0, // Alias for Line
+
+        // ENRICHMENT
+        bestOdds: best.odds ?? undefined,
+        bestBook: best.book ?? undefined,
       });
     }
 
@@ -167,6 +181,7 @@ async function main() {
   }
 
   const saved = await saveProps(allProps);
+  // FIX: use \n escape instead of literal newline in single-quoted string
   console.log('\n' + '='.repeat(50));
   console.log(`✅ Done: ${allProps.length} fetched, ${saved} new props saved to Firestore`);
 }

@@ -1,5 +1,4 @@
-import * as admin from 'firebase-admin';
-
+import admin from 'firebase-admin';
 // This check prevents the browser from trying to execute server-side code.
 if (typeof window !== 'undefined') {
   throw new Error('firebase-admin should only be used on the server.');

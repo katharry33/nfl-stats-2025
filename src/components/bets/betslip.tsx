@@ -16,7 +16,7 @@ function BetLegCard({ leg, removeFromSlip }: { leg: BetLeg; removeFromSlip: (id:
           <p className="font-bold text-white">{leg.player}</p>
           <p className="text-xs text-slate-400">{leg.prop}</p>
         </div>
-        <button onClick={() => removeFromSlip(leg.id)} className="text-slate-500 hover:text-red-500">
+        <button onClick={() => removeFromSlip(leg.id || '')} className="text-slate-500 hover:text-red-500">
           <Trash2 size={16} />
         </button>
       </div>

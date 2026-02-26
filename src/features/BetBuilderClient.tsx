@@ -6,8 +6,7 @@ import { useProps } from '@/hooks/useProps';
 import { useBetSlip } from '@/hooks/useBetSlip';
 import PropsTable from './PropsTable'; // Corrected import
 import { BetSlipPanel } from './BetSlipPanel';
-import type { NFLProp } from '@/lib/enrichment/types';
-
+import { NFLProp, DefenseMap, SortKey } from '@/lib/types';
 interface BetBuilderClientProps {
   initialWeek: number;
   season?: number;
