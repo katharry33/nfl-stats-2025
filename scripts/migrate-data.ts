@@ -45,7 +45,7 @@ async function migrate() {
   }
 
   // 2. Unified Historical Props Migration
-  const propSources = ['allProps_2024', 'allProps_2025', 'weeklyProps_2024', 'weeklyProps_2025'];
+  const propSources = ['allProps', 'allProps_2025', 'weeklyProps_2024', 'weeklyProps_2025'];
   const propDest = 'allProps';
 
   console.log('🚀 Migrating Props...');

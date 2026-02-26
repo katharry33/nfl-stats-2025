@@ -1,11 +1,11 @@
 // scripts/migrate-2024-props.ts
 //
-// ONE-TIME migration: weeklyProps_2024 → allProps_2024
+// ONE-TIME migration: weeklyProps_2024 → allProps
 //
 // Usage:
 //   tsx scripts/migrate-2024-props.ts
 //   tsx scripts/migrate-2024-props.ts --dry-run        # preview without writing
-//   tsx scripts/migrate-2024-props.ts --source=weeklyProps_2024 --dest=allProps_2024
+//   tsx scripts/migrate-2024-props.ts --source=weeklyProps_2024 --dest=allProps
 //
 // Requires: GOOGLE_APPLICATION_CREDENTIALS or FIREBASE_SERVICE_ACCOUNT_KEY env var
 
@@ -33,7 +33,7 @@ const sourceArg = args.find(a => a.startsWith('--source='))?.split('=')[1];
 const destArg   = args.find(a => a.startsWith('--dest='))?.split('=')[1];
 
 const SOURCE_COLLECTION = sourceArg ?? 'weeklyProps_2024';
-const DEST_COLLECTION   = destArg   ?? 'allProps_2024';
+const DEST_COLLECTION   = destArg   ?? 'allProps';
 
 // ── Field normalizer ──────────────────────────────────────────────────────────
 // Apps Script exports can have PascalCase fields (Player, Matchup, Prop, etc.)

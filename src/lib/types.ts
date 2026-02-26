@@ -32,6 +32,7 @@ export interface BetLeg {
   week?:      number;
   propId?:    string;
   source?:    'weekly-props' | 'historical-props' | 'manual' | string;
+  isLive?:    boolean;
 }
 
 // ─── Bet ──────────────────────────────────────────────────────────────────────
@@ -50,6 +51,7 @@ export interface Bet {
   week?:     number;
   isParlay:  boolean;
   date?:     string;
+  gameDate?: string;
   notes?:    string;
   betAmount?:  number;
   parlayOdds?: number;

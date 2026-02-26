@@ -6,7 +6,7 @@
 //
 // Usage:
 //   cd ~/project && npx tsx scripts/postGame.ts --week=18
-//   npx tsx scripts/postGame.ts --week=18 --season=2024   (uses allProps_2024)
+//   npx tsx scripts/postGame.ts --week=18 --season=2024   (uses allProps)
 //   npx tsx scripts/postGame.ts --week=18 --dry-run
 
 import { initializeApp, cert, getApps } from 'firebase-admin/app';

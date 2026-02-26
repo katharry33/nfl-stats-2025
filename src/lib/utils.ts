@@ -6,19 +6,22 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-// 2. Direct Logic (If you want them here)
-export function getOddsMultiplier(odds: string | number | null | undefined): number {
-  if (!odds) return 0;
-  const oddsStr = String(odds).replace(/\+/g, '').trim();
-  const numericOdds = parseFloat(oddsStr);
-  if (isNaN(numericOdds) || numericOdds === 0) return 0;
-  return numericOdds > 0 ? numericOdds / 100 : 100 / Math.abs(numericOdds);
+// Converts -110 to 1.91 or +150 to 2.50
+export function toDecimal(american: number): number {
+  if (american >= 100) {
+    return (american / 100) + 1;
+  } else {
+    return (100 / Math.abs(american)) + 1;
+  }
 }
 
-export function calculateNetProfit(stake: number | string, odds: number | string): number {
-  const s = Number(stake) || 0;
-  const multiplier = getOddsMultiplier(odds);
-  return parseFloat((s * multiplier).toFixed(2));
+// Converts 3.50 back to +250
+export function toAmerican(decimal: number): number {
+  if (decimal >= 2) {
+    return Math.round((decimal - 1) * 100);
+  } else {
+    return Math.round(-100 / (decimal - 1));
+  }
 }
 
 export function formatBetDate(dateInput: any) {

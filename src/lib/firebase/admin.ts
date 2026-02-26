@@ -1,4 +1,5 @@
-import admin from 'firebase-admin';
+import * as admin from 'firebase-admin';
+
 // This check prevents the browser from trying to execute server-side code.
 if (typeof window !== 'undefined') {
   throw new Error('firebase-admin should only be used on the server.');
@@ -9,7 +10,6 @@ if (!admin.apps.length) {
   try {
     admin.initializeApp({
       credential: admin.credential.cert({
-        // Use server-side env vars only; remove NEXT_PUBLIC_ prefix.
         projectId: process.env.FIREBASE_PROJECT_ID,
         clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
         // Replace escaped newlines for Vercel/similar environments
@@ -27,8 +27,3 @@ if (!admin.apps.length) {
 export const adminDb = admin.firestore();
 export const adminAuth = admin.auth();
 export const FieldValue = admin.firestore.FieldValue;
-
-// Getter function for flexibility, though direct export is generally fine.
-export const getAdminDb = () => adminDb;
-
-export default admin;

@@ -1,27 +1,45 @@
-// src/features/bet-builder/BetBuilderClient.tsx
+// src/features/BetBuilderClient.tsx
 'use client';
 
+import { useState, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useProps } from '@/hooks/useProps';
 import { useBetSlip } from '@/hooks/useBetSlip';
-import PropsTable from './PropsTable'; // Corrected import
+import PropsTable from './PropsTable';
 import { BetSlipPanel } from './BetSlipPanel';
-import { NFLProp, DefenseMap, SortKey } from '@/lib/types';
+import { NFLProp, SortKey, SortDir } from '@/lib/types';
+import { toDecimal } from '@/lib/utils';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export interface PropFilters {
+  search:   string;
+  propType: string;
+  team:     string;
+}
+
 interface BetBuilderClientProps {
   initialWeek: number;
   season?: number;
 }
 
+function parlayDecimal(odds: number[]): number {
+  return odds.reduce((acc, o) => acc * toDecimal(o), 1);
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
 export function BetBuilderClient({ initialWeek, season = 2025 }: BetBuilderClientProps) {
   const router = useRouter();
 
+  // useProps expects number[] — wrap week in array
   const {
-    filteredProps, isLoading, error,
-    filters, setFilters,
-    sortKey, sortDir, setSort,
-    propTypes, teams,
-    refresh,
-  } = useProps(initialWeek, season);
+    props: rawProps,
+    isLoading,
+    error,
+    propTypes,
+    teams,
+  } = useProps([initialWeek], season);
 
   const {
     items, totalStake, savingIds,
@@ -30,14 +48,73 @@ export function BetBuilderClient({ initialWeek, season = 2025 }: BetBuilderClien
     isInBetSlip,
   } = useBetSlip(initialWeek, season);
 
+  // ── Client-side filter + sort state ─────────────────────────────────────────
+  const [filters, setFilters] = useState<PropFilters>({
+    search:   '',
+    propType: '',
+    team:     '',
+  });
+  const [sortKey, setSortKey] = useState<SortKey>('player');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
+
+  const setSort = useCallback((key: SortKey) => {
+    setSortDir(prev => key === sortKey ? (prev === 'asc' ? 'desc' : 'asc') : 'asc');
+    setSortKey(key);
+  }, [sortKey]);
+
+  // ── Filter + sort in-memory ──────────────────────────────────────────────────
+  const filteredProps = useMemo(() => {
+    let list = rawProps ?? [];
+
+    const search = filters.search.trim().toLowerCase();
+    if (search) {
+      list = list.filter((p: NFLProp) =>
+        p.player?.toLowerCase().includes(search) ||
+        p.matchup?.toLowerCase().includes(search) ||
+        p.prop?.toLowerCase().includes(search)
+      );
+    }
+    if (filters.propType) {
+      list = list.filter((p: NFLProp) =>
+        (p.prop ?? '').toLowerCase() === filters.propType.toLowerCase()
+      );
+    }
+    if (filters.team) {
+      list = list.filter((p: NFLProp) =>
+        (p.team ?? '').toLowerCase() === filters.team.toLowerCase()
+      );
+    }
+
+    return [...list].sort((a, b) => {
+      const av = String(a[sortKey as keyof typeof a] ?? '').toLowerCase();
+      const bv = String(b[sortKey as keyof typeof b] ?? '').toLowerCase();
+      const numA = parseFloat(av), numB = parseFloat(bv);
+      const cmp = !isNaN(numA) && !isNaN(numB)
+        ? numA - numB
+        : av.localeCompare(bv);
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [rawProps, filters, sortKey, sortDir]);
+
+  // ── Refresh (re-trigger useProps by nudging — hook manages its own fetch) ───
+  // If useProps doesn't expose refresh, just reload the page data via router
+  const refresh = useCallback(() => {
+    router.refresh();
+  }, [router]);
+
+  // ── Send to Parlay Studio ────────────────────────────────────────────────────
   const handleSaveToParlay = () => {
-    // Store bet slip in sessionStorage so Parlay Studio can pick it up
     sessionStorage.setItem('pendingBetSlip', JSON.stringify(items));
     router.push('/parlay-studio');
   };
 
+  const autoDecimal = parlayDecimal(items.map(s => s.odds));
+
+  // ─────────────────────────────────────────────────────────────────────────────
+
   return (
     <div className="flex gap-6 h-full">
+
       {/* ── Main props table ─────────────────────────────────────────────── */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between mb-4">
@@ -59,7 +136,7 @@ export function BetBuilderClient({ initialWeek, season = 2025 }: BetBuilderClien
           error={error}
           sortKey={sortKey}
           sortDir={sortDir}
-          onSort={setSort}
+          onSort={(key: any) => setSort(key)}
           filters={filters}
           onFilterChange={setFilters}
           propTypes={propTypes}

@@ -1,42 +1,51 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
-  Loader2, AlertCircle, RefreshCw, ChevronDown, ChevronRight,
-  Layers, Minus, Trash2, Pencil, CheckSquare, Square, X,
+  Loader2, AlertCircle, RefreshCw, ChevronDown, ChevronRight, ChevronUp,
+  Layers, Minus, Trash2, Pencil, CheckSquare, Square, X, Search,
 } from 'lucide-react';
 import { Bet } from '@/lib/types';
-import { BettingStats } from '@/components/bets/betting-stats';
 import { EditBetModal } from '@/components/bets/edit-bet-modal';
+import { BettingStats } from "@/components/bets/betting-stats";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function fmtLine(n: any): string {
-  // 1. Handle null/undefined/empty
-  if (n === null || n === undefined || n === '') return '—';
-  
-  // 2. Convert to number (handles strings like "244.5")
+  if (n == null || n === '') return '—';
   const num = typeof n === 'number' ? n : parseFloat(String(n));
-  
-  // 3. Check if the result is actually a valid number
-  if (isNaN(num)) return '—';
-  
-  // 4. Return formatted string
-  return num.toFixed(1);
+  return isNaN(num) ? '—' : num.toFixed(1);
 }
 
 function fmtDate(raw: string | null | undefined): string {
   if (!raw) return '—';
   try {
     const d = new Date(raw);
-    if (isNaN(d.getTime())) return '—';
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
+    return isNaN(d.getTime()) ? '—'
+      : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
   } catch { return '—'; }
 }
 
-function fmtOdds(n: number | null | undefined): string {
+function fmtMoney(n: number | null | undefined): string {
   if (!n) return '—';
-  return n > 0 ? `+${n}` : String(n);
+  return `$${Number(n).toFixed(2)}`;
+}
+
+function PayoutCell({ payout, status, stake }: {
+  payout: number | null; status: string; stake: number | null;
+}) {
+  const s = status.toLowerCase();
+  if (!payout) return <span className="text-slate-700">—</span>;
+  if (s === 'won' || s === 'win' || s === 'cashed')
+    return <span className="text-emerald-400 font-mono font-bold">{fmtMoney(payout)}</span>;
+  if (s === 'lost' || s === 'loss')
+    return <span className="text-red-400 font-mono">{stake ? `-${fmtMoney(stake)}` : '—'}</span>;
+  return (
+    <span className="text-slate-500 font-mono text-xs">
+      {fmtMoney(payout)}{' '}
+      <span className="text-slate-700 text-[9px] uppercase">pot.</span>
+    </span>
+  );
 }
 
 // ─── StatusBadge ─────────────────────────────────────────────────────────────
@@ -44,30 +53,57 @@ function fmtOdds(n: number | null | undefined): string {
 function StatusBadge({ status }: { status?: string }) {
   const s = (status ?? '').toLowerCase();
   const cls =
-    s === 'won'  || s === 'win'  ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25' :
-    s === 'lost' || s === 'loss' ? 'bg-red-500/15 text-red-400 border-red-500/25' :
-    s === 'void' || s === 'push' ? 'bg-slate-700/20 text-slate-600 border-slate-700/20' :
-                                   'bg-slate-700/40 text-slate-400 border-slate-600/30';
+    s === 'won'  || s === 'win'    ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25' :
+    s === 'lost' || s === 'loss'   ? 'bg-red-500/15 text-red-400 border-red-500/25' :
+    s === 'void' || s === 'push'   ? 'bg-slate-700/20 text-slate-500 border-slate-700/20' :
+    s === 'cashed'                 ? 'bg-blue-500/15 text-blue-400 border-blue-500/25' :
+                                     'bg-amber-500/10 text-amber-400 border-amber-500/20';
   return (
     <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${cls}`}>
-      {status ?? 'PENDING'}
+      {status ?? 'pending'}
     </span>
   );
 }
 
-// ─── Checkbox cell ────────────────────────────────────────────────────────────
+// ─── Sortable header ──────────────────────────────────────────────────────────
 
-function CheckCell({ id, selected, onToggle }: { id: string; selected: boolean; onToggle: (id: string) => void }) {
+type SortDir = 'asc' | 'desc';
+
+function Th({ col, label, sortCol, sortDir, onSort, className = '' }: {
+  col: string; label: string; sortCol: string; sortDir: SortDir;
+  onSort: (col: string) => void; className?: string;
+}) {
+  const active = sortCol === col;
+  return (
+    <th
+      onClick={() => onSort(col)}
+      className={`px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest
+        cursor-pointer select-none hover:text-slate-300 transition-colors ${className}`}
+    >
+      <span className="inline-flex items-center gap-1">
+        {label}
+        {active
+          ? sortDir === 'asc'
+            ? <ChevronUp className="h-3 w-3 text-emerald-400" />
+            : <ChevronDown className="h-3 w-3 text-emerald-400" />
+          : <ChevronDown className="h-3 w-3 text-slate-700" />
+        }
+      </span>
+    </th>
+  );
+}
+
+// ─── CheckCell ───────────────────────────────────────────────────────────────
+
+function CheckCell({ id, selected, onToggle }: {
+  id: string; selected: boolean; onToggle: (id: string) => void;
+}) {
   return (
     <td className="px-3 py-3 text-center w-10" onClick={e => e.stopPropagation()}>
-      <button
-        onClick={() => onToggle(id)}
-        className="text-slate-500 hover:text-emerald-400 transition-colors"
-      >
+      <button onClick={() => onToggle(id)} className="text-slate-500 hover:text-emerald-400">
         {selected
           ? <CheckSquare className="h-4 w-4 text-emerald-400" />
-          : <Square className="h-4 w-4" />
-        }
+          : <Square className="h-4 w-4" />}
       </button>
     </td>
   );
@@ -75,104 +111,126 @@ function CheckCell({ id, selected, onToggle }: { id: string; selected: boolean; 
 
 // ─── ParlayRow ────────────────────────────────────────────────────────────────
 
-function ParlayRow({
-  bet, selected, onToggle, onEdit, onDelete,
-}: {
-  bet: any;
-  selected: boolean;
+function ParlayRow({ bet, selected, onToggle, onEdit, onDelete }: {
+  bet: any; selected: boolean;
   onToggle: (id: string) => void;
-  onEdit: (bet: any) => void;
+  onEdit: (b: any) => void;
   onDelete: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const canExpand = !bet.legsEmpty && bet.legs.length > 0;
 
   return (
     <>
       <tr
-        onClick={() => !bet.legsEmpty && setOpen(o => !o)}
-        className={`border-b border-slate-800/60 transition-colors group ${
-          selected ? 'bg-emerald-950/20' : ''
-        } ${!bet.legsEmpty ? 'cursor-pointer hover:bg-slate-800/20' : 'opacity-60'}`}
+        onClick={() => canExpand && setOpen(o => !o)}
+        className={`border-b border-slate-800/60 transition-colors group
+          ${selected ? 'bg-emerald-950/20' : 'hover:bg-slate-800/20'}
+          ${canExpand ? 'cursor-pointer' : 'opacity-60'}`}
       >
         <CheckCell id={bet.id} selected={selected} onToggle={onToggle} />
 
-        {/* Expand icon */}
+        {/* Expand toggle */}
         <td className="w-8 px-2 py-3 text-center">
-          {bet.legsEmpty ? (
-            <Minus className="h-3.5 w-3.5 text-slate-700 mx-auto" />
-          ) : open ? (
-            <ChevronDown className="h-4 w-4 text-slate-400 mx-auto" />
-          ) : (
-            <ChevronRight className="h-4 w-4 text-slate-500 mx-auto" />
-          )}
+          {!canExpand
+            ? <Minus className="h-3.5 w-3.5 text-slate-700 mx-auto" />
+            : open
+              ? <ChevronDown className="h-4 w-4 text-slate-400 mx-auto" />
+              : <ChevronRight className="h-4 w-4 text-slate-500 mx-auto" />}
         </td>
 
+        {/* Player / Parlay */}
         <td className="px-4 py-3">
           <div className="flex items-center gap-2">
             <Layers className="h-3.5 w-3.5 text-indigo-400 shrink-0" />
             <div>
               <div className="font-bold text-slate-100 text-sm">
-                {bet.legsEmpty ? 'Parlay (legs unavailable)' : `${bet.legs.length}-Leg Parlay`}
+                {bet.legsEmpty ? 'Parlay (no legs)' : `${bet.legs.length}-Leg Parlay`}
               </div>
-              {!bet.legsEmpty && bet.legs.length > 0 && (
-                <div className="text-[10px] text-slate-500 mt-0.5 truncate max-w-[240px]">
-                  {bet.legs.map((l: any) => l.player).filter(Boolean).join(' · ')}
+              {canExpand && (
+                <div className="text-[10px] text-slate-500 mt-0.5 truncate max-w-[220px]">
+                  {bet.legs.map((l: any) => l.player || '?').join(' · ')}
                 </div>
               )}
             </div>
           </div>
         </td>
-        <td className="px-4 py-3 font-mono text-sm text-emerald-400">{fmtOdds(bet.odds)}</td>
-        <td className="px-4 py-3 text-sm font-mono text-slate-300">
-          {bet.stake ? `$${Number(bet.stake).toFixed(2)}` : <span className="text-slate-700">—</span>}
-        </td>
+
+        {/* Week */}
         <td className="px-4 py-3 text-xs font-mono text-slate-400">
           {bet.week ? `WK ${bet.week}` : <span className="text-slate-700">—</span>}
         </td>
-        <td className="px-4 py-3 text-xs text-slate-400">{fmtDate(bet.createdAt)}</td>
-        <td className="px-4 py-3"><StatusBadge status={bet.status} /></td>
-        <td className="px-4 py-3">
-          <span className="text-[10px] bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-2 py-0.5 rounded font-bold uppercase">
-            PARLAY
-          </span>
+
+        {/* Game Date */}
+        <td className="px-4 py-3 text-xs text-slate-400">
+          {fmtDate(bet.gameDate ?? bet.legs[0]?.gameDate ?? bet.createdAt)}
         </td>
+
+        {/* Selection (summary) */}
+        <td className="px-4 py-3 text-xs text-slate-500">
+          {canExpand ? `${bet.legs.length} legs` : '—'}
+        </td>
+
+        {/* Stake */}
+        <td className="px-4 py-3 text-sm font-mono text-slate-300">{fmtMoney(bet.stake)}</td>
+
+        {/* Payout */}
+        <td className="px-4 py-3">
+          <PayoutCell payout={bet.payout} status={bet.status} stake={bet.stake} />
+        </td>
+
+        {/* Status */}
+        <td className="px-4 py-3"><StatusBadge status={bet.status} /></td>
+
+        {/* Actions */}
         <td className="px-4 py-3 text-right">
           <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button onClick={e => { e.stopPropagation(); onEdit(bet); }} className="p-1.5 text-slate-500 hover:text-white rounded">
+            <button
+              onClick={e => { e.stopPropagation(); onEdit(bet); }}
+              className="p-1.5 text-slate-500 hover:text-white rounded" title="Edit"
+            >
               <Pencil className="h-3.5 w-3.5" />
             </button>
-            <button onClick={e => { e.stopPropagation(); onDelete(bet.id); }} className="p-1.5 text-slate-500 hover:text-rose-400 rounded">
+            <button
+              onClick={e => { e.stopPropagation(); onDelete(bet.id); }}
+              className="p-1.5 text-slate-500 hover:text-rose-400 rounded" title="Delete"
+            >
               <Trash2 className="h-3.5 w-3.5" />
             </button>
           </div>
         </td>
       </tr>
 
+      {/* Expanded leg rows */}
       {open && bet.legs.map((leg: any, i: number) => (
-        <tr key={leg.id ?? i} className="bg-slate-950/60 border-b border-slate-800/40">
+        <tr key={leg.id ?? i} className="bg-slate-950/60 border-b border-slate-800/30">
           <td colSpan={2} />
-          <td className="px-4 py-2 pl-8">
+          {/* Player + Prop */}
+          <td className="px-4 py-2 pl-10">
             <div className="flex items-center gap-2">
-              <span className="text-[9px] bg-blue-900/40 text-blue-300 border border-blue-700/40 px-1.5 py-0.5 rounded font-bold">
+              <span className="text-[9px] bg-indigo-900/40 text-indigo-300 border border-indigo-700/40 px-1.5 py-0.5 rounded font-bold">
                 LEG {i + 1}
               </span>
               <div>
                 <div className="text-sm text-slate-200 font-medium">{leg.player || '—'}</div>
-                <div className="text-[10px] text-slate-500 capitalize">{leg.prop}</div>
+                <div className="text-[10px] text-slate-500 capitalize">{leg.prop || '—'}</div>
               </div>
             </div>
           </td>
+          {/* Week */}
+          <td className="px-4 py-2 text-xs font-mono text-slate-600">
+            {leg.week ? `WK ${leg.week}` : '—'}
+          </td>
+          {/* Game date */}
+          <td className="px-4 py-2 text-xs text-slate-600">{fmtDate(leg.gameDate)}</td>
+          {/* Selection */}
           <td className="px-4 py-2 text-xs">
             <span className={leg.selection?.toLowerCase() === 'over' ? 'text-blue-400 font-bold' : 'text-orange-400 font-bold'}>
               {leg.selection || '—'}
             </span>
-            <span className="text-slate-400 ml-1 font-mono">{fmtLine(leg.line)}</span>
+            <span className="text-slate-400 font-mono ml-1">{fmtLine(leg.line)}</span>
           </td>
-          <td className="px-4 py-2 text-slate-700">—</td>
-          <td className="px-4 py-2 text-xs font-mono text-slate-500">{leg.week ? `WK ${leg.week}` : '—'}</td>
-          <td className="px-4 py-2 text-xs text-slate-600 uppercase font-mono">{leg.matchup || '—'}</td>
-          <td className="px-4 py-2"><StatusBadge status={leg.status} /></td>
-          <td className="px-4 py-2"><span className="text-[9px] text-slate-600">LEG</span></td>
+          <td colSpan={3} />
           <td />
         </tr>
       ))}
@@ -182,45 +240,61 @@ function ParlayRow({
 
 // ─── SingleRow ────────────────────────────────────────────────────────────────
 
-function SingleRow({
-  bet, selected, onToggle, onEdit, onDelete,
-}: {
-  bet: any;
-  selected: boolean;
+function SingleRow({ bet, selected, onToggle, onEdit, onDelete }: {
+  bet: any; selected: boolean;
   onToggle: (id: string) => void;
-  onEdit: (bet: any) => void;
+  onEdit: (b: any) => void;
   onDelete: (id: string) => void;
 }) {
   const leg = bet.legs?.[0] ?? {};
   return (
-    <tr className={`border-b border-slate-800/60 hover:bg-slate-800/20 transition-colors group ${selected ? 'bg-emerald-950/20' : ''}`}>
+    <tr className={`border-b border-slate-800/60 hover:bg-slate-800/20 transition-colors group
+      ${selected ? 'bg-emerald-950/20' : ''}`}>
       <CheckCell id={bet.id} selected={selected} onToggle={onToggle} />
       <td className="w-8 px-2 py-3" />
+
+      {/* Player + Prop nested */}
       <td className="px-4 py-3">
-        <div className="font-semibold text-slate-100 text-sm">{leg.player || '—'}</div>
-        <div className="text-[10px] text-slate-500 uppercase mt-0.5">{leg.prop}</div>
+        <div className="font-semibold text-slate-100 text-sm leading-tight">{leg.player || '—'}</div>
+        <div className="text-[10px] text-slate-500 capitalize mt-0.5">{leg.prop || '—'}</div>
       </td>
-      <td className="px-4 py-3 text-sm">
-        <span className={`font-bold ${leg.selection?.toLowerCase() === 'over' ? 'text-blue-400' : 'text-orange-400'}`}>
-          {leg.selection || '—'}
-        </span>
-        <span className="text-white font-bold font-mono ml-1.5">{fmtLine(leg.line)}</span>
-      </td>
-      <td className="px-4 py-3 text-sm font-mono text-slate-300">
-        {bet.stake ? `$${Number(bet.stake).toFixed(2)}` : <span className="text-slate-700">—</span>}
-      </td>
+
+      {/* Week */}
       <td className="px-4 py-3 text-xs font-mono text-slate-400">
         {bet.week ? `WK ${bet.week}` : <span className="text-slate-700">—</span>}
       </td>
-      <td className="px-4 py-3 text-xs text-slate-500 uppercase font-mono">{leg.matchup || '—'}</td>
+
+      {/* Game Date */}
+      <td className="px-4 py-3 text-xs text-slate-400">
+        {fmtDate(leg.gameDate ?? bet.createdAt)}
+      </td>
+
+      {/* Selection + Line */}
+      <td className="px-4 py-3">
+        <span className={`font-bold text-sm ${leg.selection?.toLowerCase() === 'over' ? 'text-blue-400' : 'text-orange-400'}`}>
+          {leg.selection || '—'}
+        </span>
+        <span className="text-white font-mono text-sm ml-1.5">{fmtLine(leg.line)}</span>
+      </td>
+
+      {/* Stake */}
+      <td className="px-4 py-3 text-sm font-mono text-slate-300">{fmtMoney(bet.stake)}</td>
+
+      {/* Payout */}
+      <td className="px-4 py-3">
+        <PayoutCell payout={bet.payout} status={bet.status} stake={bet.stake} />
+      </td>
+
+      {/* Status */}
       <td className="px-4 py-3"><StatusBadge status={bet.status} /></td>
-      <td className="px-4 py-3"><span className="text-[10px] text-slate-600">SINGLE</span></td>
+
+      {/* Actions */}
       <td className="px-4 py-3 text-right">
         <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button onClick={() => onEdit(bet)} className="p-1.5 text-slate-500 hover:text-white rounded">
+          <button onClick={() => onEdit(bet)} className="p-1.5 text-slate-500 hover:text-white rounded" title="Edit">
             <Pencil className="h-3.5 w-3.5" />
           </button>
-          <button onClick={() => onDelete(bet.id)} className="p-1.5 text-slate-500 hover:text-rose-400 rounded">
+          <button onClick={() => onDelete(bet.id)} className="p-1.5 text-slate-500 hover:text-rose-400 rounded" title="Delete">
             <Trash2 className="h-3.5 w-3.5" />
           </button>
         </div>
@@ -233,35 +307,51 @@ function SingleRow({
 
 export default function BettingLogPage() {
   const [bets,        setBets]        = useState<any[]>([]);
+  const [propTypes,   setPropTypes]   = useState<string[]>([]);
   const [loading,     setLoading]     = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore,     setHasMore]     = useState(false);
   const [nextCursor,  setNextCursor]  = useState<string | null>(null);
   const [error,       setError]       = useState<string | null>(null);
 
-  const [searchTerm,   setSearchTerm]   = useState('');
-  const [weekFilter,   setWeekFilter]   = useState('all');
-  const [statusFilter, setStatusFilter] = useState('all');
+  // Pending search inputs (not yet committed)
+  const [playerInput,   setPlayerInput]   = useState('');
+  const [propTypeInput, setPropTypeInput] = useState('all');
+  const [weekInput,     setWeekInput]     = useState('all');
 
-  // Bulk select
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // Committed filters — only sent on Search click or Enter
+  const [activeFilters, setActiveFilters] = useState({ player: '', propType: 'all', week: 'all' });
+
+  // Sort
+  const [sortCol, setSortCol] = useState('createdAt');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+
+  // Selection
+  const [selectedIds,  setSelectedIds]  = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
   // Edit
   const [editBet,  setEditBet]  = useState<any>(null);
   const [editOpen, setEditOpen] = useState(false);
 
+  const playerRef = useRef<HTMLInputElement>(null);
+
   // ── Fetch ─────────────────────────────────────────────────────────────────
-  const fetchBets = useCallback(async (append = false, cursorOverride?: string | null) => {
+
+  const fetchBets = useCallback(async (
+    opts: { append?: boolean; filters?: typeof activeFilters; cursor?: string | null } = {}
+  ) => {
+    const { append = false, filters = activeFilters, cursor = null } = opts;
+
     if (!append) { setLoading(true); setError(null); }
     else           setLoadingMore(true);
 
     try {
       const params = new URLSearchParams({ limit: '25' });
-      if (weekFilter   !== 'all') params.set('week',   weekFilter);
-      if (statusFilter !== 'all') params.set('status', statusFilter);
-      const cur = cursorOverride !== undefined ? cursorOverride : (append ? nextCursor : null);
-      if (cur) params.set('cursor', cur);
+      if (filters.player)             params.set('player',   filters.player);
+      if (filters.propType !== 'all') params.set('propType', filters.propType);
+      if (filters.week     !== 'all') params.set('week',     filters.week);
+      if (cursor)                     params.set('cursor',   cursor);
 
       const res  = await fetch(`/api/betting-log?${params}`);
       const data = await res.json();
@@ -270,100 +360,157 @@ export default function BettingLogPage() {
       setBets(prev => append ? [...prev, ...(data.bets ?? [])] : (data.bets ?? []));
       setHasMore(data.hasMore    ?? false);
       setNextCursor(data.nextCursor ?? null);
+      if (data.propTypes?.length) setPropTypes(data.propTypes);
     } catch (err: any) {
       setError(err.message ?? 'Failed to load bets');
     } finally {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [weekFilter, statusFilter, nextCursor]);
+  }, [activeFilters]);
 
-  useEffect(() => { fetchBets(false, null); }, []); // eslint-disable-line
-  useEffect(() => {
-    setBets([]); setNextCursor(null); fetchBets(false, null);
-  }, [weekFilter, statusFilter]); // eslint-disable-line
+  useEffect(() => { fetchBets({}); }, []); // eslint-disable-line
 
   // ── Search ────────────────────────────────────────────────────────────────
-  const filtered = useMemo(() => {
-    if (!searchTerm) return bets;
-    const t = searchTerm.toLowerCase();
-    return bets.filter(b =>
-      b.legs?.some((l: any) =>
-        l.player?.toLowerCase().includes(t) || l.matchup?.toLowerCase().includes(t),
-      ),
-    );
-  }, [bets, searchTerm]);
 
-  // ── Bulk select helpers ───────────────────────────────────────────────────
-  const allFilteredIds  = useMemo(() => filtered.map(b => b.id), [filtered]);
-  const allSelected     = allFilteredIds.length > 0 && allFilteredIds.every(id => selectedIds.has(id));
-  const someSelected    = selectedIds.size > 0;
+  const handleSearch = useCallback(() => {
+    const f = {
+      player:   playerInput.trim().toLowerCase(),
+      propType: propTypeInput,
+      week:     weekInput,
+    };
+    setActiveFilters(f);
+    setSelectedIds(new Set());
+    fetchBets({ filters: f, cursor: null });
+  }, [playerInput, propTypeInput, weekInput, fetchBets]);
 
-  const toggleSelect = useCallback((id: string) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  }, []);
+  const handleClear = useCallback(() => {
+    setPlayerInput('');
+    setPropTypeInput('all');
+    setWeekInput('all');
+    const f = { player: '', propType: 'all', week: 'all' };
+    setActiveFilters(f);
+    setSelectedIds(new Set());
+    fetchBets({ filters: f, cursor: null });
+    playerRef.current?.focus();
+  }, [fetchBets]);
 
-  const toggleSelectAll = () => {
-    if (allSelected) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(allFilteredIds));
-    }
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') handleSearch();
   };
 
-  // ── Single delete ─────────────────────────────────────────────────────────
+  const hasActiveFilters = activeFilters.player || activeFilters.propType !== 'all' || activeFilters.week !== 'all';
+
+  // ── Sort ──────────────────────────────────────────────────────────────────
+
+  const handleSort = (col: string) => {
+    setSortDir(prev => sortCol === col ? (prev === 'asc' ? 'desc' : 'asc') : 'desc');
+    setSortCol(col);
+  };
+
+  const sorted = useMemo(() => {
+    const val = (b: any) => {
+      switch (sortCol) {
+        case 'player':    return (b.legs?.[0]?.player ?? '').toLowerCase();
+        case 'prop':      return (b.legs?.[0]?.prop   ?? '').toLowerCase();
+        case 'week':      return b.week      ?? 0;
+        case 'gameDate':  return b.legs?.[0]?.gameDate ?? b.createdAt ?? '';
+        case 'stake':     return b.stake     ?? 0;
+        case 'payout':    return b.payout    ?? 0;
+        case 'status':    return b.status    ?? '';
+        default:          return b.createdAt ?? '';
+      }
+    };
+    return [...bets].sort((a, b) => {
+      const av = val(a), bv = val(b);
+      if (av < bv) return sortDir === 'asc' ? -1 : 1;
+      if (av > bv) return sortDir === 'asc' ?  1 : -1;
+      return 0;
+    });
+  }, [bets, sortCol, sortDir]);
+
+  // ── Select ────────────────────────────────────────────────────────────────
+
+  const allIds      = useMemo(() => sorted.map(b => b.id), [sorted]);
+  const allSelected = allIds.length > 0 && allIds.every(id => selectedIds.has(id));
+
+  const toggleSelect    = useCallback((id: string) => {
+    setSelectedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  }, []);
+  const toggleSelectAll = () => setSelectedIds(allSelected ? new Set() : new Set(allIds));
+
+  // ── Delete ────────────────────────────────────────────────────────────────
+
   const handleDelete = useCallback(async (id: string) => {
-    if (!confirm('Delete this bet and all its legs?')) return;
+    if (!confirm('Delete this bet?')) return;
     try {
       const res = await fetch(`/api/delete-bet?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? 'Delete failed');
+      if (!res.ok) throw new Error((await res.json()).error ?? 'Delete failed');
       setBets(prev => prev.filter(b => b.id !== id));
       setSelectedIds(prev => { const n = new Set(prev); n.delete(id); return n; });
-    } catch (err: any) {
-      alert(`Delete failed: ${err.message}`);
-    }
+    } catch (err: any) { alert(`Delete failed: ${err.message}`); }
   }, []);
 
-  // ── Bulk delete ───────────────────────────────────────────────────────────
   const handleBulkDelete = async () => {
-    if (selectedIds.size === 0) return;
-    if (!confirm(`Delete ${selectedIds.size} selected bet${selectedIds.size > 1 ? 's' : ''} and all their legs?`)) return;
-
+    if (!selectedIds.size || !confirm(`Delete ${selectedIds.size} bet(s)?`)) return;
     setBulkDeleting(true);
-    const ids = Array.from(selectedIds);
     let failed = 0;
-
-    await Promise.all(ids.map(async (id) => {
+    await Promise.all(Array.from(selectedIds).map(async id => {
       try {
         const res = await fetch(`/api/delete-bet?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
         if (!res.ok) failed++;
         else setBets(prev => prev.filter(b => b.id !== id));
-      } catch {
-        failed++;
-      }
+      } catch { failed++; }
     }));
-
     setBulkDeleting(false);
     setSelectedIds(new Set());
-    if (failed > 0) alert(`${failed} deletion(s) failed.`);
+    if (failed) alert(`${failed} deletion(s) failed.`);
   };
 
-  // ── Edit save ─────────────────────────────────────────────────────────────
-  const handleSave = useCallback((updates: Partial<Bet>) => {
-    setBets(prev => prev.map(b => (b.id === (updates as any).id ? { ...b, ...updates } : b)));
-    setEditOpen(false);
-  }, []);
+  // ── Edit ──────────────────────────────────────────────────────────────────
 
-  const activeFilters = searchTerm || weekFilter !== 'all' || statusFilter !== 'all';
+  const handleSave = async (updates: Partial<Bet>) => {
+    try {
+      const response = await fetch('/api/betting-log', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+  
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update');
+      }
+  
+      // --- FIXED STATE UPDATE ---
+      setBets((prev) =>
+        prev.map((bet) => {
+          if (bet.id === updates.id) {
+            // If we are updating a date, make sure the legs reflect it too
+            const updatedLegs = bet.legs?.map((leg: any) => ({
+              ...leg,
+              ...(updates.gameDate ? { gameDate: updates.gameDate } : {}),
+              // Add other fields here if you edit them (player, prop, etc.)
+            }));
+  
+            return { ...bet, ...updates, legs: updatedLegs };
+          }
+          return bet;
+        })
+      );
+      
+      setEditOpen(false);
+    } catch (err: any) {
+      console.error("Save error:", err);
+      alert(err.message);
+    }
+  };
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
+
   return (
-    <div className="max-w-7xl mx-auto p-6 space-y-6">
+    <div className="flex flex-col max-w-7xl mx-auto p-6 space-y-6">
+      <BettingStats bets={bets || []} />
 
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -371,15 +518,18 @@ export default function BettingLogPage() {
           <h1 className="text-2xl font-bold text-white tracking-tight">
             Betting Log
             {!loading && (
-              <span className="text-slate-500 text-base font-normal ml-2">({filtered.length.toLocaleString()})</span>
+              <span className="text-slate-500 text-base font-normal ml-2">
+                ({bets.length.toLocaleString()})
+              </span>
             )}
           </h1>
-          <p className="text-slate-500 text-sm mt-0.5">Track performance and manage active plays.</p>
+          <p className="text-slate-500 text-sm mt-0.5">Track and manage your bets.</p>
         </div>
         <button
-          onClick={() => { setBets([]); setNextCursor(null); fetchBets(false, null); }}
+          onClick={() => fetchBets({ filters: activeFilters, cursor: null })}
           disabled={loading}
-          className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-300 text-xs rounded-lg border border-slate-700 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700
+            disabled:opacity-50 text-slate-300 text-xs rounded-lg border border-slate-700 transition-colors"
         >
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
           Refresh
@@ -391,56 +541,106 @@ export default function BettingLogPage() {
         <div className="flex items-center gap-3 px-4 py-3 bg-red-950/40 border border-red-800/50 rounded-xl text-red-400 text-sm">
           <AlertCircle className="h-4 w-4 shrink-0" />
           <span>{error}</span>
-          <button onClick={() => fetchBets(false, null)} className="ml-auto text-xs underline">Retry</button>
+          <button onClick={() => fetchBets({})} className="ml-auto text-xs underline">Retry</button>
         </div>
       )}
 
-      {/* Stats */}
-      {!loading && bets.length > 0 && <BettingStats bets={bets} />}
+      {/* ── Search bar ──────────────────────────────────────────────────────── */}
+      <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4">
+        <div className="flex flex-wrap items-end gap-3">
 
-      {/* Filters */}
-      <div className="flex flex-wrap items-end gap-3 bg-slate-900/60 p-4 rounded-xl border border-slate-800">
-        <div className="flex flex-col gap-1 flex-1 min-w-[180px]">
-          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Search</label>
-          <input
-            type="text"
-            placeholder="Player or matchup…"
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            className="bg-slate-950 border border-slate-700 text-white text-sm rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none"
-          />
+          {/* Player */}
+          <div className="flex flex-col gap-1.5 flex-1 min-w-[180px]">
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Player</label>
+            <input
+              ref={playerRef}
+              type="text"
+              placeholder="Search player…"
+              value={playerInput}
+              onChange={e => setPlayerInput(e.target.value)}
+              onKeyDown={onKeyDown}
+              className="bg-slate-950 border border-slate-700 text-white text-sm rounded-lg px-3 py-2
+                focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none"
+            />
+          </div>
+
+          {/* Prop Type */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Type</label>
+            <select
+              value={propTypeInput}
+              onChange={e => setPropTypeInput(e.target.value)}
+              onKeyDown={onKeyDown}
+              className="bg-slate-950 border border-slate-700 text-white text-sm rounded-lg px-3 py-2
+                outline-none focus:ring-2 focus:ring-emerald-500 min-w-[150px]"
+            >
+              <option value="all">All Types</option>
+              {propTypes.map(pt => <option key={pt} value={pt}>{pt}</option>)}
+            </select>
+          </div>
+
+          {/* Week */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Week</label>
+            <select
+              value={weekInput}
+              onChange={e => setWeekInput(e.target.value)}
+              onKeyDown={onKeyDown}
+              className="bg-slate-950 border border-slate-700 text-white text-sm rounded-lg px-3 py-2
+                outline-none focus:ring-2 focus:ring-emerald-500"
+            >
+              <option value="all">All Weeks</option>
+              {Array.from({ length: 22 }, (_, i) => (
+                <option key={i + 1} value={String(i + 1)}>Week {i + 1}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Buttons */}
+          <div className="flex gap-2 self-end">
+            <button
+              onClick={handleSearch}
+              className="flex items-center gap-1.5 px-5 py-2 bg-emerald-600 hover:bg-emerald-500
+                text-white text-sm font-bold rounded-lg transition-colors"
+            >
+              <Search className="h-3.5 w-3.5" /> Search
+            </button>
+            {(playerInput || propTypeInput !== 'all' || weekInput !== 'all' || hasActiveFilters) && (
+              <button
+                onClick={handleClear}
+                className="flex items-center gap-1.5 px-3 py-2 border border-slate-700
+                  hover:border-slate-500 text-slate-400 hover:text-white text-sm rounded-lg transition-colors"
+              >
+                <X className="h-3.5 w-3.5" /> Clear
+              </button>
+            )}
+          </div>
         </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Week</label>
-          <select value={weekFilter} onChange={e => setWeekFilter(e.target.value)}
-            className="bg-slate-950 border border-slate-700 text-white text-sm rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500">
-            <option value="all">All Weeks</option>
-            {Array.from({ length: 22 }, (_, i) => (
-              <option key={i + 1} value={String(i + 1)}>Week {i + 1}</option>
-            ))}
-          </select>
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Status</label>
-          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-            className="bg-slate-950 border border-slate-700 text-white text-sm rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500">
-            <option value="all">All Status</option>
-            <option value="won">Won</option>
-            <option value="lost">Lost</option>
-            <option value="pending">Pending</option>
-            <option value="void">Void</option>
-          </select>
-        </div>
-        {activeFilters && (
-          <button onClick={() => { setSearchTerm(''); setWeekFilter('all'); setStatusFilter('all'); }}
-            className="self-end px-3 py-2 text-xs font-bold text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 rounded-lg transition-colors">
-            Clear Filters
-          </button>
+
+        {/* Active filter pills */}
+        {hasActiveFilters && (
+          <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-slate-800">
+            {activeFilters.player && (
+              <span className="text-[10px] bg-emerald-900/30 text-emerald-400 border border-emerald-700/40 px-2 py-1 rounded font-bold">
+                Player: {activeFilters.player}
+              </span>
+            )}
+            {activeFilters.propType !== 'all' && (
+              <span className="text-[10px] bg-blue-900/30 text-blue-400 border border-blue-700/40 px-2 py-1 rounded font-bold">
+                Type: {activeFilters.propType}
+              </span>
+            )}
+            {activeFilters.week !== 'all' && (
+              <span className="text-[10px] bg-purple-900/30 text-purple-400 border border-purple-700/40 px-2 py-1 rounded font-bold">
+                Week {activeFilters.week}
+              </span>
+            )}
+          </div>
         )}
       </div>
 
-      {/* Bulk action bar */}
-      {someSelected && (
+      {/* ── Bulk action bar ─────────────────────────────────────────────────── */}
+      {selectedIds.size > 0 && (
         <div className="flex items-center gap-3 px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl">
           <span className="text-sm text-slate-300 font-semibold">
             {selectedIds.size} bet{selectedIds.size > 1 ? 's' : ''} selected
@@ -448,96 +648,74 @@ export default function BettingLogPage() {
           <button
             onClick={handleBulkDelete}
             disabled={bulkDeleting}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white text-xs font-bold rounded-lg transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-500
+              disabled:opacity-50 text-white text-xs font-bold rounded-lg transition-colors"
           >
             {bulkDeleting
               ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Deleting…</>
-              : <><Trash2 className="h-3.5 w-3.5" /> Delete Selected</>
-            }
+              : <><Trash2 className="h-3.5 w-3.5" /> Delete Selected</>}
           </button>
           <button
             onClick={() => setSelectedIds(new Set())}
-            className="flex items-center gap-1 text-xs text-slate-500 hover:text-white transition-colors ml-auto"
+            className="flex items-center gap-1 text-xs text-slate-500 hover:text-white ml-auto"
           >
             <X className="h-3.5 w-3.5" /> Clear selection
           </button>
         </div>
       )}
 
-      {/* Table */}
+      {/* ── Table ───────────────────────────────────────────────────────────── */}
       {loading ? (
         <div className="flex flex-col items-center py-24 gap-3">
           <Loader2 className="h-7 w-7 animate-spin text-emerald-500" />
           <p className="text-slate-600 text-xs uppercase font-mono tracking-wider">Loading bets…</p>
         </div>
-      ) : filtered.length === 0 ? (
+      ) : sorted.length === 0 ? (
         <div className="flex flex-col items-center py-24 border border-dashed border-slate-800 rounded-2xl gap-2">
           <p className="text-slate-500 text-sm">
-            {activeFilters ? 'No bets matched your filters.' : 'No bets recorded yet.'}
+            {hasActiveFilters ? 'No bets matched your search.' : 'No bets recorded yet.'}
           </p>
-          {!activeFilters && (
-            <p className="text-slate-700 text-xs">
-              Head to{' '}
-              <a href="/all-props" className="text-emerald-400 hover:underline">Historical Props</a>
-              {' '}to add your first leg.
-            </p>
-          )}
         </div>
       ) : (
         <div className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-x-auto">
-          <table className="w-full min-w-[800px]">
+          <table className="w-full min-w-[900px]">
             <thead className="bg-slate-900/80 border-b border-slate-800">
               <tr>
-                {/* Select all checkbox */}
+                {/* Select all */}
                 <th className="w-10 px-3 py-3 text-center">
-                  <button onClick={toggleSelectAll} className="text-slate-500 hover:text-emerald-400 transition-colors">
+                  <button onClick={toggleSelectAll} className="text-slate-500 hover:text-emerald-400">
                     {allSelected
                       ? <CheckSquare className="h-4 w-4 text-emerald-400 mx-auto" />
-                      : <Square className="h-4 w-4 mx-auto" />
-                    }
+                      : <Square className="h-4 w-4 mx-auto" />}
                   </button>
                 </th>
                 <th className="w-8 px-2 py-3" />
-                <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Player / Parlay</th>
-                <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Selection / Odds</th>
-                <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Stake</th>
-                <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Week</th>
-                <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Matchup / Date</th>
-                <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Status</th>
-                <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Type</th>
+                <Th col="player"   label="Player / Parlay" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+                <Th col="week"     label="Week"            sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+                <Th col="gameDate" label="Game Date"       sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+                <Th col="prop"     label="Selection"       sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+                <Th col="stake"    label="Stake"           sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+                <Th col="payout"   label="Payout"          sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+                <Th col="status"   label="Status"          sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
                 <th className="px-4 py-3 w-20" />
               </tr>
             </thead>
             <tbody>
-                {bets.map(bet => {
-                    // IMPROVED LOGIC: Check the array length, not just the string label
-                    const hasMultipleLegs = Array.isArray(bet.legs) && bet.legs.length > 1;
-                    const isParlay = bet.betType === 'Parlay' || hasMultipleLegs;
-
-                    if (isParlay) {
-                        return (
-                            <ParlayRow 
-                                key={bet.id} 
-                                bet={{ ...bet, betType: 'Parlay' }} // Force type for sub-component
-                                selected={selectedIds.has(bet.id)} 
-                                onToggle={toggleSelect} 
-                                onEdit={b => { setEditBet(b); setEditOpen(true); }}
-                                onDelete={handleDelete}
-                            />
-                        );
-                    }
-
-                    return (
-                        <SingleRow 
-                            key={bet.id} 
-                            bet={bet} 
-                            selected={selectedIds.has(bet.id)} 
-                            onToggle={toggleSelect} 
-                            onEdit={b => { setEditBet(b); setEditOpen(true); }}
-                            onDelete={handleDelete}
-                        />
-                    );
-                })}
+              {sorted.map(bet =>
+                bet.isParlay
+                  ? <ParlayRow
+                      key={bet.id} bet={bet}
+                      selected={selectedIds.has(bet.id)} onToggle={toggleSelect}
+                      onEdit={b => { setEditBet(b); setEditOpen(true); }}
+                      onDelete={handleDelete}
+                    />
+                  : <SingleRow
+                      key={bet.id} bet={bet}
+                      selected={selectedIds.has(bet.id)} onToggle={toggleSelect}
+                      onEdit={b => { setEditBet(b); setEditOpen(true); }}
+                      onDelete={handleDelete}
+                    />
+              )}
             </tbody>
           </table>
         </div>
@@ -547,20 +725,22 @@ export default function BettingLogPage() {
       {hasMore && !loading && (
         <div className="flex justify-center pt-2">
           <button
-            onClick={() => fetchBets(true)}
+            onClick={() => fetchBets({ append: true, cursor: nextCursor })}
             disabled={loadingMore}
-            className="px-8 py-3 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white rounded-xl font-semibold text-sm border border-slate-700 flex items-center gap-2 transition-colors"
+            className="px-8 py-3 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-white
+              rounded-xl font-semibold text-sm border border-slate-700 flex items-center gap-2"
           >
             {loadingMore
               ? <><Loader2 className="h-4 w-4 animate-spin" /> Loading…</>
-              : <><ChevronDown className="h-4 w-4" /> Load More Bets</>
-            }
+              : <><ChevronDown className="h-4 w-4" /> Load More</>}
           </button>
         </div>
       )}
 
       {!hasMore && bets.length > 0 && !loading && (
-        <p className="text-center text-slate-700 text-xs pb-4">All {bets.length.toLocaleString()} bets loaded</p>
+        <p className="text-center text-slate-700 text-xs pb-4">
+          All {bets.length.toLocaleString()} bets loaded
+        </p>
       )}
 
       <EditBetModal

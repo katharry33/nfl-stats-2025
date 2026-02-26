@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { X, DollarSign, Hash, TrendingUp, Trophy, Calendar } from 'lucide-react';
-import { Bet } from '@/lib/types';
+import { X, DollarSign, Hash, TrendingUp, Trophy, Calendar, Trash2, Layers } from 'lucide-react';
+import { Bet, BetLeg } from '@/lib/types';
 
 interface EditBetModalProps {
   isOpen: boolean;
@@ -9,16 +9,21 @@ interface EditBetModalProps {
   onSave: (updates: Partial<Bet>) => void;
 }
 
+// Added the specific types you requested
+const BET_TYPES = [
+  'Single', 'Anytime TD', 'SGP', 'Round Robin', 
+  'SGPX', 'Spread', 'Moneyline', 'Total Points', 'Parlay'
+];
+
 export function EditBetModal({ isOpen, bet, onClose, onSave }: EditBetModalProps) {
   const [formData, setFormData] = useState<Partial<Bet>>({
     id: '',
-    week: 0, // PATCH: Use 0 as the empty value
-    date: '', 
+    week: 0,
+    gameDate: '',
     stake: 0,
     odds: 0,
     status: 'pending',
-    profit: 0,
-    notes: '',
+    type: 'Parlay', // New field
     legs: []
   });
 
@@ -26,35 +31,36 @@ export function EditBetModal({ isOpen, bet, onClose, onSave }: EditBetModalProps
     if (bet) {
       setFormData({
         ...bet,
-        week: bet.week ?? 0, // PATCH: Use 0 as the empty value
-        date: bet.date ? new Date(bet.date).toISOString().split('T')[0] : '',
-        stake: bet.stake || bet.betAmount || 0,
+        week: bet.week ?? 0,
+        gameDate: bet.gameDate ? new Date(bet.gameDate).toISOString().split('T')[0] : 
+                  (bet.date ? new Date(bet.date).toISOString().split('T')[0] : ''),
+        stake: bet.stake || 0,
+        type: bet.type || (bet.legs && bet.legs.length > 1 ? 'Parlay' : 'Single'),
         legs: bet.legs || [],
-      });
-    } else {
-      setFormData({
-        id: '',
-        week: 0, // PATCH: Use 0 as the empty value
-        date: new Date().toISOString().split('T')[0],
-        stake: 0,
-        odds: 0,
-        status: 'pending',
-        profit: 0,
-        notes: '',
-        legs: []
       });
     }
   }, [bet]);
 
+  // Handle individual leg updates
+  const updateLeg = (index: number, updates: Partial<BetLeg>) => {
+    const newLegs = [...(formData.legs || [])];
+    newLegs[index] = { ...newLegs[index], ...updates };
+    setFormData({ ...formData, legs: newLegs });
+  };
+
+  // Handle leg deletion
+  const removeLeg = (index: number) => {
+    const newLegs = (formData.legs || []).filter((_, i) => i !== index);
+    setFormData({ ...formData, legs: newLegs });
+  };
+
   const handleSubmit = () => {
-    let calculatedProfit = 0;
     const stakeNum = Number(formData.stake || 0);
     const oddsNum = Number(formData.odds || 0);
+    let calculatedProfit = 0;
 
     if (formData.status === 'won') {
-      const decimalOdds = oddsNum > 0 
-        ? (oddsNum / 100) 
-        : (100 / Math.abs(oddsNum));
+      const decimalOdds = oddsNum > 0 ? (oddsNum / 100) : (100 / Math.abs(oddsNum));
       calculatedProfit = stakeNum * decimalOdds;
     } else if (formData.status === 'lost') {
       calculatedProfit = -stakeNum;
@@ -63,136 +69,141 @@ export function EditBetModal({ isOpen, bet, onClose, onSave }: EditBetModalProps
     onSave({ 
       ...formData, 
       profit: calculatedProfit, 
+      payout: stakeNum + calculatedProfit,
       stake: stakeNum, 
       odds: oddsNum,
-      week: Number(formData.week || 0), // PATCH: Ensure week is a number on save
-      date: formData.date 
+      week: Number(formData.week || 0),
     });
-  };
-
-  const updateLeg = (index: number, field: string, value: any) => {
-    const newLegs = [...(formData.legs || [])];
-    newLegs[index] = { ...newLegs[index], [field]: value };
-    setFormData({ ...formData, legs: newLegs });
   };
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-900 rounded-2xl border border-slate-800 w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+      <div className="bg-slate-900 rounded-2xl border border-slate-800 w-full max-w-3xl max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="sticky top-0 bg-slate-900 border-b border-slate-800 p-6 flex items-center justify-between">
+        <div className="p-6 border-b border-slate-800 flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-bold text-white">Edit Bet</h2>
-            <p className="text-xs text-slate-400 mt-1">
-              {(formData.legs?.length ?? 0)} leg{(formData.legs?.length ?? 0) !== 1 ? 's' : ''} • Week {formData.week}
-            </p>
+            <h2 className="text-xl font-bold text-white">Edit Bet Details</h2>
+            <p className="text-xs text-slate-400 mt-1">ID: {formData.id?.slice(0,8)}...</p>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="p-6 space-y-6">
-          <div className="grid grid-cols-2 gap-4">
-            {/* Date Picker Option */}
+        <div className="p-6 overflow-y-auto space-y-8">
+          {/* Main Bet Details */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-xs font-medium text-slate-400 mb-2">
-                <Calendar className="h-3 w-3 inline mr-1" />
-                Date
-              </label>
-              <input
-                type="date"
-                value={formData.date || ''}
-                onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:ring-2 focus:ring-emerald-500 outline-none [color-scheme:dark]"
-              />
+              <label className="block text-[10px] uppercase font-black text-slate-500 mb-1.5">Bet Type</label>
+              <select 
+                value={formData.type}
+                onChange={(e) => setFormData({...formData, type: e.target.value})}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white text-sm focus:ring-1 focus:ring-blue-500 outline-none"
+              >
+                {BET_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
             </div>
-
-            {/* Week */}
             <div>
-              <label className="block text-xs font-medium text-slate-400 mb-2">
-                <Hash className="h-3 w-3 inline mr-1" />
-                Week
-              </label>
-              <input
-                type="number" // PATCH: Use number type for better UX
-                value={formData.week || 0}
-                // PATCH: Parse input value to number
-                onChange={(e) => setFormData({ ...formData, week: e.target.value === '' ? 0 : Number(e.target.value) })}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
-                placeholder="e.g. 18"
-              />
+              <label className="block text-[10px] uppercase font-black text-slate-500 mb-1.5">Total Odds</label>
+              <input type="number" value={formData.odds || ''} onChange={(e) => setFormData({...formData, odds: parseFloat(e.target.value)})}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white text-sm outline-none" />
             </div>
-
-            {/* Stake */}
             <div>
-              <label className="block text-xs font-medium text-slate-400 mb-2">
-                <DollarSign className="h-3 w-3 inline mr-1" />
-                Stake
-              </label>
-              <input
-                type="number"
-                value={formData.stake || ''}
-                onChange={(e) => setFormData({ ...formData, stake: parseFloat(e.target.value) })}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
-                step="0.01"
-              />
+              <label className="block text-[10px] uppercase font-black text-slate-500 mb-1.5">Stake ($)</label>
+              <input type="number" value={formData.stake || ''} onChange={(e) => setFormData({...formData, stake: parseFloat(e.target.value)})}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white text-sm outline-none" />
             </div>
-
-            {/* Odds */}
             <div>
-              <label className="block text-xs font-medium text-slate-400 mb-2">
-                <TrendingUp className="h-3 w-3 inline mr-1" />
-                Odds
-              </label>
-              <input
-                type="number"
-                value={formData.odds || ''}
-                onChange={(e) => setFormData({ ...formData, odds: parseFloat(e.target.value) })}
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
-              />
+              <label className="block text-[10px] uppercase font-black text-slate-500 mb-1.5">Game Date</label>
+              <input type="date" value={formData.gameDate || ''} onChange={(e) => setFormData({...formData, gameDate: e.target.value})}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white text-sm [color-scheme:dark] outline-none" />
+            </div>
+            <div>
+              <label className="block text-[10px] uppercase font-black text-slate-500 mb-1.5">NFL Week</label>
+              <input type="number" value={formData.week || ''} onChange={(e) => setFormData({...formData, week: parseInt(e.target.value)})}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white text-sm outline-none" />
+            </div>
+            <div>
+              <label className="block text-[10px] uppercase font-black text-slate-500 mb-1.5">Overall Status</label>
+              <select value={formData.status} onChange={(e) => setFormData({...formData, status: e.target.value as any})}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white text-sm outline-none">
+                <option value="pending">Pending</option>
+                <option value="won">Won</option>
+                <option value="lost">Lost</option>
+                <option value="void">Void</option>
+              </select>
             </div>
           </div>
 
-          {/* Status Dropdown */}
-          <div>
-            <label className="block text-xs font-medium text-slate-400 mb-2">
-              <Trophy className="h-3 w-3 inline mr-1" />
-              Status
-            </label>
-            <select
-              value={formData.status}
-              onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
-              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-white text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
-            >
-              <option value="pending">Pending</option>
-              <option value="won">Won</option>
-              <option value="lost">Lost</option>
-              <option value="void">Void</option>
-            </select>
-          </div>
+          {/* Individual Legs Section */}
+          <div className="space-y-4">
+            <h3 className="text-[10px] uppercase font-black text-slate-500 flex items-center gap-2">
+              <Layers className="h-3 w-3" />
+              Individual Legs ({(formData.legs?.length || 0)})
+            </h3>
+            
+            <div className="space-y-3">
+              {formData.legs?.map((leg, index) => (
+                <div key={leg.id || index} className="bg-slate-950/50 border border-slate-800 rounded-xl p-4 transition-all hover:border-slate-700">
+                  <div className="flex flex-wrap items-center gap-4">
+                    {/* Player/Prop Info (Read-only labels, editable line) */}
+                    <div className="flex-1 min-w-[200px]">
+                      <p className="text-sm font-bold text-white">{leg.player}</p>
+                      <p className="text-[10px] text-slate-500 uppercase font-medium">{leg.prop} • {leg.selection}</p>
+                    </div>
 
-          {/* ... Rest of your legs/notes sections (unchanged) ... */}
+                    {/* Editable Line */}
+                    <div className="w-24">
+                      <label className="block text-[9px] text-slate-500 uppercase mb-1">Line</label>
+                      <input 
+                        type="number" step="0.5" value={leg.line} 
+                        onChange={(e) => updateLeg(index, { line: parseFloat(e.target.value) })}
+                        className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs text-white"
+                      />
+                    </div>
 
-          {/* Action Buttons */}
-          <div className="flex gap-3 pt-4 border-t border-slate-800">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg font-medium transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleSubmit}
-              className="flex-1 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium transition-colors"
-            >
-              Save Changes
-            </button>
+                    {/* Leg Status */}
+                    <div className="w-32">
+                      <label className="block text-[9px] text-slate-500 uppercase mb-1">Result</label>
+                      <select 
+                        value={leg.status} 
+                        onChange={(e) => updateLeg(index, { status: e.target.value as any })}
+                        className={`w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs font-bold ${
+                          leg.status === 'won' ? 'text-emerald-400' : leg.status === 'lost' ? 'text-red-400' : 'text-slate-400'
+                        }`}
+                      >
+                        <option value="pending">Pending</option>
+                        <option value="won">Won</option>
+                        <option value="lost">Lost</option>
+                        <option value="void">Void</option>
+                      </select>
+                    </div>
+
+                    {/* Delete Leg */}
+                    <button 
+                      onClick={() => removeLeg(index)}
+                      className="p-2 text-slate-600 hover:text-red-400 transition-colors mt-4"
+                      title="Remove Leg"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
+        </div>
+
+        {/* Footer */}
+        <div className="p-6 border-t border-slate-800 flex gap-3 bg-slate-900 rounded-b-2xl">
+          <button onClick={onClose} className="flex-1 px-4 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold uppercase text-xs tracking-widest transition-all">
+            Cancel
+          </button>
+          <button onClick={handleSubmit} className="flex-1 px-4 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold uppercase text-xs tracking-widest transition-all shadow-lg shadow-emerald-900/20">
+            Save Changes
+          </button>
         </div>
       </div>
     </div>

@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 
 const SEASON_COLLECTION: Record<string, string> = {
-  '2024': 'allProps_2024',
+  '2024': 'allProps',
   '2025': 'allProps_2025',
 };
 

@@ -4,40 +4,75 @@ import React, { useState, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useBetSlip } from '@/context/betslip-context';
 import { getWeekFromDate } from '@/lib/utils/nfl-week';
+import { toDecimal, toAmerican } from '@/lib/utils';
 import {
   Trash2, ChevronLeft, CheckCircle2, Clock, XCircle,
-  Zap, DollarSign, Gift, ArrowDown, ChevronRight, TrendingUp, Loader2
+  Zap, DollarSign, Gift, ArrowDown, TrendingUp, Loader2, AlertTriangle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Odds helpers
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Duplicate warning modal ──────────────────────────────────────────────────
 
-function toDecimal(american: number): number {
-  if (american >= 100)  return american / 100 + 1;
-  if (american <= -100) return 100 / Math.abs(american) + 1;
-  return 1;
-}
+function DuplicateModal({ duplicates, onSaveAnyway, onCancel }: {
+  duplicates: { player: string; prop: string }[];
+  onSaveAnyway: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
+      <div className="bg-slate-900 border border-amber-500/30 rounded-2xl p-6 max-w-sm w-full shadow-2xl space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-amber-500/15 flex items-center justify-center flex-shrink-0">
+            <AlertTriangle className="h-5 w-5 text-amber-400" />
+          </div>
+          <div>
+            <h2 className="text-white font-bold text-sm">Already in Betting Log</h2>
+            <p className="text-slate-500 text-xs mt-0.5">
+              {duplicates.length} leg{duplicates.length > 1 ? 's' : ''} found for this week
+            </p>
+          </div>
+        </div>
 
-function toAmerican(decimal: number): number {
-  if (!isFinite(decimal) || decimal <= 1) return 0;
-  if (decimal >= 2) return Math.round((decimal - 1) * 100);
-  return Math.round(-100 / (decimal - 1));
+        <div className="space-y-1.5 max-h-40 overflow-y-auto">
+          {duplicates.map((d, i) => (
+            <div key={i} className="flex items-center gap-2 bg-slate-950/60 border border-slate-800 rounded-lg px-3 py-2">
+              <span className="text-amber-400 text-[10px] font-bold uppercase">DUP</span>
+              <div className="text-xs text-slate-300 font-medium">{d.player}</div>
+              <div className="text-[10px] text-slate-500 ml-auto capitalize">{d.prop}</div>
+            </div>
+          ))}
+        </div>
+
+        <p className="text-slate-500 text-xs leading-relaxed">
+          These legs are already logged for this week. Saving again will create a duplicate entry.
+        </p>
+
+        <div className="flex gap-2 pt-1">
+          <button
+            onClick={onCancel}
+            className="flex-1 py-2.5 rounded-xl border border-slate-700 text-slate-300 text-xs font-bold uppercase hover:bg-slate-800 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onSaveAnyway}
+            className="flex-1 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold uppercase transition-colors"
+          >
+            Save Anyway
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function parlayDecimal(odds: number[]): number {
   return odds.reduce((acc, o) => acc * toDecimal(o), 1);
 }
-
 function fmtAmerican(n: number): string {
   if (!n || isNaN(n) || !isFinite(n)) return '—';
   return n >= 0 ? `+${n}` : `${n}`;
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────────────────────────────────────
 
 type LegResult = 'pending' | 'won' | 'lost' | 'void';
 type BetType   = 'regular' | 'bonus';
@@ -46,24 +81,16 @@ interface LegState {
   id: string; player: string; prop: string;
   line: number; selection: string; odds: number;
   matchup: string; week?: number; result: LegResult;
-  // Allow other fields from data source
+  isLive: boolean; // ADDED
   [key: string]: any;
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Result toggle config
-// ─────────────────────────────────────────────────────────────────────────────
 
 const RESULTS: { value: LegResult; label: string; icon: React.ReactNode; active: string; inactive: string }[] = [
   { value: 'won',     label: 'Win',     icon: <CheckCircle2 className="h-3.5 w-3.5" />, active: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40', inactive: 'border-slate-800 text-slate-500 hover:border-slate-600 hover:text-slate-300' },
   { value: 'lost',    label: 'Loss',    icon: <XCircle      className="h-3.5 w-3.5" />, active: 'bg-red-500/20 text-red-400 border-red-500/40',             inactive: 'border-slate-800 text-slate-500 hover:border-slate-600 hover:text-slate-300' },
   { value: 'pending', label: 'Pending', icon: <Clock        className="h-3.5 w-3.5" />, active: 'bg-amber-500/20 text-amber-400 border-amber-500/40',       inactive: 'border-slate-800 text-slate-500 hover:border-slate-600 hover:text-slate-300' },
-  { value: 'void',    label: 'Void',    icon: <XCircle      className="h-3.5 w-3.5" />, active: 'bg-slate-700 text-slate-300 border-slate-500',              inactive: 'border-slate-800 text-slate-500 hover:border-slate-600 hover:text-slate-300' },
+  { value: 'void',    label: 'Void',    icon: <XCircle      className="h-3.5 w-3.5" />, active: 'bg-slate-700 text-slate-300 border-slate-500',               inactive: 'border-slate-800 text-slate-500 hover:border-slate-600 hover:text-slate-300' },
 ];
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Leg Card
-// ─────────────────────────────────────────────────────────────────────────────
 
 function LegCard({ leg, index, onUpdate, onRemove }: {
   leg: LegState; index: number;
@@ -88,7 +115,6 @@ function LegCard({ leg, index, onUpdate, onRemove }: {
       </div>
 
       <div className="px-4 py-3 space-y-3">
-        {/* Prop + Over/Under + Odds */}
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2">
             <span className="text-slate-400 text-xs">{leg.prop}</span>
@@ -120,7 +146,27 @@ function LegCard({ leg, index, onUpdate, onRemove }: {
           </div>
         </div>
 
-        {/* Result */}
+        {/* ─── LIVE BET CHECKBOX ─── */}
+        <div className="flex items-center justify-between py-2 border-t border-slate-800/40">
+          <label className="flex items-center gap-2 cursor-pointer group">
+            <input
+              type="checkbox"
+              checked={leg.isLive || false}
+              onChange={(e) => onUpdate(leg.id, { isLive: e.target.checked })}
+              className="w-4 h-4 rounded border-slate-700 bg-slate-950 text-blue-500 focus:ring-blue-500/20 transition-all cursor-pointer"
+            />
+            <span className="text-[10px] uppercase font-black text-slate-500 group-hover:text-slate-300 transition-colors">
+              Live Bet
+            </span>
+          </label>
+          
+          {leg.isLive && (
+            <span className="flex items-center gap-1 text-[9px] font-bold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full animate-pulse">
+              <span className="w-1 h-1 rounded-full bg-blue-400" /> LIVE
+            </span>
+          )}
+        </div>
+
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-[10px] uppercase font-black text-slate-500 w-12 flex-shrink-0">Result</span>
           <div className="flex gap-1.5 flex-wrap">
@@ -142,10 +188,6 @@ function LegCard({ leg, index, onUpdate, onRemove }: {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Main Page — NO BetSlip rendered here
-// ─────────────────────────────────────────────────────────────────────────────
-
 export default function ParlayStudioPage() {
   const router = useRouter();
   const { selections, removeLeg, clearSlip } = useBetSlip();
@@ -153,26 +195,26 @@ export default function ParlayStudioPage() {
 
   const [legs, setLegs] = useState<LegState[]>(() =>
     selections.map((s: any) => ({
-      id: s.id, 
-      player: s.player || '', 
+      id: s.id,
+      player: s.player || '',
       prop: s.prop || '',
-      line: Number(s.line || 0), 
+      line: Number(s.line || 0),
       selection: s.selection || 'Over',
-      odds: Number(s.odds || -110), 
+      odds: Number(s.odds || -110),
       matchup: s.matchup || '',
-      week: s.week !== undefined ? Number(s.week) : undefined, 
+      week: s.week !== undefined ? Number(s.week) : undefined,
       result: 'pending' as LegResult,
-      ...s // Carry over any other fields from the original data source
+      isLive: false, // INITIALIZE
+      ...s,
     }))
   );
 
-  // Bet details state
   const [betType,    setBetType]    = useState<BetType>('regular');
   const [stake,      setStake]      = useState('');
   const [bonusAmt,   setBonusAmt]   = useState('');
   const [manualOdds, setManualOdds] = useState('');
   const [boost,      setBoost]      = useState('');
-  const [week,       setWeek]       = useState(() => {
+  const [week,        setWeek]       = useState(() => {
     const w = selections[0]?.week; return w ? String(w) : '';
   });
   const [gameDate, setGameDate] = useState(() => {
@@ -185,8 +227,11 @@ export default function ParlayStudioPage() {
       return d.toISOString().split('T')[0];
     } catch { return ''; }
   });
-  const [saving,      setSaving]      = useState(false);
-  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [saving,         setSaving]         = useState(false);
+  const [detailsOpen,    setDetailsOpen]    = useState(false);
+  const [dupModal,       setDupModal]       = useState(false);
+  const [dupLegs,        setDupLegs]        = useState<{ player: string; prop: string }[]>([]);
+  const [pendingPayload, setPendingPayload] = useState<any>(null);
 
   const handleEnterDetails = () => {
     setDetailsOpen(true);
@@ -207,24 +252,24 @@ export default function ParlayStudioPage() {
     removeLeg(id);
   };
 
-  // Odds
-  const autoDecimal  = useMemo(() => parlayDecimal(legs.map(l => l.odds)), [legs]);
+  const autoDecimal = useMemo(() => parlayDecimal(legs.map(l => l.odds)), [legs]);
   const autoAmerican = useMemo(() => toAmerican(autoDecimal), [autoDecimal]);
-  const effectiveOdds    = manualOdds.trim() ? parseInt(manualOdds) : autoAmerican;
+
+  const effectiveOdds = manualOdds.trim() !== '' 
+  ? parseInt(manualOdds) 
+  : autoAmerican;
   const effectiveDecimal = toDecimal(effectiveOdds);
 
-  // Payout
-  const stakeNum  = betType === 'bonus' ? parseFloat(bonusAmt) || 0 : parseFloat(stake) || 0;
-  const boostPct  = parseFloat(boost) || 0;
-  const rawProfit     = stakeNum * (effectiveDecimal - 1);
+  const stakeNum      = betType === 'bonus' ? parseFloat(bonusAmt) || 0 : parseFloat(stake) || 0;
+  const boostPct      = parseFloat(boost) || 0;
+  const rawProfit      = stakeNum * (effectiveDecimal - 1);
   const boostedProfit = rawProfit * (1 + boostPct / 100);
   const totalPayout   = betType === 'bonus' ? boostedProfit : stakeNum + boostedProfit;
 
-  // Parlay status
   const parlayStatus: LegResult =
-    legs.some(l => l.result === 'lost')      ? 'lost'
-    : legs.length > 0 && legs.every(l => l.result === 'won') ? 'won'
-    : legs.some(l => l.result === 'pending') ? 'pending'
+    legs.some(l => l.result === 'lost')                          ? 'lost'
+    : legs.length > 0 && legs.every(l => l.result === 'won')     ? 'won'
+    : legs.some(l => l.result === 'pending')                     ? 'pending'
     : 'void';
 
   const sc = {
@@ -234,65 +279,63 @@ export default function ParlayStudioPage() {
     void:    { text: 'text-slate-400',   border: 'border-slate-700',      bg: 'bg-slate-800/40' },
   }[parlayStatus];
 
-  const handleSaveParlay = async () => {
-    if (legs.length === 0) {
-      toast.warning("Cannot save an empty bet slip.");
-      return;
-    }
-    setSaving(true);
-
-    // Sanitize legs to prevent undefined values and match Firestore schema
+  // ── Build payload ────────────
+  const buildPayload = () => {
     const sanitizedLegs = legs.map(leg => ({
-      player: leg.player || leg.Player || "Unknown",
-      prop: leg.prop || leg.Prop || "N/A",
-      line: Number(leg.line) || 0,
-      odds: Number(leg.odds) || 0,
-      selection: leg.selection || "Over",
-      matchup: leg.matchup || leg.Matchup || "N/A",
-      status: leg.result || "pending",
-      playerteam: leg.playerteam || leg.Team || "N/A",
-      gameDate: leg.eventdate || leg.gameDate || gameDate || new Date().toISOString(),
-      week: leg.week
+      player:    leg.player    || leg.Player    || 'Unknown',
+      prop:      leg.prop      || leg.Prop      || 'N/A',
+      line:      Number(leg.line)  || 0,
+      odds:      Number(leg.odds)  || 0,
+      selection: leg.selection || 'Over',
+      matchup:   leg.matchup   || leg.Matchup   || 'N/A',
+      status:    leg.result    || 'pending',
+      isLive:    !!leg.isLive, // ADDED
+      team:      leg.team      || leg.Team      || leg.playerteam || '',
+      gameDate:  leg.gameDate  || gameDate      || null,
+      week:      leg.week      ?? (parseInt(week) || null),
     }));
-
-    const payload: Record<string, any> = {
-      betType: legs.length === 1 ? 'Single' : `Parlay${legs.length}`,
-      status: parlayStatus,
-      stake: betType === 'regular' ? parseFloat(stake) || 0 : 0,
+    return {
+      betType:    legs.length === 1 ? 'Single' : `Parlay${legs.length}`,
+      status:     parlayStatus,
+      stake:      betType === 'regular' ? parseFloat(stake) || 0 : 0,
       isBonusBet: betType === 'bonus',
       bonusStake: betType === 'bonus' ? parseFloat(bonusAmt) || 0 : 0,
-      odds: effectiveOdds,
-      boost: parseFloat(boost) || null,
-      payout: totalPayout,
-      week: parseInt(week) || null,
-      gameDate: gameDate || null,
-      legs: sanitizedLegs,
+      odds:       effectiveOdds,
+      boost:      parseFloat(boost) || 0,
+      payout:     totalPayout,
+      week:       parseInt(week) || null,
+      gameDate:   gameDate || null,
+      legs:       sanitizedLegs,
+      parlayResults: { totalOdds: effectiveOdds, payout: totalPayout },
     };
-    
-    // Remove null/undefined top-level fields, but keep '0' values
-    const cleanPayload = Object.fromEntries(Object.entries(payload).filter(([_, v]) => v != null));
-    if (payload.stake === 0) cleanPayload.stake = 0;
-    if (payload.bonusStake === 0) cleanPayload.bonusStake = 0;
-    if (payload.payout === 0) cleanPayload.payout = 0;
+  };
 
+  // ── Shared submit logic ────────────────────────────────────────────────────
+  const submitToApi = async (payload: any, force = false) => {
+    const url = force ? '/api/save-parlay?force=true' : '/api/save-parlay';
+    const response = await fetch(url, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(payload),
+    });
+    const data = await response.json();
+    if (response.status === 409 && data.error === 'duplicate') {
+      setDupLegs(data.duplicates ?? []);
+      setPendingPayload(payload);
+      setDupModal(true);
+      return;
+    }
+    if (!response.ok) throw new Error(data.error || 'Failed to save.');
+    toast.success('Bet Saved', { description: 'Logged to your Betting Log.' });
+    clearSlip();
+    router.push('/betting-log');
+  };
+
+  const handleSaveParlay = async () => {
+    if (legs.length === 0) { toast.warning('Cannot save an empty bet slip.'); return; }
+    setSaving(true);
     try {
-      const response = await fetch('/api/betting-log', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(cleanPayload),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to save parlay.');
-      }
-
-      toast.success('Parlay Saved', {
-        description: 'Your parlay has been successfully logged.',
-      });
-      clearSlip();
-      router.push('/betting-log');
-
+      await submitToApi(buildPayload(), false);
     } catch (err: any) {
       toast.error('Save Failed', { description: err.message });
     } finally {
@@ -300,7 +343,6 @@ export default function ParlayStudioPage() {
     }
   };
 
-  // Empty state
   if (legs.length === 0 && selections.length === 0) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
@@ -316,6 +358,26 @@ export default function ParlayStudioPage() {
 
   return (
     <div className="min-h-screen bg-slate-950">
+      {/* Duplicate warning modal */}
+      {dupModal && (
+        <DuplicateModal
+          duplicates={dupLegs}
+          onCancel={() => { setDupModal(false); setPendingPayload(null); }}
+          onSaveAnyway={async () => {
+            setDupModal(false);
+            setSaving(true);
+            try {
+              await submitToApi(pendingPayload, true);
+            } catch (err: any) {
+              toast.error('Save Failed', { description: err.message });
+            } finally {
+              setSaving(false);
+              setPendingPayload(null);
+            }
+          }}
+        />
+      )}
+
       <div className="max-w-2xl mx-auto px-5 py-8 space-y-6">
 
         {/* Header */}
@@ -329,7 +391,7 @@ export default function ParlayStudioPage() {
           </div>
         </div>
 
-        {/* ── Step 1: Review Legs ── */}
+        {/* Step 1: Review Legs */}
         <section className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-[10px] uppercase font-black text-slate-500 tracking-wider flex items-center gap-2">
@@ -355,7 +417,7 @@ export default function ParlayStudioPage() {
           )}
         </section>
 
-        {/* ── Enter Bet Details CTA ── */}
+        {/* Enter Bet Details CTA */}
         {!detailsOpen && legs.length > 0 && (
           <button
             onClick={handleEnterDetails}
@@ -366,7 +428,7 @@ export default function ParlayStudioPage() {
           </button>
         )}
 
-        {/* ── Step 2: Bet Details ── */}
+        {/* Step 2: Bet Details */}
         {detailsOpen && legs.length > 0 && (
           <section ref={detailsRef} className="space-y-4 pt-1">
             <h2 className="text-[10px] uppercase font-black text-slate-500 tracking-wider flex items-center gap-2">
@@ -374,7 +436,7 @@ export default function ParlayStudioPage() {
               Bet Details
             </h2>
 
-            {/* Bet Type */}
+            {/* Bet Type Selector */}
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
               <p className="text-[10px] uppercase font-black text-slate-500">Bet Type</p>
               <div className="flex rounded-xl overflow-hidden border border-slate-800">
@@ -391,35 +453,55 @@ export default function ParlayStudioPage() {
                   <Gift className="h-3.5 w-3.5" />Bonus Bet
                 </button>
               </div>
-              {betType === 'bonus' && (
-                <p className="text-[10px] text-violet-400/80 font-mono leading-relaxed">
-                  Bonus bets are free — stake is not returned on a win. Payout = bonus amount × decimal odds.
-                </p>
-              )}
             </div>
 
-            {/* Stake + Boost */}
+            {/* Main Inputs: Stake, Boost, Date, Week */}
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-4">
+              {/* NEW: Total Odds Input (Manual Override) */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] uppercase font-black text-slate-500">Total Odds (American)</label>
+                  <span className="text-[10px] text-slate-600 font-mono italic">
+                    Auto-calc: {fmtAmerican(autoAmerican)}
+                  </span>
+                </div>
+                <div className="relative">
+                  <input
+                    type="number"
+                    placeholder={fmtAmerican(autoAmerican)}
+                    value={manualOdds}
+                    onChange={(e) => setManualOdds(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 text-white font-mono rounded-lg pl-3 pr-10 py-2.5 text-sm focus:ring-1 focus:ring-blue-500 outline-none"
+                  />
+                  {manualOdds && (
+                    <button 
+                      onClick={() => setManualOdds('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-600 hover:text-slate-400 uppercase"
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
+                <p className="text-[9px] text-slate-500">Leave blank to use auto-calculated parlay odds.</p>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
-                {/* Stake / Bonus Amount */}
+                {/* Stake Input */}
                 <div className="space-y-1.5">
-                  <label className={`text-[10px] uppercase font-black ${betType === 'bonus' ? 'text-violet-400' : 'text-slate-500'}`}>
+                  <label className="text-[10px] uppercase font-black text-slate-500">
                     {betType === 'bonus' ? 'Bonus Amount ($)' : 'Stake ($)'}
                   </label>
-                  <div className="relative">
-                    {betType === 'bonus'
-                      ? <Gift className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-violet-500" />
-                      : <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-sm">$</span>}
-                    <input
-                      type="number" min={0} step={0.01} placeholder="0.00"
-                      value={betType === 'bonus' ? bonusAmt : stake}
-                      onChange={e => betType === 'bonus' ? setBonusAmt(e.target.value) : setStake(e.target.value)}
-                      className={`w-full border rounded-lg pl-8 pr-3 py-2.5 font-mono text-sm outline-none text-white ${betType === 'bonus' ? 'bg-violet-950/30 border-violet-700/40 focus:ring-1 focus:ring-violet-500' : 'bg-slate-950 border-slate-800 focus:ring-1 focus:ring-emerald-500'}`}
-                    />
-                  </div>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={betType === 'bonus' ? bonusAmt : stake}
+                    onChange={e => betType === 'bonus' ? setBonusAmt(e.target.value) : setStake(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 text-white rounded-lg px-3 py-2.5 text-sm focus:ring-1 focus:ring-emerald-500 outline-none"
+                    placeholder="0.00"
+                  />
                 </div>
 
-                {/* Boost */}
+                {/* Boost Dropdown */}
                 <div className="space-y-1.5">
                   <label className="text-[10px] uppercase font-black text-slate-500 flex items-center gap-1">
                     <Zap className="h-3 w-3 text-amber-400" />Boost %
@@ -430,58 +512,42 @@ export default function ParlayStudioPage() {
                     className="w-full bg-slate-950 border border-slate-800 text-white rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-1 focus:ring-amber-500"
                   >
                     <option value="">None</option>
-                    {[5,10,15,20,25,30,35,40,45,50].map(p => (
+                    {[5, 10, 15, 20, 25, 30, 40, 50, 100].map(p => (
                       <option key={p} value={String(p)}>{p}%</option>
                     ))}
                   </select>
                 </div>
               </div>
 
-              {/* Total Odds */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-[10px] uppercase font-black text-slate-500">Total Odds</label>
-                  <span className="text-[10px] text-slate-600 font-mono">Auto: {fmtAmerican(autoAmerican)}</span>
-                </div>
-                <input
-                  type="number"
-                  placeholder={`${fmtAmerican(autoAmerican)} (auto-calculated)`}
-                  value={manualOdds}
-                  onChange={e => setManualOdds(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 text-white font-mono rounded-lg px-3 py-2.5 text-sm focus:ring-1 focus:ring-emerald-500 outline-none"
-                />
-                {manualOdds && (
-                  <button onClick={() => setManualOdds('')} className="text-[10px] text-slate-600 hover:text-slate-400">
-                    ← Reset to auto ({fmtAmerican(autoAmerican)})
-                  </button>
-                )}
-              </div>
-
-              {/* Date + Week */}
+              {/* Row 2: Game Date and NFL Week (Same as before) */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <label className="text-[10px] uppercase font-black text-slate-500">Game Date</label>
                   <input
-                    type="date" value={gameDate}
+                    type="date"
+                    value={gameDate}
                     onChange={e => handleDateChange(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 text-slate-200 rounded-lg px-3 py-2.5 text-sm focus:ring-1 focus:ring-emerald-500 outline-none [color-scheme:dark]"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] uppercase font-black text-slate-500">
-                    NFL Week
-                    {week && <span className="text-emerald-500 ml-1.5 font-mono normal-case">WK {week}</span>}
+                  <label className="text-[10px] uppercase font-black text-slate-500 flex justify-between">
+                    NFL Week {week && <span className="text-emerald-500 font-mono">WK {week}</span>}
                   </label>
                   <input
-                    type="number" min={1} max={22} placeholder="1 – 22"
-                    value={week} onChange={e => setWeek(e.target.value)}
+                    type="number"
+                    min={1}
+                    max={22}
+                    value={week}
+                    onChange={e => setWeek(e.target.value)}
+                    placeholder="1-22"
                     className="w-full bg-slate-950 border border-slate-800 text-white rounded-lg px-3 py-2.5 text-sm font-mono focus:ring-1 focus:ring-emerald-500 outline-none"
                   />
                 </div>
               </div>
             </div>
 
-            {/* Payout Summary */}
+            {/* Payout Summary Card */}
             <div className={`rounded-xl border p-4 space-y-3 ${sc.bg} ${sc.border}`}>
               <div className="flex items-center justify-between">
                 <p className="text-[10px] uppercase font-black text-slate-500">Payout Summary</p>
@@ -489,46 +555,33 @@ export default function ParlayStudioPage() {
               </div>
               <div className="space-y-2 font-mono text-sm">
                 <div className="flex justify-between text-slate-400">
-                  <span>{betType === 'bonus' ? 'Bonus Amt' : 'Stake'}</span>
+                  <span>{betType === 'bonus' ? 'Bonus Risked' : 'Stake'}</span>
                   <span>${stakeNum.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-slate-400">
-                  <span>Odds</span><span>{fmtAmerican(effectiveOdds)}</span>
                 </div>
                 {boostPct > 0 && (
                   <div className="flex justify-between text-amber-400">
-                    <span>Boost</span><span>+{boostPct}%</span>
+                    <span>Boost Applied</span>
+                    <span>+{boostPct}%</span>
                   </div>
                 )}
                 <div className="flex justify-between font-bold border-t border-slate-700/40 pt-2">
-                  <span className="text-slate-300">{betType === 'bonus' ? 'Potential Win' : 'Potential Payout'}</span>
+                  <span className="text-slate-300">Total Payout</span>
                   <span className="text-emerald-400 text-base">${totalPayout.toFixed(2)}</span>
                 </div>
-                {stakeNum > 0 && (
-                  <div className={`flex justify-between text-xs ${betType === 'bonus' ? 'text-violet-400' : 'text-slate-500'}`}>
-                    <span>{betType === 'bonus' ? 'Risk-free profit' : 'Net profit'}</span>
-                    <span>+${boostedProfit.toFixed(2)}</span>
-                  </div>
-                )}
               </div>
             </div>
 
-            {/* Submit */}
+            {/* Final Save Button */}
             <button
               onClick={handleSaveParlay}
               disabled={saving || legs.length === 0}
-              className="w-full mt-4 flex items-center justify-center py-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold uppercase text-sm tracking-widest transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-emerald-900/30"
+              className="w-full flex items-center justify-center py-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase text-sm tracking-widest transition-all disabled:opacity-50 shadow-lg shadow-emerald-900/30"
             >
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <TrendingUp className="mr-2 h-4 w-4" /> }
-              {saving ? 'Saving...' : 'Save to Betting Log'}
+              {saving ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : <TrendingUp className="mr-2 h-5 w-5" />}
+              {saving ? 'Saving to Firestore...' : 'Save to Betting Log'}
             </button>
-
-            <p className="text-center text-[10px] text-slate-600 pb-6">
-              Saves as {legs.length === 1 ? 'a Single' : `a ${legs.length}-leg Parlay`} to your Betting Log
-            </p>
           </section>
         )}
-
       </div>
     </div>
   );

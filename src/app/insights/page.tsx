@@ -43,7 +43,7 @@ export default function InsightsPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const propsRef = collection(db, "allProps_2025");
+    const propsRef = collection(db, "allProps");
     const q = query(propsRef);
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
