@@ -5,11 +5,27 @@ import {
   Loader2, AlertCircle, RefreshCw, ChevronDown, ChevronRight, ChevronUp,
   Layers, Minus, Trash2, Pencil, CheckSquare, Square, X, Search,
 } from 'lucide-react';
-import { Bet } from '@/lib/types';
+import { Bet, BetLeg } from '@/lib/types';
 import { EditBetModal } from '@/components/bets/edit-bet-modal';
 import { BettingStats } from "@/components/bets/betting-stats";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function calculateParlayStatus(legs: BetLeg[]): 'won' | 'lost' | 'pending' | 'void' {
+  if (!legs || legs.length === 0) return 'pending';
+
+  const hasWon = (s: string) => ['won', 'win'].includes(s.toLowerCase());
+  const hasLost = (s: string) => ['lost', 'loss'].includes(s.toLowerCase());
+  const isPending = (s: string) => s.toLowerCase() === 'pending';
+
+  if (legs.some(leg => hasLost(leg.status))) {
+    return 'lost';
+  }
+  if (legs.every(leg => hasWon(leg.status) || leg.status.toLowerCase() === 'void')) {
+    return 'won';
+  }
+  return 'pending';
+}
 
 function fmtLine(n: any): string {
   if (n == null || n === '') return '—';
@@ -519,26 +535,38 @@ export default function BettingLogPage() {
     const statuses = ['pending', 'won', 'lost', 'void'];
     const nextStatus = statuses[(statuses.indexOf(currentStatus) + 1) % statuses.length];
     
-    // Find the bet in your local state
     const bet = bets.find(b => b.id === betId);
     if (!bet) return;
-  
+
     const updatedLegs = [...bet.legs];
     updatedLegs[legIndex] = { ...updatedLegs[legIndex], status: nextStatus };
+
+    const updatedBet = {
+      ...bet,
+      legs: updatedLegs,
+      status: calculateParlayStatus(updatedLegs),
+    };
+
+    // Update local state immediately
+    setBets(prevBets => prevBets.map(b => b.id === betId ? updatedBet : b));
   
     try {
-      await fetch('/api/bets/save', {
+      const response = await fetch('/api/bets/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          id: betId, 
-          legs: updatedLegs 
-        }),
+        body: JSON.stringify(updatedBet),
       });
-      // Update local state to reflect change immediately
-      refreshData(); 
+
+      if (!response.ok) {
+        // If server fails, revert the change in UI and show an error
+        setBets(prevBets => prevBets.map(b => b.id === betId ? bet : b));
+        alert('Failed to update bet status.');
+      }      
     } catch (err) {
       console.error("Failed to toggle leg:", err);
+      // Revert if there's an error
+      setBets(prevBets => prevBets.map(b => b.id === betId ? bet : b));
+      alert('An error occurred while updating the bet.');
     }
   };
 

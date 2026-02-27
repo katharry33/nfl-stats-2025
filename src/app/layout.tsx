@@ -19,7 +19,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <Toaster position="top-right" />
 
                 {/* App Shell */}
-                <AppLayout appName="SweetSpot">
+                <AppLayout>
                   {children}
                 </AppLayout>
 

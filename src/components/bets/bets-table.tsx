@@ -67,27 +67,28 @@ function ParlayRow({ bet, selected, onToggle, onEdit, onDelete }: { bet: any; se
         <td className="px-4 py-3 text-xs text-slate-400">{bet.displayDate}</td>
         <td className="px-4 py-3"><StatusBadge status={bet.status} /></td>
         <td className="px-4 py-3"><span className="text-[10px] bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-2 py-0.5 rounded font-bold uppercase">PARLAY</span></td>
-        {/* Payout Column Logic */}
-        <td className="py-4 px-4 text-right">
-          <div className="flex flex-col items-end">
-            {bet.status === 'won' ? (
-              <span className="text-emerald-400 font-bold">${bet.payout?.toFixed(2)}</span>
-            ) : bet.status === 'cashed' ? (
-              <div className="flex flex-col items-end">
-                <span className="text-emerald-500 font-bold">${bet.cashedAmount?.toFixed(2)}</span>
-                <span className="text-[10px] text-slate-500 line-through">${bet.payout?.toFixed(2)}</span>
-              </div>
-            ) : bet.status === 'lost' ? (
-              <div className="flex flex-col items-end">
-                <span className="text-red-500 font-bold">-${bet.stake?.toFixed(2)}</span>
-                <span className="text-[9px] text-slate-600 font-mono">
-                  Potential: ${bet.payout?.toFixed(2)}
-                </span>
-              </div>
-            ) : (
-              <span className="text-slate-500">--</span>
-            )}
-          </div>
+        <td className="py-4 px-4 text-right border-b border-slate-800/50">
+            <div className="flex flex-col items-end gap-0.5">
+                {bet.status === 'won' ? (
+                <span className="text-emerald-400 font-mono font-bold">${bet.payout?.toFixed(2)}</span>
+                ) : bet.status === 'lost' ? (
+                <>
+                    <span className="text-red-500 font-mono font-bold">-${bet.stake?.toFixed(2)}</span>
+                    <span className="text-[9px] text-slate-600 font-medium uppercase tracking-tighter">
+                    Potential: ${bet.payout?.toFixed(2)}
+                    </span>
+                </>
+                ) : bet.status === 'cashed' ? (
+                <>
+                    <span className="text-emerald-500 font-mono font-bold">${bet.cashedAmount?.toFixed(2)}</span>
+                    <span className="text-[9px] text-slate-500 line-through opacity-50">
+                    Org: ${bet.payout?.toFixed(2)}
+                    </span>
+                </>
+                ) : (
+                <span className="text-slate-600 font-mono">Pending</span>
+                )}
+            </div>
         </td>
         <td className="px-4 py-3 text-right">
           <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -140,27 +141,28 @@ function SingleRow({ bet, selected, onToggle, onEdit, onDelete }: { bet: any; se
       <td className="px-4 py-3 text-xs text-slate-400">{bet.displayDate}</td>
       <td className="px-4 py-3"><StatusBadge status={bet.status} /></td>
       <td className="px-4 py-3"><span className="text-[10px] text-slate-600">SINGLE</span></td>
-        {/* Payout Column Logic */}
-        <td className="py-4 px-4 text-right">
-          <div className="flex flex-col items-end">
+      <td className="py-4 px-4 text-right border-b border-slate-800/50">
+        <div className="flex flex-col items-end gap-0.5">
             {bet.status === 'won' ? (
-              <span className="text-emerald-400 font-bold">${bet.payout?.toFixed(2)}</span>
-            ) : bet.status === 'cashed' ? (
-              <div className="flex flex-col items-end">
-                <span className="text-emerald-500 font-bold">${bet.cashedAmount?.toFixed(2)}</span>
-                <span className="text-[10px] text-slate-500 line-through">${bet.payout?.toFixed(2)}</span>
-              </div>
+            <span className="text-emerald-400 font-mono font-bold">${bet.payout?.toFixed(2)}</span>
             ) : bet.status === 'lost' ? (
-              <div className="flex flex-col items-end">
-                <span className="text-red-500 font-bold">-${bet.stake?.toFixed(2)}</span>
-                <span className="text-[9px] text-slate-600 font-mono">
-                  Potential: ${bet.payout?.toFixed(2)}
+            <>
+                <span className="text-red-500 font-mono font-bold">-${bet.stake?.toFixed(2)}</span>
+                <span className="text-[9px] text-slate-600 font-medium uppercase tracking-tighter">
+                Potential: ${bet.payout?.toFixed(2)}
                 </span>
-              </div>
+            </>
+            ) : bet.status === 'cashed' ? (
+            <>
+                <span className="text-emerald-500 font-mono font-bold">${bet.cashedAmount?.toFixed(2)}</span>
+                <span className="text-[9px] text-slate-500 line-through opacity-50">
+                Org: ${bet.payout?.toFixed(2)}
+                </span>
+            </>
             ) : (
-              <span className="text-slate-500">--</span>
+            <span className="text-slate-600 font-mono">Pending</span>
             )}
-          </div>
+        </div>
         </td>
       <td className="px-4 py-3 text-right">
         <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -253,8 +255,8 @@ export function BetsTable({ bets, loading, onDelete, onEdit }: BetsTableProps) {
                     </thead>
                     <tbody>
                         {bets.map(bet => (
-                            bet.betType === 'Parlay'
-                            ? <ParlayRow key={bet.id} bet={bet} selected={selectedIds.has(bet.id)} onToggle={toggleSelect} onEdit={onEdit} onDelete={(id) => onDelete([id])} />
+                          (bet.type || 'Parlay') === 'Parlay'
+                        ? <ParlayRow key={bet.id} bet={bet} selected={selectedIds.has(bet.id)} onToggle={toggleSelect} onEdit={onEdit} onDelete={(id) => onDelete([id])} />
                             : <SingleRow key={bet.id} bet={bet} selected={selectedIds.has(bet.id)} onToggle={toggleSelect} onEdit={onEdit} onDelete={(id) => onDelete([id])} />
                         ))}
                     </tbody>

@@ -2,7 +2,7 @@
 // src/lib/types.ts
 
 // ─── Shared Primitives ────────────────────────────────────────────────────────
-export type BetStatus = 'pending' | 'won' | 'lost' | 'void';
+export type BetStatus = 'pending' | 'won' | 'lost' | 'void' | 'cashed';
 export type BetType   = 'Single' | 'Parlay';
 export type DefenseMap = Record<string, { rank: number; avg: number }>;
 export type SortDir = 'asc' | 'desc'; 
@@ -35,16 +35,20 @@ export interface BetLeg {
 export interface Bet {
   id: string;
   userId: string;
-  type: string;      // Add this! (SGP, Parlay, etc.)
-  boost: number;     // Add this!
+  parlayId?: string;
+  type: string;           // Ensure this is 'type', not 'betType'
+  status: 'pending' | 'won' | 'lost' | 'void' | 'cashed'; // Added 'cashed'
   stake: number;
   odds: number;
-  status: 'pending' | 'won' | 'lost' | 'void';
-  gameDate: string;
+  boost: number;
+  gameDate: string;       // We use gameDate, not date
   week: number;
   legs: BetLeg[];
   profit?: number;
   payout?: number;
+  cashedAmount?: number;  // Added this
+  createdAt?: string;
+  notes?: string;
 }
 
 // ─── BetResult ────────────────────────────────────────────────────────────────

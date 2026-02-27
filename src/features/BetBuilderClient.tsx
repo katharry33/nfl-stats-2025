@@ -47,15 +47,15 @@ export function BetBuilderClient({ initialWeek, season = 2025 }: BetBuilderClien
     isInBetSlip,
   } = useBetSlip(initialWeek, season);
 
-  // Calculate the combined decimal odds for the parlay
-  const parlayDecimalOdds = selections.reduce((acc: number, leg: any) => {
-    // Convert each leg's American odds to Decimal and multiply
-    const legOdds = Number(leg.odds) || -110;
+  // 1. Calculate the combined multiplier for the parlay
+  const totalDecimalOdds = selections.reduce((acc: number, selection: any) => {
+    // Convert each leg's American odds to Decimal and multiply them
+    const legOdds = Number(selection.odds || selection.price || -110);
     return acc * toDecimal(legOdds);
   }, 1);
 
-  // Convert that total decimal back to American (e.g., 3.64 -> +264)
-  const autoAmerican = toAmerican(parlayDecimalOdds);
+  // 2. Convert that single result back to American (e.g., +450)
+  const autoAmerican = toAmerican(totalDecimalOdds);
 
   // ── Client-side filter + sort state ─────────────────────────────────────────
   const [filters, setFilters] = useState<PropFilters>({

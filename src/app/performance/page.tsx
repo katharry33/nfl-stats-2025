@@ -15,6 +15,10 @@ export default function PerformancePage({ bets }: { bets: Bet[] }) {
 
   // 2. Total Profit Calculation
   const totalProfit = typedBets.reduce((acc: number, b: Bet) => {
+    if (b.status === 'cashed') {
+      // Profit = What you walked away with minus what you put in
+      return acc + ((Number(b.cashedAmount) || 0) - (Number(b.stake) || 0));
+    }
     return acc + (Number(b.profit) || 0);
   }, 0);
 

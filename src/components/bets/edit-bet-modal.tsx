@@ -26,7 +26,7 @@ export function EditBetModal({ isOpen, bet, onClose, onSave }: EditBetModalProps
     type: 'Parlay', // New field
     legs: [],
     boost: 0,
-    cashedAmount: 0,
+    cashedAmount: 0, // Add this to initial state
   });
 
   useEffect(() => {
@@ -34,8 +34,7 @@ export function EditBetModal({ isOpen, bet, onClose, onSave }: EditBetModalProps
       setFormData({
         ...bet,
         week: bet.week ?? 0,
-        gameDate: bet.gameDate ? new Date(bet.gameDate).toISOString().split('T')[0] : 
-                  (bet.date ? new Date(bet.date).toISOString().split('T')[0] : ''),
+        gameDate: bet.gameDate ? new Date(bet.gameDate).toISOString().split('T')[0] : '',
         stake: bet.stake || 0,
         type: bet.type || (bet.legs && bet.legs.length > 1 ? 'Parlay' : 'Single'),
         legs: bet.legs || [],

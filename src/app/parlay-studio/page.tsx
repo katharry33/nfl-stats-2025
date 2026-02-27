@@ -529,7 +529,7 @@ export default function ParlayStudioPage() {
                     className="w-full bg-slate-950 border border-slate-800 text-white rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-1 focus:ring-amber-500"
                   >
                     <option value="">None</option>
-                    {[5, 10, 15, 20, 25, 30, 40, 50, 100].map(p => (
+                    {[5, 10, 15, 20, 25, 30, 33, 35, 40, 50, 100].map(p => (
                       <option key={p} value={String(p)}>{p}%</option>
                     ))}
                   </select>
