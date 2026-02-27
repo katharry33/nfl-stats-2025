@@ -6,7 +6,7 @@ import { useProps } from '@/hooks/useProps';
 import { useBetSlip } from '@/hooks/useBetSlip';
 import PropsTable from './PropsTable';
 import { BetSlipPanel } from './BetSlipPanel';
-import { NFLProp, SortKey, SortDir } from '@/lib/types';
+import { NFLProp, SortKey, SortDir, BetLeg } from '@/lib/types';
 import { toDecimal, toAmerican } from '@/lib/utils/odds';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -27,14 +27,13 @@ interface BetBuilderClientProps {
 export function BetBuilderClient({ initialWeek, season = 2025 }: BetBuilderClientProps) {
   const router = useRouter();
 
-  // useProps expects number[] — wrap week in array
   const {
     props: rawProps,
     isLoading,
     error,
     propTypes,
     teams,
-  } = useProps([initialWeek], season);
+  } = useProps(initialWeek, season);
 
   const {
     items: selections,
@@ -45,17 +44,12 @@ export function BetBuilderClient({ initialWeek, season = 2025 }: BetBuilderClien
     updateBetAmount,
     clearBetSlip,
     isInBetSlip,
+    addLegToSlip,
   } = useBetSlip(initialWeek, season);
 
   // 1. Calculate the combined multiplier for the parlay
-  const totalDecimalOdds = selections.reduce((acc: number, selection: any) => {
-    // Convert each leg's American odds to Decimal and multiply them
-    const legOdds = Number(selection.odds || selection.price || -110);
-    return acc * toDecimal(legOdds);
-  }, 1);
-
-  // 2. Convert that single result back to American (e.g., +450)
-  const autoAmerican = toAmerican(totalDecimalOdds);
+  const autoDecimal = selections.reduce((acc, s) => acc * toDecimal(Number(s.odds || -110)), 1);
+  const autoAmerican = toAmerican(autoDecimal);
 
   // ── Client-side filter + sort state ─────────────────────────────────────────
   const [filters, setFilters] = useState<PropFilters>({
@@ -115,6 +109,35 @@ export function BetBuilderClient({ initialWeek, season = 2025 }: BetBuilderClien
   const handleSaveToParlay = () => {
     sessionStorage.setItem('pendingBetSlip', JSON.stringify(selections));
     router.push('/parlay-studio');
+  };
+  
+  const handleAddManualLeg = async (form: any) => {
+    const { playerName, selectedProp, line, playerTeam, currentMatchup, selectedDate } = form;
+    const newLeg: BetLeg = {
+      id: crypto.randomUUID(),
+      player: playerName,
+      prop: selectedProp,
+      line: parseFloat(line),
+      selection: 'Over',
+      odds: -110,
+      status: 'pending',
+      team: playerTeam,
+      matchup: currentMatchup, // Ensure these variables exist in your scope
+      gameDate: selectedDate,
+    };
+    
+    // 1. Add to the current parlay builder (Local State)
+    addLegToSlip(newLeg);
+  
+    // 2. Persist to Firestore so it shows up in searches later
+    try {
+      await fetch('/api/props/save-manual', {
+        method: 'POST',
+        body: JSON.stringify(newLeg)
+      });
+    } catch (err) {
+      console.error("Failed to persist manual prop:", err);
+    }
   };
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -176,6 +199,7 @@ export function BetBuilderClient({ initialWeek, season = 2025 }: BetBuilderClien
             onRemove={removeFromBetSlip}
             onClear={clearBetSlip}
             onSaveToParlay={handleSaveToParlay}
+            onAddManualLeg={handleAddManualLeg}
           />
         </div>
       </aside>

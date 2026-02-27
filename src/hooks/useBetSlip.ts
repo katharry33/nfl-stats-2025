@@ -2,12 +2,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { NFLProp, DefenseMap, SortKey } from '@/lib/types';
-export interface BetSlipItem {
-  prop: NFLProp & { id: string };
-  betAmount: number;
-  overUnder: 'Over' | 'Under';
-}
+import { NFLProp, BetLeg, BetSlipItem } from '@/lib/types';
 
 export interface UseBetSlipReturn {
   items: BetSlipItem[];
@@ -16,6 +11,7 @@ export interface UseBetSlipReturn {
   updateBetAmount: (propId: string, amount: number) => void;
   clearBetSlip: () => void;
   isInBetSlip: (propId: string) => boolean;
+  addLegToSlip: (leg: BetLeg) => void;
   totalStake: number;
   totalProps: number;
   savingIds: Set<string>;
@@ -31,16 +27,47 @@ export function useBetSlip(week: number, season = 2025): UseBetSlipReturn {
   ) => {
     setItems(prev => {
       if (prev.some(i => i.prop.id === prop.id)) return prev; // already added
+      const selection = overUnder ?? (prop.overUnder as 'Over' | 'Under') ?? 'Over';
+      const odds = selection === 'Over' ? prop.overOdds : prop.underOdds;
       return [...prev, {
         prop,
         betAmount: 10, // default stake
-        overUnder: overUnder ?? (prop.overUnder as 'Over' | 'Under') ?? 'Over',
+        overUnder: selection,
+        odds: odds ?? -110,
       }];
     });
   }, []);
 
   const removeFromBetSlip = useCallback((propId: string) => {
     setItems(prev => prev.filter(i => i.prop.id !== propId));
+  }, []);
+
+  const addLegToSlip = useCallback((leg: BetLeg) => {
+    setItems(prev => {
+      if (prev.some(item => item.prop.id === leg.id)) return prev;
+
+      const propFromLeg = {
+        id: leg.id,
+        player: leg.player,
+        prop: leg.prop,
+        line: leg.line,
+        team: leg.team,
+        matchup: leg.matchup,
+        gameDate: leg.gameDate,
+        overUnder: leg.selection,
+        odds: leg.odds,
+        isManual: true,
+      };
+      
+      const newSlipItem: BetSlipItem = {
+        prop: propFromLeg as NFLProp & { id: string },
+        betAmount: 10, // default stake
+        overUnder: leg.selection,
+        odds: leg.odds,
+      };
+
+      return [...prev, newSlipItem];
+    });
   }, []);
 
   const updateBetAmount = useCallback((propId: string, amount: number) => {
@@ -82,6 +109,7 @@ export function useBetSlip(week: number, season = 2025): UseBetSlipReturn {
     updateBetAmount,
     clearBetSlip,
     isInBetSlip,
+    addLegToSlip,
     totalStake,
     totalProps,
     savingIds,

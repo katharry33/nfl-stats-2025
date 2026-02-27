@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { BetSlipItem } from '@/hooks/useBetSlip';
+import type { BetSlipItem, BetLeg } from '@/lib/types';
 import { impliedProb } from '@/lib/enrichment/scoring';
 import { calculateParlayOdds, calculatePayout } from '@/lib/utils/odds';
 
@@ -13,11 +13,12 @@ interface BetSlipPanelProps {
   onRemove: (id: string) => void;
   onClear: () => void;
   onSaveToParlay: () => void;
+  onAddManualLeg: (leg: BetLeg) => void;
 }
 
 export function BetSlipPanel({
   items, totalStake, savingIds,
-  onUpdateAmount, onRemove, onClear, onSaveToParlay,
+  onUpdateAmount, onRemove, onClear, onSaveToParlay, onAddManualLeg
 }: BetSlipPanelProps) {
   const [defaultStake, setDefaultStake] = useState(10);
 

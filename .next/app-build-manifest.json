@@ -1,19 +1,14 @@
 {
   "pages": {
-    "/betting-log/page": [
+    "/not-found": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/betting-log/page.js"
+      "static/chunks/app/not-found.js"
     ],
-    "/betting-log/error": [
+    "/_not-found/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/betting-log/error.js"
-    ],
-    "/betting-log/loading": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/betting-log/loading.js"
+      "static/chunks/app/_not-found/page.js"
     ],
     "/layout": [
       "static/chunks/webpack.js",
@@ -31,25 +26,20 @@
       "static/chunks/main-app.js",
       "static/chunks/app/loading.js"
     ],
-    "/not-found": [
+    "/betting-log/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/not-found.js"
+      "static/chunks/app/betting-log/page.js"
     ],
-    "/_not-found/page": [
+    "/betting-log/error": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/_not-found/page.js"
+      "static/chunks/app/betting-log/error.js"
     ],
-    "/all-props/page": [
+    "/betting-log/loading": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/all-props/page.js"
-    ],
-    "/parlay-studio/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/parlay-studio/page.js"
+      "static/chunks/app/betting-log/loading.js"
     ]
   }
 }

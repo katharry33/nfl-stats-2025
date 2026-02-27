@@ -1,33 +1,32 @@
-'use client';
+import type { Metadata } from "next";
+import "./globals.css";
+import { SidebarNav } from "@/components/layout/sidebar-nav";
+import { BetSlipProvider } from "@/context/betslip-context";
 
-import { ClerkProvider } from '@clerk/nextjs';
-import { FirebaseProvider } from '@/context/AuthContext';
-import { BetSlipProvider } from '@/context/betslip-context';
-import { WalletProvider } from '@/context/wallet-context';
-import { AppLayout } from '@/components/layout/app-layout';
-import { Toaster } from 'sonner';
-import './globals.css';
+export const metadata: Metadata = {
+  title: "SweetSpot",
+  description: "Personalized betting insights.",
+  icons: {
+    icon: "/logo.png", // This points to your public/logo.png
+    shortcut: "/logo.png",
+    apple: "/logo.png",
+  },
+};
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <ClerkProvider>
-      <html lang="en" className="dark">
-        <body>
-          <FirebaseProvider>
-            <WalletProvider>
-              <BetSlipProvider>
-                <Toaster position="top-right" />
-
-                {/* App Shell */}
-                <AppLayout>
-                  {children}
-                </AppLayout>
-
-              </BetSlipProvider>
-            </WalletProvider>
-          </FirebaseProvider>
-        </body>
-      </html>
-    </ClerkProvider>
+    <html lang="en" className="dark">
+      <body className="bg-slate-950 text-slate-50 antialiased">
+        <BetSlipProvider>
+          <div className="flex min-h-screen">
+            {/* Ensure SidebarNav is inside the flex container */}
+            <SidebarNav />
+            <main className="flex-1 lg:pl-64">
+              {children}
+            </main>
+          </div>
+        </BetSlipProvider>
+      </body>
+    </html>
   );
 }

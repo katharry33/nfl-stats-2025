@@ -27,7 +27,9 @@ export interface BetLeg {
   odds: number;
   status: 'pending' | 'won' | 'lost' | 'void';
   team: string;
-  isLive?: boolean;
+  matchup: string;
+  gameDate: string;
+  source?: string;
 }
 
 // ─── Bet ──────────────────────────────────────────────────────────────────────
@@ -49,6 +51,15 @@ export interface Bet {
   cashedAmount?: number;  // Added this
   createdAt?: string;
   notes?: string;
+}
+
+// ─── BetSlipItem ──────────────────────────────────────────────────────────────
+
+export interface BetSlipItem {
+  prop: NFLProp & { id: string };
+  betAmount: number;
+  overUnder: 'Over' | 'Under';
+  odds: number;
 }
 
 // ─── BetResult ────────────────────────────────────────────────────────────────
