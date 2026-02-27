@@ -67,6 +67,28 @@ function ParlayRow({ bet, selected, onToggle, onEdit, onDelete }: { bet: any; se
         <td className="px-4 py-3 text-xs text-slate-400">{bet.displayDate}</td>
         <td className="px-4 py-3"><StatusBadge status={bet.status} /></td>
         <td className="px-4 py-3"><span className="text-[10px] bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-2 py-0.5 rounded font-bold uppercase">PARLAY</span></td>
+        {/* Payout Column Logic */}
+        <td className="py-4 px-4 text-right">
+          <div className="flex flex-col items-end">
+            {bet.status === 'won' ? (
+              <span className="text-emerald-400 font-bold">${bet.payout?.toFixed(2)}</span>
+            ) : bet.status === 'cashed' ? (
+              <div className="flex flex-col items-end">
+                <span className="text-emerald-500 font-bold">${bet.cashedAmount?.toFixed(2)}</span>
+                <span className="text-[10px] text-slate-500 line-through">${bet.payout?.toFixed(2)}</span>
+              </div>
+            ) : bet.status === 'lost' ? (
+              <div className="flex flex-col items-end">
+                <span className="text-red-500 font-bold">-${bet.stake?.toFixed(2)}</span>
+                <span className="text-[9px] text-slate-600 font-mono">
+                  Potential: ${bet.payout?.toFixed(2)}
+                </span>
+              </div>
+            ) : (
+              <span className="text-slate-500">--</span>
+            )}
+          </div>
+        </td>
         <td className="px-4 py-3 text-right">
           <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
             <button onClick={e => { e.stopPropagation(); onEdit(bet); }} className="p-1.5 text-slate-500 hover:text-white rounded"><Pencil className="h-3.5 w-3.5" /></button>
@@ -92,7 +114,7 @@ function ParlayRow({ bet, selected, onToggle, onEdit, onDelete }: { bet: any; se
             <td className="px-4 py-2 text-xs text-slate-600 uppercase font-mono">{leg.matchup || '—'}</td>
             <td className="px-4 py-2"><StatusBadge status={leg.status} /></td>
             <td className="px-4 py-2"><span className="text-[9px] text-slate-600">LEG</span></td>
-            <td />
+            <td colSpan={2} />
         </tr>
       ))}
     </>
@@ -118,6 +140,28 @@ function SingleRow({ bet, selected, onToggle, onEdit, onDelete }: { bet: any; se
       <td className="px-4 py-3 text-xs text-slate-400">{bet.displayDate}</td>
       <td className="px-4 py-3"><StatusBadge status={bet.status} /></td>
       <td className="px-4 py-3"><span className="text-[10px] text-slate-600">SINGLE</span></td>
+        {/* Payout Column Logic */}
+        <td className="py-4 px-4 text-right">
+          <div className="flex flex-col items-end">
+            {bet.status === 'won' ? (
+              <span className="text-emerald-400 font-bold">${bet.payout?.toFixed(2)}</span>
+            ) : bet.status === 'cashed' ? (
+              <div className="flex flex-col items-end">
+                <span className="text-emerald-500 font-bold">${bet.cashedAmount?.toFixed(2)}</span>
+                <span className="text-[10px] text-slate-500 line-through">${bet.payout?.toFixed(2)}</span>
+              </div>
+            ) : bet.status === 'lost' ? (
+              <div className="flex flex-col items-end">
+                <span className="text-red-500 font-bold">-${bet.stake?.toFixed(2)}</span>
+                <span className="text-[9px] text-slate-600 font-mono">
+                  Potential: ${bet.payout?.toFixed(2)}
+                </span>
+              </div>
+            ) : (
+              <span className="text-slate-500">--</span>
+            )}
+          </div>
+        </td>
       <td className="px-4 py-3 text-right">
         <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
             <button onClick={() => onEdit(bet)} className="p-1.5 text-slate-500 hover:text-white rounded"><Pencil className="h-3.5 w-3.5" /></button>
@@ -191,7 +235,7 @@ export function BetsTable({ bets, loading, onDelete, onEdit }: BetsTableProps) {
                 </div>
             )}
             <div className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-x-auto">
-                <table className="w-full min-w-[960px]">
+                <table className="w-full min-w-[1080px]">
                     <thead className="bg-slate-900/80 border-b border-slate-800">
                         <tr>
                             <th className="w-10 px-3 py-3 text-center"><button onClick={toggleSelectAll} className="text-slate-500 hover:text-emerald-400 transition-colors"><Square className="h-4 w-4 mx-auto"/></button></th>
@@ -203,6 +247,7 @@ export function BetsTable({ bets, loading, onDelete, onEdit }: BetsTableProps) {
                             <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Date</th>
                             <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Status</th>
                             <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-widest">Type</th>
+                            <th className="px-4 py-3 text-right text-[10px] font-bold text-slate-500 uppercase tracking-widest">Payout</th>
                             <th className="px-4 py-3 w-20" />
                         </tr>
                     </thead>

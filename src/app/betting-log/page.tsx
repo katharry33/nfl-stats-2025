@@ -50,7 +50,7 @@ function PayoutCell({ payout, status, stake }: {
 
 // ─── StatusBadge ─────────────────────────────────────────────────────────────
 
-function StatusBadge({ status }: { status?: string }) {
+function StatusBadge({ status, onClick }: { status?: string; onClick?: () => void }) {
   const s = (status ?? '').toLowerCase();
   const cls =
     s === 'won'  || s === 'win'    ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25' :
@@ -59,9 +59,9 @@ function StatusBadge({ status }: { status?: string }) {
     s === 'cashed'                 ? 'bg-blue-500/15 text-blue-400 border-blue-500/25' :
                                      'bg-amber-500/10 text-amber-400 border-amber-500/20';
   return (
-    <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${cls}`}>
+    <button onClick={onClick} disabled={!onClick} className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${cls} ${onClick ? 'cursor-pointer' : ''}`}>
       {status ?? 'pending'}
-    </span>
+    </button>
   );
 }
 
@@ -111,11 +111,12 @@ function CheckCell({ id, selected, onToggle }: {
 
 // ─── ParlayRow ────────────────────────────────────────────────────────────────
 
-function ParlayRow({ bet, selected, onToggle, onEdit, onDelete }: {
+function ParlayRow({ bet, selected, onToggle, onEdit, onDelete, onToggleLegStatus }: {
   bet: any; selected: boolean;
   onToggle: (id: string) => void;
   onEdit: (b: any) => void;
   onDelete: (id: string) => void;
+  onToggleLegStatus: (betId: string, legIndex: number, currentStatus: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const canExpand = !bet.legsEmpty && bet.legs.length > 0;
@@ -230,7 +231,11 @@ function ParlayRow({ bet, selected, onToggle, onEdit, onDelete }: {
             </span>
             <span className="text-slate-400 font-mono ml-1">{fmtLine(leg.line)}</span>
           </td>
-          <td colSpan={3} />
+          {/* Leg Status */}
+          <td className="px-4 py-2">
+            <StatusBadge status={leg.status} onClick={() => onToggleLegStatus(bet.id, i, leg.status)} />
+          </td>
+          <td colSpan={2} />
           <td />
         </tr>
       ))}
@@ -369,6 +374,10 @@ export default function BettingLogPage() {
     }
   }, [activeFilters]);
 
+  const refreshData = useCallback(() => {
+    fetchBets({ filters: activeFilters, cursor: null });
+  }, [fetchBets, activeFilters]);
+
   useEffect(() => { fetchBets({}); }, []); // eslint-disable-line
 
   // ── Search ────────────────────────────────────────────────────────────────
@@ -503,6 +512,33 @@ export default function BettingLogPage() {
     } catch (err: any) {
       console.error("Save error:", err);
       alert(err.message);
+    }
+  };
+
+  const toggleLegStatus = async (betId: string, legIndex: number, currentStatus: string) => {
+    const statuses = ['pending', 'won', 'lost', 'void'];
+    const nextStatus = statuses[(statuses.indexOf(currentStatus) + 1) % statuses.length];
+    
+    // Find the bet in your local state
+    const bet = bets.find(b => b.id === betId);
+    if (!bet) return;
+  
+    const updatedLegs = [...bet.legs];
+    updatedLegs[legIndex] = { ...updatedLegs[legIndex], status: nextStatus };
+  
+    try {
+      await fetch('/api/bets/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          id: betId, 
+          legs: updatedLegs 
+        }),
+      });
+      // Update local state to reflect change immediately
+      refreshData(); 
+    } catch (err) {
+      console.error("Failed to toggle leg:", err);
     }
   };
 
@@ -708,6 +744,7 @@ export default function BettingLogPage() {
                       selected={selectedIds.has(bet.id)} onToggle={toggleSelect}
                       onEdit={b => { setEditBet(b); setEditOpen(true); }}
                       onDelete={handleDelete}
+                      onToggleLegStatus={toggleLegStatus}
                     />
                   : <SingleRow
                       key={bet.id} bet={bet}

@@ -4,10 +4,10 @@ import React, { useState, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useBetSlip } from '@/context/betslip-context';
 import { getWeekFromDate } from '@/lib/utils/nfl-week';
-import { toDecimal, toAmerican } from '@/lib/utils';
+import { toDecimal, toAmerican, calculateParlayOdds } from '@/lib/utils/odds';
 import {
   Trash2, ChevronLeft, CheckCircle2, Clock, XCircle,
-  Zap, DollarSign, Gift, ArrowDown, TrendingUp, Loader2, AlertTriangle,
+  Zap, DollarSign, Gift, ArrowDown, TrendingUp, Loader2, AlertTriangle, Layers
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -75,7 +75,7 @@ function fmtAmerican(n: number): string {
 }
 
 type LegResult = 'pending' | 'won' | 'lost' | 'void';
-type BetType   = 'regular' | 'bonus';
+type BetPaymentType   = 'regular' | 'bonus';
 
 interface LegState {
   id: string; player: string; prop: string;
@@ -90,6 +90,11 @@ const RESULTS: { value: LegResult; label: string; icon: React.ReactNode; active:
   { value: 'lost',    label: 'Loss',    icon: <XCircle      className="h-3.5 w-3.5" />, active: 'bg-red-500/20 text-red-400 border-red-500/40',             inactive: 'border-slate-800 text-slate-500 hover:border-slate-600 hover:text-slate-300' },
   { value: 'pending', label: 'Pending', icon: <Clock        className="h-3.5 w-3.5" />, active: 'bg-amber-500/20 text-amber-400 border-amber-500/40',       inactive: 'border-slate-800 text-slate-500 hover:border-slate-600 hover:text-slate-300' },
   { value: 'void',    label: 'Void',    icon: <XCircle      className="h-3.5 w-3.5" />, active: 'bg-slate-700 text-slate-300 border-slate-500',               inactive: 'border-slate-800 text-slate-500 hover:border-slate-600 hover:text-slate-300' },
+];
+
+const BET_TYPES = [
+  'Single', 'Anytime TD', 'SGP', 'Round Robin', 
+  'SGPX', 'Spread', 'Moneyline', 'Total Points', 'Parlay'
 ];
 
 function LegCard({ leg, index, onUpdate, onRemove }: {
@@ -209,7 +214,8 @@ export default function ParlayStudioPage() {
     }))
   );
 
-  const [betType,    setBetType]    = useState<BetType>('regular');
+  const [betPaymentType,    setBetPaymentType]    = useState<BetPaymentType>('regular');
+  const [selectedType, setSelectedType] = useState('Parlay');
   const [stake,      setStake]      = useState('');
   const [bonusAmt,   setBonusAmt]   = useState('');
   const [manualOdds, setManualOdds] = useState('');
@@ -252,19 +258,18 @@ export default function ParlayStudioPage() {
     removeLeg(id);
   };
 
-  const autoDecimal = useMemo(() => parlayDecimal(legs.map(l => l.odds)), [legs]);
-  const autoAmerican = useMemo(() => toAmerican(autoDecimal), [autoDecimal]);
+  const autoAmerican = useMemo(() => calculateParlayOdds(legs.map(l => l.odds)), [legs]);
 
   const effectiveOdds = manualOdds.trim() !== '' 
   ? parseInt(manualOdds) 
   : autoAmerican;
   const effectiveDecimal = toDecimal(effectiveOdds);
 
-  const stakeNum      = betType === 'bonus' ? parseFloat(bonusAmt) || 0 : parseFloat(stake) || 0;
+  const stakeNum      = betPaymentType === 'bonus' ? parseFloat(bonusAmt) || 0 : parseFloat(stake) || 0;
   const boostPct      = parseFloat(boost) || 0;
   const rawProfit      = stakeNum * (effectiveDecimal - 1);
   const boostedProfit = rawProfit * (1 + boostPct / 100);
-  const totalPayout   = betType === 'bonus' ? boostedProfit : stakeNum + boostedProfit;
+  const totalPayout   = betPaymentType === 'bonus' ? boostedProfit : stakeNum + boostedProfit;
 
   const parlayStatus: LegResult =
     legs.some(l => l.result === 'lost')                          ? 'lost'
@@ -281,25 +286,20 @@ export default function ParlayStudioPage() {
 
   // ── Build payload ────────────
   const buildPayload = () => {
+    const parlayId = crypto.randomUUID();
     const sanitizedLegs = legs.map(leg => ({
-      player:    leg.player    || leg.Player    || 'Unknown',
-      prop:      leg.prop      || leg.Prop      || 'N/A',
-      line:      Number(leg.line)  || 0,
-      odds:      Number(leg.odds)  || 0,
-      selection: leg.selection || 'Over',
-      matchup:   leg.matchup   || leg.Matchup   || 'N/A',
-      status:    leg.result    || 'pending',
-      isLive:    !!leg.isLive, // ADDED
-      team:      leg.team      || leg.Team      || leg.playerteam || '',
-      gameDate:  leg.gameDate  || gameDate      || null,
-      week:      leg.week      ?? (parseInt(week) || null),
+      ...leg,
+      parlayId: parlayId,
+      status: leg.result || 'pending',
     }));
+
     return {
-      betType:    legs.length === 1 ? 'Single' : `Parlay${legs.length}`,
+      parlayId: parlayId,
+      betType:    selectedType,
       status:     parlayStatus,
-      stake:      betType === 'regular' ? parseFloat(stake) || 0 : 0,
-      isBonusBet: betType === 'bonus',
-      bonusStake: betType === 'bonus' ? parseFloat(bonusAmt) || 0 : 0,
+      stake:      betPaymentType === 'regular' ? parseFloat(stake) || 0 : 0,
+      isBonusBet: betPaymentType === 'bonus',
+      bonusStake: betPaymentType === 'bonus' ? parseFloat(bonusAmt) || 0 : 0,
       odds:       effectiveOdds,
       boost:      parseFloat(boost) || 0,
       payout:     totalPayout,
@@ -307,6 +307,7 @@ export default function ParlayStudioPage() {
       gameDate:   gameDate || null,
       legs:       sanitizedLegs,
       parlayResults: { totalOdds: effectiveOdds, payout: totalPayout },
+      createdAt: new Date().toISOString(),
     };
   };
 
@@ -436,19 +437,19 @@ export default function ParlayStudioPage() {
               Bet Details
             </h2>
 
-            {/* Bet Type Selector */}
+            {/* Bet Payment Type Selector */}
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
-              <p className="text-[10px] uppercase font-black text-slate-500">Bet Type</p>
+              <p className="text-[10px] uppercase font-black text-slate-500">Bet Payment Type</p>
               <div className="flex rounded-xl overflow-hidden border border-slate-800">
                 <button
-                  onClick={() => setBetType('regular')}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold uppercase transition-colors ${betType === 'regular' ? 'bg-emerald-600 text-white' : 'bg-slate-900 text-slate-400 hover:bg-slate-800'}`}
+                  onClick={() => setBetPaymentType('regular')}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold uppercase transition-colors ${betPaymentType === 'regular' ? 'bg-emerald-600 text-white' : 'bg-slate-900 text-slate-400 hover:bg-slate-800'}`}
                 >
                   <DollarSign className="h-3.5 w-3.5" />Regular
                 </button>
                 <button
-                  onClick={() => setBetType('bonus')}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold uppercase transition-colors ${betType === 'bonus' ? 'bg-violet-600 text-white' : 'bg-slate-900 text-slate-400 hover:bg-slate-800'}`}
+                  onClick={() => setBetPaymentType('bonus')}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold uppercase transition-colors ${betPaymentType === 'bonus' ? 'bg-violet-600 text-white' : 'bg-slate-900 text-slate-400 hover:bg-slate-800'}`}
                 >
                   <Gift className="h-3.5 w-3.5" />Bonus Bet
                 </button>
@@ -457,6 +458,22 @@ export default function ParlayStudioPage() {
 
             {/* Main Inputs: Stake, Boost, Date, Week */}
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-4">
+              {/* Bet Type Dropdown */}
+              <div className="space-y-1.5 mb-4">
+                <label className="text-[10px] uppercase font-black text-slate-500 flex items-center gap-1">
+                  <Layers className="h-3 w-3" /> Bet Category
+                </label>
+                <select
+                  value={selectedType}
+                  onChange={(e) => setSelectedType(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 text-white rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-1 focus:ring-blue-500"
+                >
+                  {BET_TYPES.map(t => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+
               {/* NEW: Total Odds Input (Manual Override) */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
@@ -489,13 +506,13 @@ export default function ParlayStudioPage() {
                 {/* Stake Input */}
                 <div className="space-y-1.5">
                   <label className="text-[10px] uppercase font-black text-slate-500">
-                    {betType === 'bonus' ? 'Bonus Amount ($)' : 'Stake ($)'}
+                    {betPaymentType === 'bonus' ? 'Bonus Amount ($)' : 'Stake ($)'}
                   </label>
                   <input
                     type="number"
                     step="0.01"
-                    value={betType === 'bonus' ? bonusAmt : stake}
-                    onChange={e => betType === 'bonus' ? setBonusAmt(e.target.value) : setStake(e.target.value)}
+                    value={betPaymentType === 'bonus' ? bonusAmt : stake}
+                    onChange={e => betPaymentType === 'bonus' ? setBonusAmt(e.target.value) : setStake(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 text-white rounded-lg px-3 py-2.5 text-sm focus:ring-1 focus:ring-emerald-500 outline-none"
                     placeholder="0.00"
                   />
@@ -555,7 +572,7 @@ export default function ParlayStudioPage() {
               </div>
               <div className="space-y-2 font-mono text-sm">
                 <div className="flex justify-between text-slate-400">
-                  <span>{betType === 'bonus' ? 'Bonus Risked' : 'Stake'}</span>
+                  <span>{betPaymentType === 'bonus' ? 'Bonus Risked' : 'Stake'}</span>
                   <span>${stakeNum.toFixed(2)}</span>
                 </div>
                 {boostPct > 0 && (

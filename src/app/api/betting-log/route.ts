@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin'; 
 import * as admin from 'firebase-admin';
 import { QueryDocumentSnapshot, DocumentData } from 'firebase-admin/firestore';
+import { BetLeg } from '@/lib/types';
 
 const PAGE_SIZE = 25;
 
@@ -24,7 +25,6 @@ function toISO(val: any): string | null {
     }
   }
   
-  // Return YYYY-MM-DD to keep the UI consistent and avoid timezone shifts
   return date.toISOString().split('T')[0];
 }
 
@@ -187,51 +187,104 @@ export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
     const { id, ...updates } = body;
-    console.log("📥 RECEIVED UPDATE:", JSON.stringify(body));
-    if (!id) return NextResponse.json({ error: "ID required" }, { status: 400 });
-
-    const db = adminDb;
-    const updateData: Record<string, any> = { ...updates };
     
-    // 1. Numeric conversions
-    if (updateData.stake) updateData.stake = Number(updateData.stake);
-    if (updateData.odds) updateData.odds = Number(updateData.odds);
-    if (updateData.week) updateData.week = Number(updateData.week);
-
-    // 2. TIMEZONE SAFE DATE CONVERSION
-    // Use Noon UTC to prevent the "jump" to the next day
-    const dateKey = updates.gameDate ? 'gameDate' : (updates.date ? 'date' : null);
-    if (dateKey && typeof updates[dateKey] === 'string') {
-      const [year, month, day] = updates[dateKey].split('-').map(Number);
-      if (year && month && day) {
-        const safeDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
-        updateData[dateKey] = admin.firestore.Timestamp.fromDate(safeDate);
-      }
+    if (!id) {
+      return NextResponse.json({ error: "ID required" }, { status: 400 });
     }
 
-    updateData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
-
+    const db = adminDb;
     const betRef = db.collection('bettingLog').doc(id);
     const doc = await betRef.get();
 
+    // This block handles SINGLE bets (or parlay headers)
     if (doc.exists) {
-      await betRef.update(updateData);
-      return NextResponse.json({ success: true });
-    } else {
-      // If direct doc not found, update all legs in the parlay group
-      let parlayLegs = await db.collection('bettingLog').where('parlayid', '==', id).get();
-      if (parlayLegs.empty) {
-        parlayLegs = await db.collection('bettingLog').where('parlayId', '==', id).get();
-      }
+        const updateData: Record<string, any> = { ...updates };
 
-      if (parlayLegs.empty) return NextResponse.json({ error: "Bet not found" }, { status: 404 });
+        // Type conversions
+        for (const key of ['stake', 'odds', 'week', 'payout', 'profit', 'boost']) {
+            if (updateData[key] != null) updateData[key] = Number(updateData[key]);
+        }
+        
+        // Date conversion
+        if (updates.gameDate && typeof updates.gameDate === 'string') {
+            const [year, month, day] = updates.gameDate.split('-').map(Number);
+            if (year && month && day) {
+                updateData.gameDate = admin.firestore.Timestamp.fromDate(new Date(Date.UTC(year, month - 1, day, 12, 0, 0)));
+            }
+        }
+        updateData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
 
-      const batch = db.batch();
-      parlayLegs.docs.forEach((legDoc: QueryDocumentSnapshot<DocumentData>) => {
-        batch.update(legDoc.ref, updateData);
-      });
-      await batch.commit();
-      return NextResponse.json({ success: true });
+        await betRef.update(updateData);
+        return NextResponse.json({ success: true, message: `Updated single bet ${id}` });
+    } 
+    // This block handles PARLAYS (group of leg documents)
+    else {
+        let parlayLegsQuery = db.collection('bettingLog').where('parlayid', '==', id);
+        let parlayLegsSnap = await parlayLegsQuery.get();
+
+        if (parlayLegsSnap.empty) {
+            parlayLegsQuery = db.collection('bettingLog').where('parlayId', '==', id);
+            parlayLegsSnap = await parlayLegsQuery.get();
+        }
+
+        if (parlayLegsSnap.empty) {
+            return NextResponse.json({ error: "Bet not found" }, { status: 404 });
+        }
+
+        const batch = db.batch();
+        const existingDocs = parlayLegsSnap.docs;
+        const newLegs = (updates.legs || []) as BetLeg[];
+        const newLegIds = new Set(newLegs.map(l => l.id));
+
+        // 1. Delete legs that are no longer present
+        existingDocs.forEach(doc => {
+            if (!newLegIds.has(doc.id)) {
+                batch.delete(doc.ref);
+            }
+        });
+
+        // 2. Prepare the shared parlay-level data
+        const parlayUpdateData: Record<string, any> = { updatedAt: admin.firestore.FieldValue.serverTimestamp() };
+
+        for (const key of ['stake', 'odds', 'week', 'payout', 'profit', 'boost', 'status', 'type']) {
+            if (updates[key] != null) {
+                const numKeys = ['stake', 'odds', 'week', 'payout', 'profit', 'boost'];
+                parlayUpdateData[key] = numKeys.includes(key) ? Number(updates[key]) : updates[key];
+            }
+        }
+        if (parlayUpdateData.odds != null) {
+            parlayUpdateData.parlayOdds = parlayUpdateData.odds;
+            delete parlayUpdateData.odds;
+        }
+        if (parlayUpdateData.payout != null) {
+            parlayUpdateData.potentialPayout = parlayUpdateData.payout;
+            delete parlayUpdateData.payout;
+        }
+        
+        if (updates.gameDate && typeof updates.gameDate === 'string') {
+            const [year, month, day] = updates.gameDate.split('-').map(Number);
+            if (year && month && day) {
+                parlayUpdateData.gameDate = admin.firestore.Timestamp.fromDate(new Date(Date.UTC(year, month - 1, day, 12, 0, 0)));
+            }
+        }
+        
+        // 3. Update remaining/new legs
+        newLegs.forEach(leg => {
+            if (!leg.id) return;
+            
+            const legRef = db.collection('bettingLog').doc(leg.id);
+            const legSpecificUpdate = {
+                ...parlayUpdateData,
+                line: Number(leg.line) ?? 0,
+                status: leg.status ?? 'pending' 
+            };
+            
+            batch.update(legRef, legSpecificUpdate);
+        });
+        
+        await batch.commit();
+
+        return NextResponse.json({ success: true, message: `Updated parlay ${id}` });
     }
   } catch (err: any) {
     console.error('❌ PUT Error:', err);
@@ -258,7 +311,6 @@ export async function DELETE(request: NextRequest) {
       await betRef.delete();
       return NextResponse.json({ success: true, message: `Deleted single bet ${id}` });
     } else {
-      // If direct doc not found, it might be a parlay, so delete all legs in the group
       let parlayLegsQuery = db.collection('bettingLog').where('parlayid', '==', id);
       let parlayLegs = await parlayLegsQuery.get();
 

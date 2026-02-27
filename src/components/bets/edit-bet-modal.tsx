@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, DollarSign, Hash, TrendingUp, Trophy, Calendar, Trash2, Layers } from 'lucide-react';
+import { X, DollarSign, Hash, TrendingUp, Trophy, Calendar, Trash2, Layers, Zap } from 'lucide-react';
 import { Bet, BetLeg } from '@/lib/types';
 
 interface EditBetModalProps {
@@ -24,7 +24,9 @@ export function EditBetModal({ isOpen, bet, onClose, onSave }: EditBetModalProps
     odds: 0,
     status: 'pending',
     type: 'Parlay', // New field
-    legs: []
+    legs: [],
+    boost: 0,
+    cashedAmount: 0,
   });
 
   useEffect(() => {
@@ -37,6 +39,8 @@ export function EditBetModal({ isOpen, bet, onClose, onSave }: EditBetModalProps
         stake: bet.stake || 0,
         type: bet.type || (bet.legs && bet.legs.length > 1 ? 'Parlay' : 'Single'),
         legs: bet.legs || [],
+        boost: bet.boost || 0,
+        cashedAmount: bet.cashedAmount || 0,
       });
     }
   }, [bet]);
@@ -64,15 +68,14 @@ export function EditBetModal({ isOpen, bet, onClose, onSave }: EditBetModalProps
       calculatedProfit = stakeNum * decimalOdds;
     } else if (formData.status === 'lost') {
       calculatedProfit = -stakeNum;
+    } else if (formData.status === 'cashed') {
+      calculatedProfit = (Number(formData.cashedAmount) || 0) - stakeNum;
     }
 
     onSave({ 
       ...formData, 
       profit: calculatedProfit, 
-      payout: stakeNum + calculatedProfit,
-      stake: stakeNum, 
-      odds: oddsNum,
-      week: Number(formData.week || 0),
+      payout: formData.status === 'cashed' ? formData.cashedAmount : (stakeNum + calculatedProfit),
     });
   };
 
@@ -125,16 +128,53 @@ export function EditBetModal({ isOpen, bet, onClose, onSave }: EditBetModalProps
               <input type="number" value={formData.week || ''} onChange={(e) => setFormData({...formData, week: parseInt(e.target.value)})}
                 className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white text-sm outline-none" />
             </div>
-            <div>
-              <label className="block text-[10px] uppercase font-black text-slate-500 mb-1.5">Overall Status</label>
-              <select value={formData.status} onChange={(e) => setFormData({...formData, status: e.target.value as any})}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white text-sm outline-none">
+          </div>
+
+          {/* Status & Cashed Amount */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-[10px] uppercase font-black text-slate-500">Result</label>
+              <select 
+                value={formData.status} 
+                onChange={(e) => setFormData({...formData, status: e.target.value as any})}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white outline-none"
+              >
                 <option value="pending">Pending</option>
                 <option value="won">Won</option>
                 <option value="lost">Lost</option>
                 <option value="void">Void</option>
+                <option value="cashed">Cashed Out</option>
               </select>
             </div>
+
+            {formData.status === 'cashed' && (
+              <div className="space-y-1.5">
+                <label className="text-[10px] uppercase font-black text-emerald-500">Cashed Amount ($)</label>
+                <input 
+                  type="number" 
+                  step="0.01"
+                  value={formData.cashedAmount || ''} 
+                  onChange={(e) => setFormData({...formData, cashedAmount: parseFloat(e.target.value)})}
+                  className="w-full bg-slate-950 border border-emerald-900/50 rounded-lg px-3 py-2 text-sm text-white outline-none focus:ring-1 focus:ring-emerald-500"
+                  placeholder="0.00"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Updated Boost Dropdown (Added 33% and 35%) */}
+          <div className="space-y-1.5">
+            <label className="text-[10px] uppercase font-black text-slate-500">Boost %</label>
+            <select
+              value={formData.boost || 0}
+              onChange={(e) => setFormData({ ...formData, boost: Number(e.target.value) })}
+              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white outline-none"
+            >
+              <option value={0}>None</option>
+              {[5, 10, 15, 20, 25, 30, 33, 35, 40, 50, 100].map(p => (
+                <option key={p} value={p}>{p}%</option>
+              ))}
+            </select>
           </div>
 
           {/* Individual Legs Section */}

@@ -1,7 +1,8 @@
+
 // src/lib/types.ts
 
 // ─── Shared Primitives ────────────────────────────────────────────────────────
-export type BetStatus = 'won' | 'lost' | 'push' | 'pending' | 'void';
+export type BetStatus = 'pending' | 'won' | 'lost' | 'void';
 export type BetType   = 'Single' | 'Parlay';
 export type DefenseMap = Record<string, { rank: number; avg: number }>;
 export type SortDir = 'asc' | 'desc'; 
@@ -18,43 +19,32 @@ export type SortKey =
 // ─── BetLeg ───────────────────────────────────────────────────────────────────
 
 export interface BetLeg {
-  id:        string;
-  player:    string;
-  prop:      string;
-  line:      number;
-  selection: string;
-  odds:      number;
-  status:    BetStatus;
-  matchup:   string;
-  team?:      string;
-  gameDate?:  string;
-  overUnder?: string;
-  week?:      number;
-  propId?:    string;
-  source?:    'weekly-props' | 'historical-props' | 'manual' | string;
-  isLive?:    boolean;
+  id: string;
+  player: string;
+  prop: string;
+  line: number;
+  selection: 'Over' | 'Under';
+  odds: number;
+  status: 'pending' | 'won' | 'lost' | 'void';
+  team: string;
+  isLive?: boolean;
 }
 
 // ─── Bet ──────────────────────────────────────────────────────────────────────
 
 export interface Bet {
-  id:        string;
-  userId:    string;
-  betType:   BetType;
-  legs:      BetLeg[];
-  odds:      number;
-  stake:     number;
-  payout?:   number;
-  profit?:   number;
-  status:    BetStatus;
-  createdAt: string;
-  week?:     number;
-  isParlay:  boolean;
-  date?:     string;
-  gameDate?: string;
-  notes?:    string;
-  betAmount?:  number;
-  parlayOdds?: number;
+  id: string;
+  userId: string;
+  type: string;      // Add this! (SGP, Parlay, etc.)
+  boost: number;     // Add this!
+  stake: number;
+  odds: number;
+  status: 'pending' | 'won' | 'lost' | 'void';
+  gameDate: string;
+  week: number;
+  legs: BetLeg[];
+  profit?: number;
+  payout?: number;
 }
 
 // ─── BetResult ────────────────────────────────────────────────────────────────

@@ -1,9 +1,9 @@
-// src/features/bet-builder/BetSlipPanel.tsx
 'use client';
 
 import { useState } from 'react';
 import type { BetSlipItem } from '@/hooks/useBetSlip';
 import { impliedProb } from '@/lib/enrichment/scoring';
+import { calculateParlayOdds, calculatePayout } from '@/lib/utils/odds';
 
 interface BetSlipPanelProps {
   items: BetSlipItem[];
@@ -25,16 +25,13 @@ export function BetSlipPanel({
     items.forEach(i => onUpdateAmount(i.prop.id!, defaultStake));
   };
 
-  // Estimated parlay payout (multiply decimal odds)
-  const parlayMultiplier = items.reduce((acc, i) => {
-    const odds = i.prop.bestOdds;
-    if (!odds) return acc;
-    const dec = odds > 0 ? (odds / 100) + 1 : (100 / Math.abs(odds)) + 1;
-    return acc * dec;
-  }, 1);
+  const parlayableItems = items.filter(i => i.prop.bestOdds != null);
+  const parlayOddsAmerican = parlayableItems.length > 1
+    ? calculateParlayOdds(parlayableItems.map(i => i.prop.bestOdds!))
+    : null;
 
-  const parlayPayout = totalStake > 0 && items.length > 1
-    ? totalStake * parlayMultiplier
+  const parlayPayout = totalStake > 0 && items.length > 1 && parlayOddsAmerican !== null
+    ? calculatePayout(totalStake, parlayOddsAmerican, false) - totalStake
     : null;
 
   if (items.length === 0) {

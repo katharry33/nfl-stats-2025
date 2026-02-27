@@ -1,38 +1,34 @@
 import { NextResponse } from 'next/server';
-import { adminDb, FieldValue } from '@/lib/firebase/admin'; 
-// Use the adminDb and FieldValue we exported in your admin.ts
+import { adminDb } from '@/lib/firebase/admin'; // Ensure your admin config is exported here
+import { auth } from '@clerk/nextjs/server'; // Or your preferred auth provider
 
-export async function POST(request: Request) {
+export async function POST(req: Request) {
   try {
-    const body = await request.json();
-    
-    // 1. Calculate the payout on the server to prevent client-side tampering
-    const stake = Number(body.stake);
-    const odds = Number(body.odds);
-    // Logic: Payout = Stake * Odds (e.g., $10 * 2.0 = $20)
-    const payout = stake * odds;
+    const { userId: authId } = await auth();
+    if (!authId) return new NextResponse('Unauthorized', { status: 401 });
 
-    // 2. Prepare the final document
-    const finalBet = {
-      ...body,
-      stake,
-      odds,
-      payout,
-      createdAt: FieldValue.serverTimestamp(), // Firestore generates the time
-      updatedAt: FieldValue.serverTimestamp(),
-      // In a real app, you'd get the userId from the session/token here
-      status: body.status || 'pending',
-    };
+    const body = await req.json();
+    const { id, ...betData } = body;
 
-    const docRef = await adminDb.collection('bettingLog').add(finalBet);
+    // 1. If 'id' exists, we are UPDATING an existing bet from the log
+    if (id) {
+      await adminDb.collection('user_bets').doc(id).update({
+        ...betData,
+        updatedAt: new Date().toISOString()
+      });
+      return NextResponse.json({ success: true, message: 'Bet updated' });
+    }
 
-    return NextResponse.json({ 
-      success: true, 
-      id: docRef.id 
-    }, { status: 201 });
+    // 2. If no 'id', we are CREATING a new bet from the Parlay Studio
+    const newDocRef = await adminDb.collection('user_bets').add({
+      ...betData,
+      userId: authId,
+      createdAt: new Date().toISOString()
+    });
 
+    return NextResponse.json({ success: true, id: newDocRef.id });
   } catch (error: any) {
-    console.error('Save Bet Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error('Admin Save Error:', error);
+    return new NextResponse(error.message, { status: 500 });
   }
 }

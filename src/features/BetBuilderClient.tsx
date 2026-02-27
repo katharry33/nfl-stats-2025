@@ -1,4 +1,3 @@
-// src/features/BetBuilderClient.tsx
 'use client';
 
 import { useState, useMemo, useCallback } from 'react';
@@ -8,7 +7,7 @@ import { useBetSlip } from '@/hooks/useBetSlip';
 import PropsTable from './PropsTable';
 import { BetSlipPanel } from './BetSlipPanel';
 import { NFLProp, SortKey, SortDir } from '@/lib/types';
-import { toDecimal } from '@/lib/utils';
+import { toDecimal, toAmerican } from '@/lib/utils/odds';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -21,10 +20,6 @@ export interface PropFilters {
 interface BetBuilderClientProps {
   initialWeek: number;
   season?: number;
-}
-
-function parlayDecimal(odds: number[]): number {
-  return odds.reduce((acc, o) => acc * toDecimal(o), 1);
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -42,11 +37,25 @@ export function BetBuilderClient({ initialWeek, season = 2025 }: BetBuilderClien
   } = useProps([initialWeek], season);
 
   const {
-    items, totalStake, savingIds,
-    addToBetSlip, removeFromBetSlip,
-    updateBetAmount, clearBetSlip,
+    items: selections,
+    totalStake,
+    savingIds,
+    addToBetSlip,
+    removeFromBetSlip,
+    updateBetAmount,
+    clearBetSlip,
     isInBetSlip,
   } = useBetSlip(initialWeek, season);
+
+  // Calculate the combined decimal odds for the parlay
+  const parlayDecimalOdds = selections.reduce((acc: number, leg: any) => {
+    // Convert each leg's American odds to Decimal and multiply
+    const legOdds = Number(leg.odds) || -110;
+    return acc * toDecimal(legOdds);
+  }, 1);
+
+  // Convert that total decimal back to American (e.g., 3.64 -> +264)
+  const autoAmerican = toAmerican(parlayDecimalOdds);
 
   // ── Client-side filter + sort state ─────────────────────────────────────────
   const [filters, setFilters] = useState<PropFilters>({
@@ -104,11 +113,9 @@ export function BetBuilderClient({ initialWeek, season = 2025 }: BetBuilderClien
 
   // ── Send to Parlay Studio ────────────────────────────────────────────────────
   const handleSaveToParlay = () => {
-    sessionStorage.setItem('pendingBetSlip', JSON.stringify(items));
+    sessionStorage.setItem('pendingBetSlip', JSON.stringify(selections));
     router.push('/parlay-studio');
   };
-
-  const autoDecimal = parlayDecimal(items.map(s => s.odds));
 
   // ─────────────────────────────────────────────────────────────────────────────
 
@@ -153,16 +160,16 @@ export function BetBuilderClient({ initialWeek, season = 2025 }: BetBuilderClien
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-semibold text-white">
               Bet Slip
-              {items.length > 0 && (
+              {selections.length > 0 && (
                 <span className="ml-2 bg-green-700 text-white text-xs font-bold rounded-full w-5 h-5 inline-flex items-center justify-center">
-                  {items.length}
+                  {selections.length}
                 </span>
               )}
             </h2>
           </div>
 
           <BetSlipPanel
-            items={items}
+            items={selections}
             totalStake={totalStake}
             savingIds={savingIds}
             onUpdateAmount={updateBetAmount}

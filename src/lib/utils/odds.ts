@@ -1,18 +1,24 @@
 
-export function calculateParlayOdds(odds: number[]): number {
-    let decimalOdds = odds.map(o => {
-        if (o > 0) {
-            return (o / 100) + 1;
-        } else {
-            return (100 / Math.abs(o)) + 1;
-        }
-    });
-    let combinedDecimalOdds = decimalOdds.reduce((a, b) => a * b, 1);
-    if (combinedDecimalOdds >= 2) {
-        return (combinedDecimalOdds - 1) * 100;
+export function toDecimal(americanOdds: number): number {
+  if (americanOdds > 0) {
+    return (americanOdds / 100) + 1;
+  } else {
+    return (100 / Math.abs(americanOdds)) + 1;
+  }
+}
+
+export function toAmerican(decimalOdds: number): number {
+    if (decimalOdds >= 2) {
+        return (decimalOdds - 1) * 100;
     } else {
-        return -100 / (combinedDecimalOdds - 1);
+        return -100 / (decimalOdds - 1);
     }
+}
+
+export function calculateParlayOdds(odds: number[]): number {
+    let decimalOdds = odds.map(o => toDecimal(o));
+    let combinedDecimalOdds = decimalOdds.reduce((a, b) => a * b, 1);
+    return toAmerican(combinedDecimalOdds);
 }
 
 export function calculatePayout(stake: number, odds: number, isBonus: boolean): number {
