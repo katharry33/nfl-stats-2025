@@ -7,7 +7,7 @@ import { useBetSlip } from '@/hooks/useBetSlip';
 import PropsTable from './PropsTable';
 import { BetSlipPanel } from './BetSlipPanel';
 import { NFLProp, SortKey, SortDir, BetLeg } from '@/lib/types';
-import { toDecimal, toAmerican } from '@/lib/utils/odds';
+import { calculateParlayOdds } from '@/lib/utils/odds';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -47,9 +47,11 @@ export function BetBuilderClient({ initialWeek, season = 2025 }: BetBuilderClien
     addLegToSlip,
   } = useBetSlip(initialWeek, season);
 
-  // 1. Calculate the combined multiplier for the parlay
-  const autoDecimal = selections.reduce((acc, s) => acc * toDecimal(Number(s.odds || -110)), 1);
-  const autoAmerican = toAmerican(autoDecimal);
+  // Calculate combined parlay odds
+  const autoAmerican = useMemo(() => {
+    const individualOdds = selections.map(s => Number(s.odds || -110));
+    return calculateParlayOdds(individualOdds);
+  }, [selections]);
 
   // ── Client-side filter + sort state ─────────────────────────────────────────
   const [filters, setFilters] = useState<PropFilters>({
@@ -62,7 +64,8 @@ export function BetBuilderClient({ initialWeek, season = 2025 }: BetBuilderClien
 
   const setSort = useCallback((key: SortKey) => {
     setSortDir(prev => key === sortKey ? (prev === 'asc' ? 'desc' : 'asc') : 'asc');
-    setSortKey(key);
+    const score = Array.isArray(key) ? key[0] : key;
+    setSortKey(score);
   }, [sortKey]);
 
   // ── Filter + sort in-memory ──────────────────────────────────────────────────

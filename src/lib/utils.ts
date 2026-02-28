@@ -24,6 +24,12 @@ export function toAmerican(decimal: number): number {
   }
 }
 
+export function calculateNetProfit(stake: number, odds: number): number {
+  const decimalOdds = toDecimal(odds);
+  const payout = stake * decimalOdds;
+  return payout - stake;
+}
+
 export function formatBetDate(dateInput: any) {
   if (!dateInput) return "—";
   const date = (dateInput?.toDate && typeof dateInput.toDate === 'function') 

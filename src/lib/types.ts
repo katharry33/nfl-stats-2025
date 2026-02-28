@@ -30,6 +30,7 @@ export interface BetLeg {
   matchup: string;
   gameDate: string;
   source?: string;
+  isLive?: boolean;
 }
 
 // ─── Bet ──────────────────────────────────────────────────────────────────────

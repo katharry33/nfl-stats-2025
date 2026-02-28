@@ -1,7 +1,4 @@
 {
-  "/_not-found/page": "app/_not-found/page.js",
-  "/api/betting-log/route": "app/api/betting-log/route.js",
-  "/favicon.ico/route": "app/favicon.ico/route.js",
-  "/api/save-bet/route": "app/api/save-bet/route.js",
-  "/betting-log/page": "app/betting-log/page.js"
+  "/betting-log/page": "app/betting-log/page.js",
+  "/favicon.ico/route": "app/favicon.ico/route.js"
 }

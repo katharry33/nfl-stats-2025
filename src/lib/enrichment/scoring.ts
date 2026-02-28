@@ -122,7 +122,7 @@ export interface ScoringInput {
     odds: number | string
   ): number {
     if (result === 'Win') {
-      return calculateNetProfit(betAmount, odds);
+      return calculateNetProfit(betAmount, Number(odds));
     }
     if (result === 'Loss') {
       return -betAmount;
