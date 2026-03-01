@@ -1,114 +1,116 @@
 'use client';
 
-import React from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Trash2, ArrowRight, Layers } from "lucide-react";
-import { useBetSlip } from "@/context/betslip-context";
-import { useRouter } from "next/navigation";
+import React from 'react';
+import { Trash2, ArrowRight, Layers, X } from 'lucide-react';
+import { useBetSlip } from '@/context/betslip-context';
+import { useRouter } from 'next/navigation';
 
 export function HistoricalBetSlip() {
   const { selections, removeLeg, clearSlip } = useBetSlip();
   const router = useRouter();
 
-  const handleGoToParlayStudio = () => {
-    router.push('/parlay-studio');
-  };
-
   return (
-    <Card className="border-slate-800 bg-slate-900/50 backdrop-blur-sm shadow-xl">
-      <CardHeader className="pb-3">
-        <CardTitle className="flex items-center justify-between text-lg">
-          <div className="flex items-center gap-2 text-slate-100">
-            <Layers className="h-5 w-5 text-emerald-500" />
-            <span>Bet Slip</span>
-          </div>
+    <div className="bg-[#0f1115] border border-white/5 rounded-3xl overflow-hidden shadow-2xl">
+
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
+        <div className="flex items-center gap-2">
+          <Layers className="h-4 w-4 text-[#FFD700]" />
+          <span className="text-sm font-black uppercase tracking-widest text-white">Bet Slip</span>
           {selections.length > 0 && (
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={clearSlip}
-              className="h-8 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10"
-            >
-              Clear
-            </Button>
+            <span className="text-[10px] font-black bg-[#FFD700] text-black px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
+              {selections.length}
+            </span>
           )}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
+        </div>
+        {selections.length > 0 && (
+          <button onClick={clearSlip}
+            className="text-[10px] font-black text-zinc-600 hover:text-red-400 uppercase tracking-wider transition-colors">
+            Clear all
+          </button>
+        )}
+      </div>
+
+      {/* Body */}
+      <div className="p-4">
         {selections.length === 0 ? (
-          <div className="text-center py-10 px-4">
-            <div className="h-12 w-12 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-3">
-              <Layers className="h-6 w-6 text-slate-600" />
+          <div className="py-10 flex flex-col items-center gap-3">
+            <div className="h-12 w-12 bg-white/[0.03] border border-white/5 rounded-2xl flex items-center justify-center">
+              <Layers className="h-5 w-5 text-zinc-700" />
             </div>
-            <p className="text-sm text-slate-500">
-              No props selected. Add legs from the table to build your parlay.
+            <p className="text-xs text-zinc-600 text-center max-w-[160px]">
+              Add props to build your parlay
             </p>
           </div>
         ) : (
-          <>
-            <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1 custom-scrollbar">
-              {selections.map((leg: any) => {
-                const numericOdds = Number(leg.odds);
-                const uniqueKey = leg.propId || leg.id || `${leg.player}-${leg.prop}-${leg.line}`;
-                
-                return (
-                  <div
-                    key={uniqueKey}
-                    className="relative group flex items-start justify-between gap-2 p-3 bg-slate-950 rounded-lg border border-slate-800 hover:border-emerald-500/50 transition-colors"
-                  >
-                    {leg.source === 'historical-props' && (
-                      <div className="absolute -left-1 top-2 w-1 h-8 bg-amber-500 rounded-full" title="Historical Prop" />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-sm text-slate-100 truncate">{leg.player}</p>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        {leg.selection && (
-                            <span className="text-[10px] font-bold px-1 rounded bg-slate-800 text-slate-400 uppercase">
-                            {leg.selection}
-                            </span>
-                        )}
-                        <p className="text-xs text-slate-400">
-                            {leg.prop} {leg.line}
-                        </p>
-                      </div>
-                      <p className="text-xs font-mono text-emerald-500 mt-1">
-                        Odds: {numericOdds > 0 ? '+' : ''}{numericOdds}
+          <div className="space-y-2 max-h-[420px] overflow-y-auto pr-0.5">
+            {selections.map((leg: any) => {
+              const uniqueKey = leg.propId || leg.id || `${leg.player}-${leg.prop}-${leg.line}`;
+              const odds = Number(leg.odds);
+              return (
+                <div key={uniqueKey}
+                  className="group flex items-start gap-2 p-3 bg-black/40 border border-white/[0.06]
+                    rounded-2xl hover:border-[#FFD700]/20 transition-colors">
+
+                  {/* Gold accent bar for historical props */}
+                  {leg.source === 'historical-props' && (
+                    <div className="w-0.5 h-full bg-[#FFD700]/40 rounded-full shrink-0 self-stretch" />
+                  )}
+
+                  <div className="flex-1 min-w-0">
+                    <p className="font-black text-sm text-white uppercase italic tracking-tight truncate">
+                      {leg.player}
+                    </p>
+                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                      {leg.selection && (
+                        <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase
+                          ${leg.selection.toLowerCase() === 'over'
+                            ? 'bg-blue-500/10 text-blue-400'
+                            : 'bg-orange-500/10 text-orange-400'}`}>
+                          {leg.selection}
+                        </span>
+                      )}
+                      <p className="text-[10px] text-zinc-500 font-mono">
+                        {leg.prop} · {leg.line}
                       </p>
                     </div>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => removeLeg(leg.propId || leg.id || '')}
-                      className="h-8 w-8 flex-shrink-0 opacity-0 group-hover:opacity-100 hover:bg-rose-500/10 hover:text-rose-500 transition-all"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <p className="text-[10px] font-mono text-[#FFD700]/60 mt-1">
+                      {odds > 0 ? '+' : ''}{odds || '—'}
+                    </p>
                   </div>
-                );
-              })}
-            </div>
 
-            <div className="pt-4 border-t border-slate-800 space-y-3">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-400">Total Legs:</span>
-                <span className="font-mono font-bold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded">
-                  {selections.length}
-                </span>
-              </div>
-              
-              <Button 
-                onClick={handleGoToParlayStudio} 
-                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/20"
-                size="lg"
-              >
-                Parlay Studio
-                <ArrowRight className="h-4 w-4 ml-2" />
-              </Button>
-            </div>
-          </>
+                  <button
+                    onClick={() => removeLeg(leg.propId || leg.id || '')}
+                    className="shrink-0 p-1.5 text-zinc-700 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all rounded-lg hover:bg-red-500/10"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+
+      {/* Footer */}
+      {selections.length > 0 && (
+        <div className="px-4 pb-4 pt-2 border-t border-white/5 space-y-3">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-zinc-600 font-bold uppercase tracking-wider">Total Legs</span>
+            <span className="font-black text-[#FFD700] bg-[#FFD700]/10 px-2 py-0.5 rounded-lg font-mono">
+              {selections.length}
+            </span>
+          </div>
+          <button
+            onClick={() => router.push('/parlay-studio')}
+            className="w-full flex items-center justify-center gap-2 py-3 bg-[#FFD700] hover:bg-[#e6c200]
+              text-black font-black italic uppercase text-sm rounded-2xl transition-colors"
+          >
+            Parlay Studio
+            <ArrowRight className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+    </div>
   );
 }

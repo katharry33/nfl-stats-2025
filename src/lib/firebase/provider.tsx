@@ -1,3 +1,5 @@
+'use client';
+
 import { createContext, useContext, ReactNode, useState, useEffect } from 'react';
 import { User, signInAnonymously } from 'firebase/auth';
 import { Firestore } from 'firebase/firestore';

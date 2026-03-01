@@ -3,24 +3,70 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { HistoricalBetSlip } from '@/components/bets/historical-betslip';
 import { AddToBetslipButton } from '@/components/bets/add-to-betslip-button';
-import { ManualEntryModal } from '@/components/bets/manual-entry-modal'; // Import the new modal
-import { useBetSlip } from '@/context/betslip-context'; // Import the context
+import { ManualEntryModal } from '@/components/bets/manual-entry-modal';
+import { useBetSlip } from '@/context/betslip-context';
 import { X, Search, Loader2, Activity } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-// Capitalize each word e.g. "rec yards" → "Rec Yards"
 function titleCase(s: string): string {
   return s.replace(/\b\w/g, c => c.toUpperCase());
 }
 
-function fmtDate(raw: string | null | undefined): string {
-  if (!raw) return 'N/A';
-  try {
-    const d = new Date(raw);
-    return isNaN(d.getTime()) ? 'N/A'
-      : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
-  } catch { return 'N/A'; }
+// ─── PropCard ─────────────────────────────────────────────────────────────────
+// Single card — shows player, matchup, week badge, prop type, line value
+// One "Add to Slip" button (no over/under — just adds the prop)
+
+function PropCard({ prop }: { prop: any }) {
+  const player  = prop.player  ?? prop.Player  ?? '—';
+  const team    = prop.team    ?? prop.Team    ?? '';
+  const propLbl = prop.prop    ?? prop.Prop    ?? '—';
+  const matchup = prop.matchup ?? prop.Matchup ?? '';
+  const week    = prop.week    ?? prop.Week;
+  const line    = prop.line    ?? prop.Line;
+
+  return (
+    <div className="bg-[#0f1115] border border-white/5 p-5 rounded-3xl shadow-2xl flex flex-col gap-3
+      hover:border-[#FFD700]/20 transition-colors">
+
+      {/* Top: player name + week badge */}
+      <div className="flex justify-between items-start gap-2">
+        <div className="flex-1 min-w-0">
+          <h3 className="text-white font-black text-base uppercase italic tracking-tighter leading-tight truncate">
+            {player}
+          </h3>
+          {matchup && (
+            <p className="text-[10px] text-[#FFD700] font-black uppercase tracking-[0.2em] mt-1">
+              {matchup}
+            </p>
+          )}
+        </div>
+        {week && (
+          <div className="bg-[#FFD700]/10 border border-[#FFD700]/20 px-2.5 py-1 rounded-lg shrink-0">
+            <span className="text-[10px] font-black text-[#FFD700] uppercase">WK {week}</span>
+          </div>
+        )}
+      </div>
+
+      {/* Line display */}
+      <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl px-4 py-3 flex flex-col items-center">
+        <span className="text-[9px] font-black uppercase text-zinc-600 tracking-[0.3em] mb-1">Line</span>
+        <div className="text-3xl font-black text-white tabular-nums tracking-tighter">
+          {line != null && line !== 0 ? Number(line).toFixed(1) : '—'}
+        </div>
+      </div>
+
+      {/* Prop type + team */}
+      <p className="text-[10px] text-center text-zinc-600 font-bold uppercase tracking-widest truncate">
+        {[team, titleCase(propLbl)].filter(Boolean).join(' • ')}
+      </p>
+
+      {/* Single add button — no over/under choice */}
+      <AddToBetslipButton prop={prop} selection={prop.overUnder || 'Over'} />
+    </div>
+  );
 }
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function AllPropsPage() {
   const [allLegs,   setAllLegs]   = useState<any[]>([]);
@@ -28,41 +74,36 @@ export default function AllPropsPage() {
   const [loading,   setLoading]   = useState(false);
   const [error,     setError]     = useState<string | null>(null);
   const [total,     setTotal]     = useState(0);
-
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const { addLeg } = useBetSlip();
 
-  // Pending input state (not yet sent to API)
   const [playerInput,   setPlayerInput]   = useState('');
   const [propTypeInput, setPropTypeInput] = useState('all');
   const [weekInput,     setWeekInput]     = useState('all');
   const [seasonInput,   setSeasonInput]   = useState('2025');
-
-  // Committed query — only changes on Search click or Enter
-  const [query, setQuery] = useState({
-    player: '', propType: 'all', week: 'all', season: '2025',
-  });
-
+  const [query, setQuery] = useState({ player: '', propType: 'all', week: 'all', season: '2025' });
   const playerRef = useRef<HTMLInputElement>(null);
-
-  // ── Fetch ───────────────────────────────────────────────────────────────────
 
   const fetchProps = useCallback(async (q: typeof query) => {
     setLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams();
-      if (q.season !== 'all')   params.set('season', q.season);
-      if (q.week   !== 'all')   params.set('week',   q.week);
-      if (q.propType !== 'all') params.set('prop',   q.propType);
-      if (q.player)             params.set('player', q.player);
+      if (q.season !== 'all')   params.set('season',   q.season);
+      if (q.week   !== 'all')   params.set('week',     q.week);
+      if (q.propType !== 'all') params.set('prop',     q.propType);
+      if (q.player)             params.set('player',   q.player);
 
       const res  = await fetch(`/api/all-props?${params}`);
+      // Guard against HTML error pages (e.g. Next.js 500 returning <!DOCTYPE>)
+      const contentType = res.headers.get('content-type') ?? '';
+      if (!contentType.includes('application/json')) {
+        throw new Error(`Server error (${res.status}) — check console for details`);
+      }
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-
       setAllLegs(data.props ?? []);
-      setTotal(data.total  ?? 0);
+      setTotal(data.total ?? 0);
       if (data.propTypes?.length) setPropTypes(data.propTypes);
     } catch (err: any) {
       setError(err.message ?? 'Failed to load props');
@@ -71,10 +112,7 @@ export default function AllPropsPage() {
     }
   }, []);
 
-  // Initial load
   useEffect(() => { fetchProps(query); }, []); // eslint-disable-line
-
-  // ── Search / Clear ──────────────────────────────────────────────────────────
 
   const handleSearch = useCallback(() => {
     const q = {
@@ -88,98 +126,76 @@ export default function AllPropsPage() {
   }, [playerInput, propTypeInput, weekInput, seasonInput, fetchProps]);
 
   const handleClear = useCallback(() => {
-    setPlayerInput('');
-    setPropTypeInput('all');
-    setWeekInput('all');
-    setSeasonInput('2025');
+    setPlayerInput(''); setPropTypeInput('all'); setWeekInput('all'); setSeasonInput('2025');
     const q = { player: '', propType: 'all', week: 'all', season: '2025' };
     setQuery(q);
     fetchProps(q);
     playerRef.current?.focus();
   }, [fetchProps]);
 
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') handleSearch();
-  };
-
-  const hasActiveFilters = query.player || query.propType !== 'all'
-    || query.week !== 'all' || query.season !== 'all';
-
-  // ─────────────────────────────────────────────────────────────────────────
+  const hasActiveFilters = query.player || query.propType !== 'all' || query.week !== 'all';
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 p-6 min-h-screen bg-slate-950 text-slate-200">
+    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 p-6 min-h-screen bg-[#060606] text-zinc-200">
       <div className="lg:col-span-3 space-y-5">
 
         {/* Header */}
         <header className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-white tracking-tight">Historical Props</h1>
-            <p className="text-slate-500 text-sm mt-0.5">All data from allProps collection.</p>
+            <h1 className="text-2xl font-black italic uppercase tracking-tighter text-white">
+              Historical Props
+            </h1>
+            <p className="text-[10px] text-zinc-600 font-black uppercase tracking-[0.2em] mt-1">
+              Market Analysis & Manual Entry
+            </p>
           </div>
-          <Button 
-            onClick={() => setIsManualModalOpen(true)}
-            variant="outline"
-            className="bg-slate-900 border-slate-700 hover:bg-slate-800 text-slate-300 gap-2"
-          >
-            <Activity className="h-4 w-4 text-blue-400" />
+          <Button onClick={() => setIsManualModalOpen(true)}
+            className="bg-[#FFD700] hover:bg-[#e6c200] text-black font-black italic uppercase gap-2">
+            <Activity className="h-4 w-4" />
             Manual Entry
           </Button>
         </header>
 
-        {/* ── Search bar ──────────────────────────────────────────────────────── */}
-        <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 space-y-3">
+        {/* Search bar */}
+        <div className="bg-[#0f1115] border border-white/5 rounded-[2rem] p-5">
           <div className="flex flex-wrap items-end gap-3">
 
-            {/* Season */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Season</label>
-              <select
-                value={seasonInput}
-                onChange={e => setSeasonInput(e.target.value)}
-                onKeyDown={onKeyDown}
-                className="bg-slate-950 border border-slate-700 text-slate-200 text-sm rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500 w-36"
-              >
+              <label className="text-[10px] font-black text-zinc-600 uppercase tracking-wider">Season</label>
+              <select value={seasonInput} onChange={e => setSeasonInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSearch()}
+                className="bg-black border border-white/10 text-zinc-300 text-sm rounded-xl px-3 py-2
+                  outline-none focus:ring-1 focus:ring-[#FFD700]/50 w-36">
                 <option value="all">All Seasons</option>
                 <option value="2025">2025</option>
                 <option value="2024">2024</option>
               </select>
             </div>
 
-            {/* Player search */}
             <div className="flex flex-col gap-1.5 flex-1 min-w-[180px]">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Player</label>
+              <label className="text-[10px] font-black text-zinc-600 uppercase tracking-wider">Player</label>
               <div className="relative">
-                <input
-                  ref={playerRef}
-                  type="text"
-                  placeholder="Search player…"
+                <input ref={playerRef} type="text" placeholder="Search player…"
                   value={playerInput}
                   onChange={e => setPlayerInput(e.target.value)}
-                  onKeyDown={onKeyDown}
-                  className="bg-slate-950 border border-slate-700 text-white text-sm rounded-lg pl-3 pr-9 py-2
-                    outline-none focus:ring-2 focus:ring-emerald-500 w-full"
-                />
+                  onKeyDown={e => e.key === 'Enter' && handleSearch()}
+                  className="bg-black border border-white/10 text-white text-sm rounded-xl pl-3 pr-9 py-2
+                    outline-none focus:ring-1 focus:ring-[#FFD700]/50 w-full" />
                 {playerInput && (
-                  <button
-                    onClick={() => setPlayerInput('')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
-                  >
+                  <button onClick={() => setPlayerInput('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-white">
                     <X className="h-3.5 w-3.5" />
                   </button>
                 )}
               </div>
             </div>
 
-            {/* Prop Type — populated from API response */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Prop Type</label>
-              <select
-                value={propTypeInput}
-                onChange={e => setPropTypeInput(e.target.value)}
-                onKeyDown={onKeyDown}
-                className="bg-slate-950 border border-slate-700 text-slate-200 text-sm rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500 w-44"
-              >
+              <label className="text-[10px] font-black text-zinc-600 uppercase tracking-wider">Prop Type</label>
+              <select value={propTypeInput} onChange={e => setPropTypeInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSearch()}
+                className="bg-black border border-white/10 text-zinc-300 text-sm rounded-xl px-3 py-2
+                  outline-none focus:ring-1 focus:ring-[#FFD700]/50 w-44">
                 <option value="all">All Props</option>
                 {propTypes.map(pt => (
                   <option key={pt} value={pt}>{titleCase(pt)}</option>
@@ -187,15 +203,12 @@ export default function AllPropsPage() {
               </select>
             </div>
 
-            {/* Week */}
             <div className="flex flex-col gap-1.5">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Week</label>
-              <select
-                value={weekInput}
-                onChange={e => setWeekInput(e.target.value)}
-                onKeyDown={onKeyDown}
-                className="bg-slate-950 border border-slate-700 text-slate-200 text-sm rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500 w-32"
-              >
+              <label className="text-[10px] font-black text-zinc-600 uppercase tracking-wider">Week</label>
+              <select value={weekInput} onChange={e => setWeekInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSearch()}
+                className="bg-black border border-white/10 text-zinc-300 text-sm rounded-xl px-3 py-2
+                  outline-none focus:ring-1 focus:ring-[#FFD700]/50 w-32">
                 <option value="all">All Weeks</option>
                 {Array.from({ length: 22 }, (_, i) => (
                   <option key={i + 1} value={String(i + 1)}>Week {i + 1}</option>
@@ -203,24 +216,17 @@ export default function AllPropsPage() {
               </select>
             </div>
 
-            {/* Buttons */}
             <div className="flex gap-2 self-end">
-              <button
-                onClick={handleSearch}
-                disabled={loading}
-                className="flex items-center gap-1.5 px-5 py-2 bg-emerald-600 hover:bg-emerald-500
-                  disabled:opacity-50 text-white text-sm font-bold rounded-lg transition-colors"
-              >
+              <button onClick={handleSearch} disabled={loading}
+                className="flex items-center gap-1.5 px-5 py-2 bg-[#FFD700] hover:bg-[#e6c200]
+                  disabled:opacity-50 text-black text-sm font-black italic uppercase rounded-xl transition-colors">
                 <Search className="h-3.5 w-3.5" />
                 Search
               </button>
-              {(playerInput || propTypeInput !== 'all' || weekInput !== 'all' || seasonInput !== 'all' || hasActiveFilters) && (
-                <button
-                  onClick={handleClear}
-                  disabled={loading}
-                  className="flex items-center gap-1.5 px-3 py-2 border border-slate-700
-                    hover:border-slate-500 text-slate-400 hover:text-white text-sm rounded-lg transition-colors"
-                >
+              {(playerInput || propTypeInput !== 'all' || weekInput !== 'all' || hasActiveFilters) && (
+                <button onClick={handleClear} disabled={loading}
+                  className="flex items-center gap-1.5 px-3 py-2 border border-white/10
+                    hover:border-white/20 text-zinc-500 hover:text-white text-sm rounded-xl transition-colors">
                   <X className="h-3.5 w-3.5" /> Clear
                 </button>
               )}
@@ -230,149 +236,57 @@ export default function AllPropsPage() {
 
         {/* Error */}
         {error && (
-          <div className="px-4 py-3 bg-red-950/40 border border-red-800/50 rounded-xl text-red-400 text-sm">
+          <div className="px-4 py-3 bg-red-950/40 border border-red-800/50 rounded-2xl text-red-400 text-sm">
             {error}
           </div>
         )}
 
-        {/* Count bar */}
-        <div className="flex items-center justify-between bg-slate-900/50 px-4 py-3 rounded-lg border border-slate-800">
-          <div className="flex items-center gap-2">
-            <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-            <p className="text-sm text-slate-300">
-              Displaying{' '}
-              <span className="font-mono text-emerald-400 font-bold">{allLegs.length.toLocaleString()}</span>
-              {total !== allLegs.length && (
-                <>
-                  <span className="text-slate-500 mx-2">of</span>
-                  <span className="font-mono text-slate-200">{total.toLocaleString()}</span>
-                </>
-              )}{' '}
-              records
-            </p>
-          </div>
-          {query.season !== 'all' && (
-            <span className="text-[10px] uppercase tracking-widest bg-emerald-500/10 text-emerald-500 px-2 py-1 rounded">
-              Season {query.season}
+        {/* Count */}
+        <div className="flex items-center justify-between px-1">
+          <p className="text-xs text-zinc-600 font-mono">
+            <span className="text-[#FFD700] font-black">{allLegs.length.toLocaleString()}</span>
+            {total !== allLegs.length && <> of <span className="text-zinc-400">{total.toLocaleString()}</span></>}
+            {' '}props
+          </p>
+          {query.week !== 'all' && (
+            <span className="text-[10px] uppercase tracking-widest bg-[#FFD700]/10 text-[#FFD700] px-2.5 py-1 rounded-lg font-black">
+              Week {query.week}
             </span>
           )}
         </div>
 
-        {/* ── Table ─────────────────────────────────────────────────────────────── */}
+        {/* Grid */}
         {loading ? (
           <div className="flex flex-col items-center py-20 gap-3">
-            <Loader2 className="h-8 w-8 animate-spin text-emerald-500" />
-            <p className="text-slate-600 text-xs uppercase font-mono tracking-wider">Loading props…</p>
+            <Loader2 className="h-8 w-8 animate-spin text-[#FFD700]" />
+            <p className="text-zinc-600 text-xs uppercase font-mono tracking-wider">Loading props…</p>
+          </div>
+        ) : allLegs.length === 0 ? (
+          <div className="flex flex-col items-center py-20 border border-dashed border-white/5 rounded-3xl gap-2">
+            <p className="text-zinc-500 text-sm font-bold italic">
+              {hasActiveFilters ? 'No props matched your filters.' : 'No data found.'}
+            </p>
           </div>
         ) : (
-          <div className="rounded-xl border border-slate-800 bg-slate-900/20 overflow-hidden shadow-2xl">
-            <table className="w-full text-left">
-              <thead className="bg-slate-900/80 text-[10px] uppercase font-black text-slate-500 tracking-widest border-b border-slate-800">
-                <tr>
-                  <th className="px-6 py-4">Player</th>
-                  <th className="px-6 py-4">Prop</th>
-                  <th className="px-6 py-4">Line</th>
-                  <th className="px-6 py-4">Matchup / Wk</th>
-                  <th className="px-6 py-4">Game Date</th>
-                  <th className="px-6 py-4">Result</th>
-                  <th className="px-6 py-4 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/40">
-                {allLegs.map((leg, i) => (
-                  <tr key={leg.id || i} className="hover:bg-slate-800/30 transition-colors group">
-                    {/* Player */}
-                    <td className="px-6 py-4">
-                      <div className="font-bold text-slate-200">{leg.player || '—'}</div>
-                      {leg.team && (
-                        <div className="text-[10px] text-slate-500 font-mono uppercase mt-0.5">{leg.team}</div>
-                      )}
-                    </td>
-
-                    {/* Prop — always title case */}
-                    <td className="px-6 py-4">
-                      <span className="text-xs font-semibold text-slate-300">
-                        {titleCase(leg.prop || '—')}
-                      </span>
-                      {leg.overUnder && (
-                        <span className={`ml-2 text-[10px] font-bold ${
-                          leg.overUnder.toLowerCase() === 'over' ? 'text-blue-400' : 'text-orange-400'
-                        }`}>
-                          {leg.overUnder}
-                        </span>
-                      )}
-                    </td>
-
-                    {/* Line */}
-                    <td className="px-6 py-4 font-mono text-sm text-emerald-400">
-                      {leg.line ?? '—'}
-                    </td>
-
-                    {/* Matchup + Week */}
-                    <td className="px-6 py-4">
-                      <div className="text-[10px] text-slate-400 font-mono uppercase">{leg.matchup || '—'}</div>
-                      {leg.week && (
-                        <div className="text-[10px] text-slate-500 mt-0.5">Week {leg.week}</div>
-                      )}
-                    </td>
-
-                    {/* Game Date */}
-                    <td className="px-6 py-4 text-xs text-slate-400">
-                      {fmtDate(leg.gameDate)}
-                    </td>
-
-                    {/* Result */}
-                    <td className="px-6 py-4">
-                      {leg.actualResult ? (
-                        <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border ${
-                          leg.actualResult.toLowerCase().includes('win')
-                            ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25'
-                            : leg.actualResult.toLowerCase().includes('loss') || leg.actualResult.toLowerCase().includes('lose')
-                              ? 'bg-red-500/15 text-red-400 border-red-500/25'
-                              : 'bg-slate-700/20 text-slate-500 border-slate-700/20'
-                        }`}>
-                          {leg.actualResult}
-                        </span>
-                      ) : (
-                        <span className="text-slate-700 text-xs">—</span>
-                      )}
-                    </td>
-
-                    {/* Action */}
-                    <td className="px-6 py-4 text-right">
-                      <div className="w-24 ml-auto">
-                        <AddToBetslipButton prop={leg} selection={leg.overUnder || 'Over'} />
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            {!loading && allLegs.length === 0 && (
-              <div className="p-10 text-center text-slate-500 text-sm italic">
-                {hasActiveFilters
-                  ? 'No props matched your filters.'
-                  : 'No data found in the allProps collection.'}
-              </div>
-            )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+            {allLegs.map((prop, i) => (
+              <PropCard key={prop.id ?? i} prop={prop} />
+            ))}
           </div>
         )}
       </div>
 
       {/* Bet slip sidebar */}
       <div className="lg:col-span-1">
-        <aside className="sticky top-20">
+        <aside className="sticky top-6">
           <HistoricalBetSlip />
         </aside>
       </div>
 
-      <ManualEntryModal 
+      <ManualEntryModal
         isOpen={isManualModalOpen}
         onClose={() => setIsManualModalOpen(false)}
-        onAddLeg={(leg) => {
-          addLeg(leg);
-        }}
+        onAddLeg={leg => addLeg(leg)}
       />
     </div>
   );

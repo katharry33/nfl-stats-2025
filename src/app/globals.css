@@ -28,48 +28,36 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 160 50% 5%;
-    --card: 0 0% 100%;
-    --card-foreground: 160 50% 5%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 160 50% 5%;
-    --primary: 160 84% 33%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 160 20% 96%;
-    --secondary-foreground: 160 50% 10%;
-    --muted: 160 20% 96%;
-    --muted-foreground: 160 10% 40%;
-    --accent: 160 20% 96%;
-    --accent-foreground: 160 50% 10%;
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 160 20% 90%;
-    --input: 160 20% 90%;
-    --ring: 160 84% 33%;
-    --radius: 0.75rem;
+    --primary: 51 100% 50%;          /* hsl(51,100%,50%) = #FFD700 */
+    --primary-foreground: 0 0% 0%;   /* black text on gold */
+    --background: 0 0% 4%;           /* #060606 */
+    --foreground: 0 0% 95%;
+    --card: 220 13% 7%;              /* #0f1115 */
+    --card-foreground: 0 0% 95%;
+    --border: 0 0% 100% / 0.05;     /* white/5 */
+    --input:  0 0% 100% / 0.05;
+    --ring:   51 100% 50%;           /* gold focus ring */
+    --muted: 220 13% 12%;
+    --muted-foreground: 0 0% 45%;
+    --accent: 220 13% 12%;
+    --accent-foreground: 0 0% 95%;
+    --radius: 1rem;
   }
 
   .dark {
-    --background: 160 50% 3%;
-    --foreground: 160 20% 98%;
-    --card: 160 50% 4%;
-    --card-foreground: 160 20% 98%;
-    --popover: 160 50% 4%;
-    --popover-foreground: 160 20% 98%;
-    --primary: 142 70% 45%;
-    --primary-foreground: 160 50% 5%;
-    --secondary: 160 30% 12%;
-    --secondary-foreground: 160 20% 98%;
-    --muted: 160 30% 12%;
-    --muted-foreground: 160 10% 65%;
-    --accent: 142 70% 45%;
-    --accent-foreground: 160 20% 98%;
-    --destructive: 0 62% 30%;
-    --destructive-foreground: 160 20% 98%;
-    --border: 160 30% 15%;
-    --input: 160 30% 15%;
-    --ring: 142 70% 45%;
+    --primary: 51 100% 50%;
+    --primary-foreground: 0 0% 0%;
+    --background: 0 0% 4%;
+    --foreground: 0 0% 95%;
+    --card: 220 13% 7%;
+    --card-foreground: 0 0% 95%;
+    --border: 0 0% 100% / 0.05;
+    --input:  0 0% 100% / 0.05;
+    --ring:   51 100% 50%;
+    --muted: 220 13% 12%;
+    --muted-foreground: 0 0% 45%;
+    --accent: 220 13% 12%;
+    --accent-foreground: 0 0% 95%;
   }
 }
 
@@ -78,6 +66,8 @@
     @apply border-border outline-ring/50;
   }
   body {
+    background-color: #060606;
+    color: #f2f2f2;
     @apply bg-background text-foreground antialiased;
     font-feature-settings: "rlig" 1, "calt" 1;
   }

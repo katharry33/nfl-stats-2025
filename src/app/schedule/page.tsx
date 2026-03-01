@@ -1,51 +1,83 @@
 'use client';
 
 import React, { useState, useEffect } from "react";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Card } from "@/components/ui/card";
-import { Loader2 } from "lucide-react";
+import { Loader2, Calendar } from "lucide-react";
 
 export default function SchedulePage() {
-  const [data, setData] = useState([]);
+  const [data,    setData]    = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function fetchSchedule() {
-      const res = await fetch('/api/static-data?type=schedule');
-      const json = await res.json();
-      setData(json);
-      setLoading(false);
-    }
-    fetchSchedule();
+    fetch('/api/static-data?type=schedule')
+      .then(r => r.json())
+      .then(json => { setData(json); setLoading(false); })
+      .catch(() => setLoading(false));
   }, []);
 
   return (
-    <div className="p-6 bg-slate-950 min-h-screen">
-      <h1 className="text-2xl font-bold text-white mb-6 uppercase italic">2025 NFL Schedule</h1>
-      <Card className="bg-slate-900 border-slate-800">
-        <Table>
-          <TableHeader>
-            <TableRow className="border-slate-800">
-              <TableHead className="text-slate-400">Week</TableHead>
-              <TableHead className="text-slate-400">Matchup</TableHead>
-              <TableHead className="text-slate-400">Date</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+    <div className="min-h-screen bg-[#060606] p-6">
+
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-6">
+        <div className="w-9 h-9 bg-[#FFD700]/10 border border-[#FFD700]/20 rounded-xl flex items-center justify-center">
+          <Calendar className="h-4 w-4 text-[#FFD700]" />
+        </div>
+        <div>
+          <h1 className="text-2xl font-black text-white italic uppercase tracking-tighter">
+            2025 NFL Schedule
+          </h1>
+          <p className="text-[10px] text-zinc-600 font-black uppercase tracking-widest">Static Data</p>
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="bg-[#0f1115] border border-white/[0.06] rounded-3xl overflow-hidden shadow-2xl">
+        <table className="w-full">
+          <thead className="border-b border-white/[0.06]">
+            <tr>
+              <th className="px-5 py-4 text-left text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em] w-24">
+                Week
+              </th>
+              <th className="px-5 py-4 text-left text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">
+                Matchup
+              </th>
+              <th className="px-5 py-4 text-left text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">
+                Date
+              </th>
+            </tr>
+          </thead>
+          <tbody>
             {loading ? (
-              <TableRow><TableCell colSpan={3} className="text-center py-10"><Loader2 className="animate-spin mx-auto"/></TableCell></TableRow>
+              <tr>
+                <td colSpan={3} className="py-16 text-center">
+                  <Loader2 className="h-6 w-6 animate-spin text-[#FFD700] mx-auto" />
+                </td>
+              </tr>
+            ) : data.length === 0 ? (
+              <tr>
+                <td colSpan={3} className="py-16 text-center text-zinc-600 text-sm">No schedule data found.</td>
+              </tr>
             ) : (
-              data.map((item: any) => (
-                <TableRow key={item.id} className="border-slate-800">
-                  <TableCell className="text-white font-mono">W{item.Week}</TableCell>
-                  <TableCell className="text-white">{item.AwayTeam} @ {item.HomeTeam}</TableCell>
-                  <TableCell className="text-slate-400">{item.Date}</TableCell>
-                </TableRow>
+              data.map((item: any, i: number) => (
+                <tr key={item.id ?? i}
+                  className="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors">
+                  <td className="px-5 py-3">
+                    <span className="text-[#FFD700] font-black font-mono text-xs bg-[#FFD700]/10 border border-[#FFD700]/20 px-2.5 py-1 rounded-lg">
+                      WK {item.Week}
+                    </span>
+                  </td>
+                  <td className="px-5 py-3 text-sm font-bold text-white">
+                    <span className="text-zinc-400">{item.AwayTeam}</span>
+                    <span className="text-zinc-600 mx-2">@</span>
+                    <span className="text-white">{item.HomeTeam}</span>
+                  </td>
+                  <td className="px-5 py-3 text-xs text-zinc-500 font-mono">{item.Date}</td>
+                </tr>
               ))
             )}
-          </TableBody>
-        </Table>
-      </Card>
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

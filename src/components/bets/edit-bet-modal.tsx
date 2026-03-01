@@ -1,207 +1,202 @@
+'use client';
+
 import { useState, useEffect } from 'react';
-import { X, DollarSign, Hash, TrendingUp, Trophy, Calendar, Trash2, Layers } from 'lucide-react';
-import { Bet, BetLeg, resolveFirestoreDate } from '@/lib/types';
+import { Bet, BetLeg } from '@/lib/types';
+import { Trash2, Plus, Calendar, Hash, Percent, Zap } from 'lucide-react';
 
 interface EditBetModalProps {
-  isOpen: boolean;
   bet: Bet | null;
+  isOpen: boolean;
   onClose: () => void;
-  onSave: (updates: Partial<Bet>) => void;
+  onSave: (bet: any) => void;
 }
 
-const BET_TYPES = [
-  'Single', 'Anytime TD', 'SGP', 'Round Robin', 
-  'SGPX', 'Spread', 'Moneyline', 'Total Points', 'Parlay'
-];
+export function EditBetModal({ bet, isOpen, onClose, onSave }: EditBetModalProps) {
+  const [formData, setFormData] = useState<any>(null);
 
-export function EditBetModal({ isOpen, bet, onClose, onSave }: EditBetModalProps) {
-  const [formData, setFormData] = useState<Partial<Bet>>({
-    id: '',
-    week: 0,
-    gameDate: '',
-    stake: 0,
-    odds: 0,
-    status: 'pending',
-    type: 'Parlay', // New field
-    legs: []
-  });
-
+  // Initialize form data when modal opens
   useEffect(() => {
     if (bet) {
-      const displayDate = resolveFirestoreDate(bet.gameDate || bet.createdAt).toISOString().split('T')[0];
       setFormData({
         ...bet,
-        week: bet.week ?? 0,
-        gameDate: displayDate,
-        stake: bet.stake || 0,
-        type: bet.type || (bet.legs && bet.legs.length > 1 ? 'Parlay' : 'Single'),
-        legs: bet.legs || [],
+        stake: (bet as any).stake || (bet as any).amount || 0,
+        boost: (bet as any).boost || 0,
+        odds: (bet as any).odds || 0,
+        week: (bet as any).week || 1,
+        gameDate: (bet as any).gameDate || new Date().toISOString().split('T')[0],
+        legs: Array.isArray(bet.legs) ? [...bet.legs] : []
       });
     }
-  }, [bet]);
+  }, [bet, isOpen]);
 
-  // Handle individual leg updates
+  if (!isOpen || !formData) return null;
+
   const updateLeg = (index: number, updates: Partial<BetLeg>) => {
-    const newLegs = [...(formData.legs || [])];
+    const newLegs = [...formData.legs];
     newLegs[index] = { ...newLegs[index], ...updates };
     setFormData({ ...formData, legs: newLegs });
   };
 
-  // Handle leg deletion
   const removeLeg = (index: number) => {
-    const newLegs = (formData.legs || []).filter((_, i) => i !== index);
-    setFormData({ ...formData, legs: newLegs });
+    setFormData({ ...formData, legs: formData.legs.filter((_: any, i: number) => i !== index) });
   };
-
-  const handleSubmit = () => {
-    const stakeNum = Number(formData.stake || 0);
-    const oddsNum = Number(formData.odds || 0);
-    let calculatedProfit = 0;
-
-    if (formData.status === 'won') {
-      const decimalOdds = oddsNum > 0 ? (oddsNum / 100) : (100 / Math.abs(oddsNum));
-      calculatedProfit = stakeNum * decimalOdds;
-    } else if (formData.status === 'lost') {
-      calculatedProfit = -stakeNum;
-    }
-
-    onSave({ 
-      ...formData, 
-      profit: calculatedProfit, 
-      payout: stakeNum + calculatedProfit,
-      stake: stakeNum, 
-      odds: oddsNum,
-      week: Number(formData.week || 0),
-    });
-  };
-
-  if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-900 rounded-2xl border border-slate-800 w-full max-w-3xl max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
+      <div className="bg-[#0f1115] border border-white/10 rounded-[2.5rem] w-full max-w-2xl max-h-[90vh] shadow-2xl overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200">
+        
         {/* Header */}
-        <div className="p-6 border-b border-slate-800 flex items-center justify-between">
+        <div className="p-8 pb-4 flex justify-between items-center border-b border-white/5">
           <div>
-            <h2 className="text-xl font-bold text-white">Edit Bet Details</h2>
-            <p className="text-xs text-slate-400 mt-1">ID: {formData.id?.slice(0,8)}...</p>
+            <h2 className="text-[#FFD700] text-3xl font-black italic uppercase tracking-tighter">
+              Edit Bet Detail
+            </h2>
+            <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest mt-1">Transaction ID: {formData.id}</p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
-            <X className="h-5 w-5" />
-          </button>
+          <button onClick={onClose} className="text-zinc-500 hover:text-white transition-colors text-3xl">&times;</button>
         </div>
 
-        <div className="p-6 overflow-y-auto space-y-8">
-          {/* Main Bet Details */}
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-[10px] uppercase font-black text-slate-500 mb-1.5">Bet Type</label>
-              <select 
-                value={formData.type}
-                onChange={(e) => setFormData({...formData, type: e.target.value})}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white text-sm focus:ring-1 focus:ring-blue-500 outline-none"
-              >
-                {BET_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
+        {/* Scrollable Content */}
+        <div className="p-8 overflow-y-auto space-y-8 custom-scrollbar">
+          
+          {/* Global Details Grid */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
+                <Hash className="w-3 h-3" /> Week
+              </label>
+              <input 
+                type="number" 
+                value={formData.week}
+                onChange={(e) => setFormData({...formData, week: e.target.value})}
+                className="w-full bg-black/40 border border-white/5 rounded-xl px-4 py-2 text-white focus:border-[#FFD700] outline-none transition-all"
+              />
             </div>
-            <div>
-              <label className="block text-[10px] uppercase font-black text-slate-500 mb-1.5">Total Odds</label>
-              <input type="number" value={formData.odds || ''} onChange={(e) => setFormData({...formData, odds: parseFloat(e.target.value)})}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white text-sm outline-none" />
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
+                <Calendar className="w-3 h-3" /> Date
+              </label>
+              <input 
+                type="date" 
+                value={formData.gameDate}
+                onChange={(e) => setFormData({...formData, gameDate: e.target.value})}
+                className="w-full bg-black/40 border border-white/5 rounded-xl px-4 py-2 text-white focus:border-[#FFD700] outline-none transition-all"
+              />
             </div>
-            <div>
-              <label className="block text-[10px] uppercase font-black text-slate-500 mb-1.5">Stake ($)</label>
-              <input type="number" value={formData.stake || ''} onChange={(e) => setFormData({...formData, stake: parseFloat(e.target.value)})}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white text-sm outline-none" />
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-[10px] font-black text-zinc-500 uppercase tracking-widest text-[#FFD700]">
+                <Zap className="w-3 h-3" /> Boost %
+              </label>
+              <input 
+                type="number" 
+                value={formData.boost}
+                onChange={(e) => setFormData({...formData, boost: e.target.value})}
+                className="w-full bg-[#FFD700]/5 border border-[#FFD700]/20 rounded-xl px-4 py-2 text-[#FFD700] font-bold focus:border-[#FFD700] outline-none transition-all"
+              />
             </div>
-            <div>
-              <label className="block text-[10px] uppercase font-black text-slate-500 mb-1.5">Game Date</label>
-              <input type="date" value={formData.gameDate || ''} onChange={(e) => setFormData({...formData, gameDate: e.target.value})}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white text-sm [color-scheme:dark] outline-none" />
-            </div>
-            <div>
-              <label className="block text-[10px] uppercase font-black text-slate-500 mb-1.5">NFL Week</label>
-              <input type="number" value={formData.week || ''} onChange={(e) => setFormData({...formData, week: parseInt(e.target.value)})}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white text-sm outline-none" />
-            </div>
-            <div>
-              <label className="block text-[10px] uppercase font-black text-slate-500 mb-1.5">Overall Status</label>
-              <select value={formData.status} onChange={(e) => setFormData({...formData, status: e.target.value as any})}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-white text-sm outline-none">
-                <option value="pending">Pending</option>
-                <option value="won">Won</option>
-                <option value="lost">Lost</option>
-                <option value="void">Void</option>
-              </select>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-[10px] font-black text-zinc-500 uppercase tracking-widest">
+                Stake
+              </label>
+              <input 
+                type="number" 
+                value={formData.stake}
+                onChange={(e) => setFormData({...formData, stake: e.target.value})}
+                className="w-full bg-black/40 border border-white/5 rounded-xl px-4 py-2 text-white font-mono focus:border-[#FFD700] outline-none transition-all"
+              />
             </div>
           </div>
 
-          {/* Individual Legs Section */}
+          {/* Legs Section */}
           <div className="space-y-4">
-            <h3 className="text-[10px] uppercase font-black text-slate-500 flex items-center gap-2">
-              <Layers className="h-3 w-3" />
-              Individual Legs ({(formData.legs?.length || 0)})
-            </h3>
-            
-            <div className="space-y-3">
-              {formData.legs?.map((leg, index) => (
-                <div key={leg.id || index} className="bg-slate-950/50 border border-slate-800 rounded-xl p-4 transition-all hover:border-slate-700">
-                  <div className="flex flex-wrap items-center gap-4">
-                    {/* Player/Prop Info (Read-only labels, editable line) */}
-                    <div className="flex-1 min-w-[200px]">
-                      <p className="text-sm font-bold text-white">{leg.player}</p>
-                      <p className="text-[10px] text-slate-500 uppercase font-medium">{leg.prop} • {leg.selection}</p>
-                    </div>
+            <div className="flex justify-between items-center px-1">
+              <h3 className="text-white font-black italic uppercase tracking-tight text-lg">Bet Legs</h3>
+              <span className="text-zinc-600 text-[10px] font-black uppercase tracking-widest">{formData.legs.length} Total</span>
+            </div>
 
-                    {/* Editable Line */}
-                    <div className="w-24">
-                      <label className="block text-[9px] text-slate-500 uppercase mb-1">Line</label>
-                      <input 
-                        type="number" step="0.5" value={leg.line} 
-                        onChange={(e) => updateLeg(index, { line: parseFloat(e.target.value) })}
-                        className="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs text-white"
-                      />
-                    </div>
+            {formData.legs.map((leg: any, idx: number) => (
+              <div key={idx} className="group relative bg-white/[0.02] border border-white/5 rounded-[1.5rem] p-5 space-y-4 hover:border-white/10 transition-all">
+                <button 
+                  onClick={() => removeLeg(idx)}
+                  className="absolute -top-2 -right-2 bg-red-500 text-white p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
 
-                    {/* Leg Status */}
-                    <div className="w-32">
-                      <label className="block text-[9px] text-slate-500 uppercase mb-1">Result</label>
-                      <select 
-                        value={leg.status} 
-                        onChange={(e) => updateLeg(index, { status: e.target.value as any })}
-                        className={`w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs font-bold ${
-                          leg.status === 'won' ? 'text-emerald-400' : leg.status === 'lost' ? 'text-red-400' : 'text-slate-400'
-                        }`}
-                      >
-                        <option value="pending">Pending</option>
-                        <option value="won">Won</option>
-                        <option value="lost">Lost</option>
-                        <option value="void">Void</option>
-                      </select>
-                    </div>
-
-                    {/* Delete Leg */}
-                    <button 
-                      onClick={() => removeLeg(index)}
-                      className="p-2 text-slate-600 hover:text-red-400 transition-colors mt-4"
-                      title="Remove Leg"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">Player / Team</label>
+                    <input 
+                      value={leg.player}
+                      onChange={(e) => updateLeg(idx, { player: e.target.value })}
+                      className="w-full bg-transparent border-b border-white/10 py-1 text-sm font-bold focus:border-[#FFD700] outline-none transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">Market (Prop)</label>
+                    <input 
+                      value={leg.prop}
+                      onChange={(e) => updateLeg(idx, { prop: e.target.value })}
+                      className="w-full bg-transparent border-b border-white/10 py-1 text-sm font-bold focus:border-[#FFD700] outline-none transition-colors"
+                    />
                   </div>
                 </div>
-              ))}
-            </div>
+
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <label className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">Line</label>
+                    <input 
+                      type="number"
+                      value={leg.line}
+                      onChange={(e) => updateLeg(idx, { line: Number(e.target.value) })}
+                      className="w-full bg-black/20 rounded-lg px-3 py-2 text-sm font-mono outline-none focus:ring-1 ring-[#FFD700]"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">O/U</label>
+                    <select 
+                      value={leg.selection}
+                      onChange={(e) => updateLeg(idx, { selection: e.target.value as 'Over' | 'Under' })}
+                      className="w-full bg-black/20 rounded-lg px-3 py-2 text-sm font-bold outline-none appearance-none cursor-pointer"
+                    >
+                      <option value="Over">Over</option>
+                      <option value="Under">Under</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">Status</label>
+                    <select 
+                      value={leg.status}
+
+                      className={`w-full bg-black/20 rounded-lg px-3 py-2 text-sm font-black uppercase outline-none cursor-pointer ${
+                        leg.status === 'won' ? 'text-primary' : leg.status === 'lost' ? 'text-red-500' : 'text-zinc-400'
+                      }`}
+                    >
+                      <option value="pending">Pending</option>onChange={(e) => updateLeg(idx, { status: e.target.value as 'pending' | 'won' | 'lost' | 'void' })}
+                      <option value="won">Won</option>
+                      <option value="lost">Lost</option>
+                      <option value="void">Voided</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="p-6 border-t border-slate-800 flex gap-3 bg-slate-900 rounded-b-2xl">
-          <button onClick={onClose} className="flex-1 px-4 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold uppercase text-xs tracking-widest transition-all">
-            Cancel
+        {/* Footer Actions */}
+        <div className="p-8 bg-white/[0.02] border-t border-white/5 flex gap-4">
+          <button 
+            onClick={onClose} 
+            className="flex-1 px-6 py-4 rounded-2xl font-bold text-zinc-400 hover:bg-white/5 transition-colors"
+          >
+            Discard Changes
           </button>
-          <button onClick={handleSubmit} className="flex-1 px-4 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold uppercase text-xs tracking-widest transition-all shadow-lg shadow-emerald-900/20">
-            Save Changes
+          <button 
+            onClick={() => onSave(formData)}
+            className="flex-[2] px-6 py-4 rounded-2xl font-black italic uppercase bg-[#FFD700] text-black shadow-[0_0_20px_rgba(255,215,0,0.2)] hover:scale-[1.02] active:scale-95 transition-all"
+          >
+            Save Transacation
           </button>
         </div>
       </div>
