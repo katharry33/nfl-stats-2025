@@ -7,7 +7,7 @@ const COL = 'static_playerTeamMapping';
 
 export async function GET() {
   try {
-    const snap = await adminDb.collection(COL).orderBy('playerName').get();
+    const snap = await adminDb.collection(COL).orderBy('player').get();
     return NextResponse.json(snap.docs.map(d => ({ id: d.id, ...d.data() })));
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
@@ -15,11 +15,11 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const { playerName, team } = await req.json();
-  if (!playerName?.trim() || !team?.trim())
-    return NextResponse.json({ error: 'playerName and team required' }, { status: 400 });
+  const { player, team } = await req.json();
+  if (!player?.trim() || !team?.trim())
+    return NextResponse.json({ error: 'player and team required' }, { status: 400 });
   const ref = await adminDb.collection(COL).add({
-    playerName: playerName.trim(),
+    player: player.trim(),
     team: team.trim().toUpperCase(),
     createdAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
@@ -28,10 +28,10 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
-  const { id, playerName, team } = await req.json();
+  const { id, player, team } = await req.json();
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
   await adminDb.collection(COL).doc(id).update({
-    playerName: playerName.trim(),
+    player: player.trim(),
     team: team.trim().toUpperCase(),
     updatedAt: FieldValue.serverTimestamp(),
   });

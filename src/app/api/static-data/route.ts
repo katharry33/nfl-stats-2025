@@ -1,7 +1,6 @@
-// src/app/api/static-data/schedule/route.ts
-// Replaced getStaticSchedule import (which didn't exist) with direct adminDb query.
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
+import { Timestamp } from 'firebase-admin/firestore';
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,7 +9,7 @@ export async function GET(request: NextRequest) {
     const week   = searchParams.get('week');
 
     let q: FirebaseFirestore.Query = adminDb
-      .collection('schedule')
+      .collection('static_schedule')
       .where('season', '==', season)
       .orderBy('week', 'asc');
 
@@ -25,4 +24,13 @@ export async function GET(request: NextRequest) {
     console.error('[GET /api/static-data/schedule]', error);
     return NextResponse.json({ error: error?.message ?? 'Failed to load schedule' }, { status: 500 });
   }
+}
+
+export async function POST(req: NextRequest) {
+  const { Week, AwayTeam, HomeTeam, Date } = await req.json();
+  const ref = await adminDb.collection('static_schedule').add({
+    Week, AwayTeam, HomeTeam, Date,
+    createdAt: Timestamp.now(),
+  });
+  return NextResponse.json({ id: ref.id });
 }

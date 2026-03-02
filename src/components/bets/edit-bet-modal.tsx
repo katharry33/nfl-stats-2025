@@ -24,6 +24,7 @@ export function EditBetModal({
   const router = useRouter();
   const [formData, setFormData] = useState<any>(null);
   const [oddsOverridden, setOddsOverridden] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const recalculatePayout = useCallback((data: any) => {
     const stake = Number(data.stake || 0);
@@ -48,20 +49,26 @@ export function EditBetModal({
   }, []);
 
   useEffect(() => {
-    if (bet) {
+    if (bet && isOpen) {
       setOddsOverridden(false);
       const initialData = {
         ...bet,
-        stake: (bet as any).stake || (bet as any).amount || 0,
-        boost: (bet as any).boost || 0,
-        odds: (bet as any).odds || (bet as any).parlayOdds || 0,
-        week: (bet as any).week || 1,
+        stake: Number((bet as any).stake || (bet as any).amount || 0),
+        boost: Number((bet as any).boost || 0),
+        odds: Number((bet as any).odds || (bet as any).parlayOdds || 0),
+        week: Number((bet as any).week || 1),
+        // Force the date to the correct format for the HTML5 date input
         gameDate: (bet as any).gameDate || new Date().toISOString().split('T')[0],
         isBonusBet: (bet as any).isBonusBet || false,
         status: (bet as any).status || 'pending',
         cashedAmount: (bet as any).status === 'cashed' ? (bet as any).payout : '',
         legs: Array.isArray(bet.legs)
-          ? bet.legs.map((leg: any) => ({ ...leg, isLive: leg.isLive || false, odds: leg.odds || -110 }))
+          ? bet.legs.map((leg: any) => ({ 
+              ...leg, 
+              isLive: leg.isLive || false, 
+              odds: Number(leg.odds || -110),
+              status: leg.status || 'pending'
+            }))
           : [],
       };
       setFormData(recalculatePayout(initialData));
@@ -86,34 +93,58 @@ export function EditBetModal({
   };
 
   const handleSave = async () => {
-    // Normalize to lowercase to match your API logic
+    if (!formData || isSaving) return;
+    setIsSaving(true);
+
+    // 1. All Must Win Logic (Case-insensitive)
     const hasLost = formData.legs.some((l: any) => l.status.toLowerCase() === 'lost');
     const allWon = formData.legs.every((l: any) => l.status.toLowerCase() === 'won');
-    const finalStatus = hasLost ? 'lost' : (allWon ? 'won' : 'pending');
+    
+    let finalStatus = formData.status; 
+    if (formData.status !== 'cashed' && formData.status !== 'void') {
+       finalStatus = hasLost ? 'lost' : (allWon ? 'won' : 'pending');
+    }
 
     const payload = {
       ...formData,
-      status: finalStatus, // This is what persists the "All Must Win" result
+      status: finalStatus,
+      stake: Number(formData.stake),
+      odds: Number(formData.odds),
+      boost: Number(formData.boost),
+      gameDate: formData.gameDate, // Date format "YYYY-MM-DD"
       legs: formData.legs.map((leg: any) => ({
         ...leg,
-        line: Number(leg.line), // Prevent numeric persistence errors
+        line: Number(leg.line),
         odds: Number(leg.odds)
       }))
     };
 
     try {
+      // ✅ Ensure this route exists at src/app/api/save-bet/route.ts
       const response = await fetch('/api/save-bet', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
 
-      if (response.ok) {
-        onClose();
-        router.refresh();
+      // ✅ Fix for "Unexpected token <" - check response status first
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Server Error (${response.status}):`, errorText);
+        alert(`Failed to save: Server returned ${response.status}. Check console for details.`);
+        return;
       }
+
+      const data = await response.json();
+      
+      // ✅ Trigger Refresh to update the SSR Betting Log page
+      router.refresh();
+      onClose();
     } catch (error) {
-      console.error("Save failed:", error);
+      console.error("Save process failed:", error);
+      alert("Network error: Could not connect to the save API.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -139,6 +170,7 @@ export function EditBetModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4 text-white">
       <div className="bg-[#0f1115] border border-white/10 rounded-[2.5rem] w-full max-w-2xl max-h-[90vh] shadow-2xl overflow-hidden flex flex-col">
+        {/* Header */}
         <div className="p-8 pb-4 flex justify-between items-center border-b border-white/5">
           <div>
             <h2 className="text-[#FFD700] text-3xl font-black italic uppercase tracking-tighter">Edit Bet Detail</h2>
@@ -147,6 +179,7 @@ export function EditBetModal({
           <button onClick={onClose} className="text-zinc-500 hover:text-white transition-colors text-3xl">&times;</button>
         </div>
 
+        {/* Scrollable Content */}
         <div className="p-8 overflow-y-auto space-y-6 custom-scrollbar">
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4 items-end">
             <div className="space-y-2">
@@ -175,23 +208,6 @@ export function EditBetModal({
                 <option value="cashed">Cashed</option>
               </select>
             </div>
-          </div>
-
-          {formData.status === 'cashed' && (
-            <div className="space-y-2">
-              <label className="flex items-center gap-2 text-[10px] font-black text-zinc-500 uppercase tracking-widest">Cashed Amount</label>
-              <input type="number" value={formData.cashedAmount} onChange={(e) => handleDataChange({ cashedAmount: e.target.value })} className="w-full bg-black/40 border border-white/5 rounded-xl px-4 py-2 text-white font-mono focus:border-[#FFD700] outline-none transition-all" />
-            </div>
-          )}
-
-          <div className="flex items-center justify-end">
-            <label className="flex items-center gap-3 cursor-pointer text-sm font-bold text-cyan-400">
-              <input type="checkbox" checked={formData.isBonusBet} onChange={(e) => handleDataChange({ isBonusBet: e.target.checked })} className="hidden" />
-              <div className={`w-5 h-5 rounded-md flex items-center justify-center transition-all duration-200 ${formData.isBonusBet ? 'bg-cyan-400/20 border-cyan-500' : 'bg-black/20 border-white/10'}`}>
-                {formData.isBonusBet && <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />}
-              </div>
-              This is a Bonus Bet (No-Sweat / Free Bet)
-            </label>
           </div>
 
           <div className="bg-black/40 border border-[#FFD700]/20 rounded-2xl p-4">
@@ -241,11 +257,11 @@ export function EditBetModal({
                 <div className="grid grid-cols-4 items-center gap-4">
                   <div>
                     <label className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">Line</label>
-                    <input type="number" value={leg.line} onChange={(e) => updateLeg(idx, { line: Number(e.target.value) })} className="w-full bg-black/20 rounded-lg px-3 py-2 text-sm font-mono outline-none focus:ring-1 ring-[#FFD700]" />
+                    <input type="number" step="0.5" value={leg.line} onChange={(e) => updateLeg(idx, { line: Number(e.target.value) })} className="w-full bg-black/20 rounded-lg px-3 py-2 text-sm font-mono outline-none focus:ring-1 ring-[#FFD700]" />
                   </div>
                   <div>
                     <label className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">O/U</label>
-                    <select value={leg.selection} onChange={(e) => updateLeg(idx, { selection: e.target.value as 'Over' | 'Under' })} className="w-full bg-black/20 rounded-lg px-3 py-2 text-sm font-bold outline-none appearance-none cursor-pointer">
+                    <select value={leg.selection} onChange={(e) => updateLeg(idx, { selection: e.target.value as any })} className="w-full bg-black/20 rounded-lg px-3 py-2 text-sm font-bold outline-none appearance-none cursor-pointer">
                       <option value="Over">Over</option>
                       <option value="Under">Under</option>
                     </select>
@@ -256,7 +272,7 @@ export function EditBetModal({
                   </div>
                   <div>
                     <label className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">Status</label>
-                    <select value={leg.status} onChange={(e) => updateLeg(idx, { status: e.target.value as 'pending' | 'won' | 'lost' | 'void' })} className={`w-full bg-black/20 rounded-lg px-3 py-2 text-sm font-black uppercase outline-none cursor-pointer ${leg.status === 'won' ? 'text-primary' : leg.status === 'lost' ? 'text-red-500' : 'text-zinc-400'}`}>
+                    <select value={leg.status} onChange={(e) => updateLeg(idx, { status: e.target.value as any })} className={`w-full bg-black/20 rounded-lg px-3 py-2 text-sm font-black uppercase outline-none cursor-pointer ${leg.status === 'won' ? 'text-green-500' : leg.status === 'lost' ? 'text-red-500' : 'text-zinc-400'}`}>
                       <option value="pending">Pending</option>
                       <option value="won">Won</option>
                       <option value="lost">Lost</option>
@@ -264,20 +280,12 @@ export function EditBetModal({
                     </select>
                   </div>
                 </div>
-                <div className="flex justify-end pt-2">
-                  <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-orange-400">
-                    <input type="checkbox" checked={leg.isLive} onChange={(e) => updateLeg(idx, { isLive: e.target.checked })} className="hidden" />
-                    <div className={`w-4 h-4 rounded-full flex items-center justify-center transition-all duration-200 ${leg.isLive ? 'bg-orange-500/20 border-orange-600' : 'bg-black/20 border-white/10'}`}>
-                      {leg.isLive && <Flame className="w-2.5 h-2.5 text-orange-400" />}
-                    </div>
-                    Live Bet
-                  </label>
-                </div>
               </div>
             ))}
           </div>
         </div>
 
+        {/* Footer */}
         <div className="p-8 bg-white/[0.02] border-t border-white/5 flex justify-between items-center gap-4">
           <button onClick={handleDelete} className="px-6 py-4 rounded-2xl font-bold text-red-500 hover:bg-red-500/10 transition-colors flex items-center gap-2 justify-center">
             <Trash2 className="w-4 h-4" />
@@ -287,8 +295,12 @@ export function EditBetModal({
             <button onClick={onClose} className="flex-1 px-6 py-4 rounded-2xl font-bold text-zinc-400 hover:bg-white/5 transition-colors">
               Discard Changes
             </button>
-            <button onClick={handleSave} className="flex-[2] px-6 py-4 rounded-2xl font-black italic uppercase bg-[#FFD700] text-black shadow-[0_0_20px_rgba(255,215,0,0.3)] hover:scale-[1.02] transition-all">
-              Save Transaction
+            <button 
+              onClick={handleSave} 
+              disabled={isSaving}
+              className={`flex-[2] px-6 py-4 rounded-2xl font-black italic uppercase bg-[#FFD700] text-black shadow-[0_0_20px_rgba(255,215,0,0.3)] transition-all ${isSaving ? 'opacity-50 cursor-not-allowed' : 'hover:scale-[1.02]'}`}
+            >
+              {isSaving ? 'Saving...' : 'Save Transaction'}
             </button>
           </div>
         </div>

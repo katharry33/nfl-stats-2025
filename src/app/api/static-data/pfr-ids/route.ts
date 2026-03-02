@@ -3,11 +3,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 import { Timestamp, FieldValue } from 'firebase-admin/firestore';
 
-const COL = 'static_pfr_Id_Map';
+const COL = 'static_pfrIdMap';
 
 export async function GET() {
   try {
-    const snap = await adminDb.collection(COL).orderBy('playerName').get();
+    const snap = await adminDb.collection(COL).orderBy('player').get();
     return NextResponse.json(snap.docs.map(d => ({ id: d.id, ...d.data() })));
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });

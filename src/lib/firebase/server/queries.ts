@@ -30,6 +30,6 @@ export async function getStaticData(collectionName: string, limit: number = 500,
 }
 
 export async function getStaticSchedule() {
-  const snap = await adminDb.collection('static_schedule').orderBy('Week').get();
+  const snap = await adminDb.collection('static_schedule').orderBy('week').get();
   return snap.docs.map((d: QueryDocumentSnapshot) => ({ id: d.id, ...d.data() }));
 }

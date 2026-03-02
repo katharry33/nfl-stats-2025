@@ -42,22 +42,25 @@ function calcOdds(sels: any[]): number {
 }
 
 export const BetSlipProvider = ({ children }: { children: React.ReactNode }) => {
-  const [selections,       setSelections]       = useState<any[]>([]);
+  const [selections, setSelections] = useState<any[]>([]);
   const [totalParlayOdds,  setTotalParlayOdds]  = useState(0);
 
   useEffect(() => {
-    // On Mount: Load from local storage
-    const saved = localStorage.getItem('sweetspot_slip');
-    if (saved) setSelections(JSON.parse(saved));
+    const savedSlip = localStorage.getItem('active_betslip');
+    if (savedSlip) {
+      try {
+        setSelections(JSON.parse(savedSlip));
+      } catch (e) {
+        console.error("Failed to parse saved betslip", e);
+      }
+    }
   }, []);
 
   useEffect(() => {
-    // On Change: Save to local storage
-    localStorage.setItem('sweetspot_slip', JSON.stringify(selections));
+    localStorage.setItem('active_betslip', JSON.stringify(selections));
     setTotalParlayOdds(calcOdds(selections));
   }, [selections]);
 
-  // Historical bets
   const [bets,        setBets]        = useState<Bet[]>([]);
   const [totalCount,  setTotalCount]  = useState(0);
   const [loading,     setLoading]     = useState(false);
@@ -121,7 +124,6 @@ export const BetSlipProvider = ({ children }: { children: React.ReactNode }) => 
     setBets(prev => prev.filter(b => b.id !== id));
   };
 
-  // Betslip selection actions
   const addLeg = useCallback((leg: any) => {
     setSelections(prev => {
       if (prev.some(l => (l.propId || l.id) === (leg.propId || leg.id) && l.selection === leg.selection)) {
@@ -141,7 +143,7 @@ export const BetSlipProvider = ({ children }: { children: React.ReactNode }) => 
 
   const clearSlip = useCallback(() => {
     setSelections([]);
-    try { localStorage.removeItem('sweetspot_slip'); } catch {}
+    try { localStorage.removeItem('active_betslip'); } catch {}
   }, []);
 
   return (

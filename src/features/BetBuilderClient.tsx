@@ -25,14 +25,8 @@ interface BetBuilderClientProps {
 export function BetBuilderClient({ initialWeek, season = 2025 }: BetBuilderClientProps) {
   const router = useRouter();
 
-  // ✅ FIX: Separated useProps and useBetSlip correctly
-  const {
-    props: rawProps,
-    isLoading,
-    error,
-    propTypes,
-    teams,
-  } = useProps(initialWeek, season);
+  const { props: rawProps, isLoading, error, propTypes, teams } = useProps(initialWeek, [season]);
+ 
 
   const {
     items: selections,
