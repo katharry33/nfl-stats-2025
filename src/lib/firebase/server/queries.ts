@@ -1,17 +1,17 @@
 // src/lib/firebase/server/queries.ts
-import { getAdminDb } from "../admin";
+import { adminDb } from "../admin";
+import { QueryDocumentSnapshot } from 'firebase-admin/firestore';
 
 export async function getStaticData(collectionName: string, limit: number = 500, lastId?: string) {
   try {
-    const db = getAdminDb();
-    let query = db.collection(collectionName).limit(limit);
+    let query = adminDb.collection(collectionName).limit(limit);
 
     // Basic ordering to ensure pagination works
     // Note: Some static collections might not have "Week", so we fallback to __name__
     query = query.orderBy("__name__", "desc");
 
     if (lastId) {
-      const lastDoc = await db.collection(collectionName).doc(lastId).get();
+      const lastDoc = await adminDb.collection(collectionName).doc(lastId).get();
       if (lastDoc.exists) {
         query = query.startAfter(lastDoc);
       }
@@ -19,7 +19,7 @@ export async function getStaticData(collectionName: string, limit: number = 500,
 
     const snapshot = await query.get();
     
-    return snapshot.docs.map(doc => ({
+    return snapshot.docs.map((doc: QueryDocumentSnapshot) => ({
       id: doc.id,
       ...doc.data()
     }));
@@ -29,7 +29,7 @@ export async function getStaticData(collectionName: string, limit: number = 500,
   }
 }
 
-// Added the missing function
 export async function getStaticSchedule() {
-  return getStaticData('schedule');
+  const snap = await adminDb.collection('static_schedule').orderBy('Week').get();
+  return snap.docs.map((d: QueryDocumentSnapshot) => ({ id: d.id, ...d.data() }));
 }

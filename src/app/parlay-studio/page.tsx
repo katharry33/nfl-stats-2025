@@ -1,4 +1,3 @@
-
 'use client';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -69,7 +68,7 @@ function DuplicateModal({ duplicates, onSaveAnyway, onCancel }: {
           </div>
         </div>
         <div className="space-y-1.5 max-h-40 overflow-y-auto">
-          {duplicates.map((d, i) => (
+          {duplicates.map((d: any, i: number) => (
             <div key={i} className="flex items-center gap-2 bg-black/40 border border-white/[0.06] rounded-xl px-3 py-2">
               <span className="text-[#FFD700] text-[9px] font-black uppercase bg-[#FFD700]/10 px-1.5 py-0.5 rounded">DUP</span>
               <div className="text-xs text-white font-bold">{d.player}</div>
@@ -125,7 +124,7 @@ function LegCard({ leg, index, onUpdate, onRemove }: {
             <span className="font-mono font-black text-white">{leg.line}</span>
           </div>
           <div className="flex rounded-xl overflow-hidden border border-white/[0.08] ml-auto">
-            {['Over', 'Under'].map((s: any) => (
+            {(['Over', 'Under'] as const).map((s: any) => (
               <button key={s} onClick={() => onUpdate(leg.id, { selection: s })}
                 className={`px-3 py-1.5 text-[11px] font-black uppercase transition-colors ${
                   leg.selection === s
@@ -184,23 +183,42 @@ function LegCard({ leg, index, onUpdate, onRemove }: {
 export default function ParlayStudioPage() {
   const router        = useRouter();
   const auth          = useAuth();
-  const { selections, removeLeg, clearSlip } = useBetSlip();
-
-  useEffect(() => {
-    console.log("Studio Selections:", selections);
-  }, [selections]);
-
+  const { selections, addLeg, removeLeg, clearSlip } = useBetSlip();
   const detailsRef    = useRef<HTMLDivElement>(null);
 
-  const [legs, setLegs] = useState<LegState[]>(() =>
-    selections.map((s: any) => ({
-      id: s.id, player: s.player || '', prop: s.prop || '',
-      line: Number(s.line || 0), selection: s.selection || 'Over',
-      odds: Number(s.odds || -110), matchup: s.matchup || '',
-      week: s.week !== undefined ? Number(s.week) : undefined,
-      result: 'pending' as LegResult, isLive: false, ...s,
-    }))
-  );
+  const [legs, setLegs] = useState<LegState[]>([]);
+
+  useEffect(() => {
+    const loadSelectionsFromStorage = (parsed: any[]) => {
+      if (Array.isArray(parsed)) {
+        parsed.forEach(leg => addLeg(leg));
+      }
+    };
+
+    const pending = sessionStorage.getItem('pendingBetSlip');
+    if (pending) {
+      try {
+        const parsed = JSON.parse(pending);
+        loadSelectionsFromStorage(parsed);
+        sessionStorage.removeItem('pendingBetSlip');
+      } catch (e) {
+        console.error("Failed to parse pendingBetSlip from sessionStorage", e);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (selections) {
+        setLegs(selections.map((s: any) => ({
+            id: s.id, player: s.player || '', prop: s.prop || '',
+            line: Number(s.line || 0), selection: s.selection || 'Over',
+            odds: Number(s.odds || -110), matchup: s.matchup || '',
+            week: s.week !== undefined ? Number(s.week) : undefined,
+            result: 'pending' as LegResult, isLive: false, ...s,
+        })));
+    }
+  }, [selections]);
 
   const [selectedType, setSelectedType] = useState('Parlay');
   const [stake,        setStake]        = useState('');
@@ -225,8 +243,12 @@ export default function ParlayStudioPage() {
   const [dupModal,    setDupModal]    = useState(false);
   const [dupLegs,     setDupLegs]     = useState<{ player: string; prop: string }[]>([]);
 
-  const autoAmerican = useMemo(() => calculateParlayOdds(legs.map(l => l.odds)), [legs]);
-  const effectiveOdds = manualOdds.trim() !== '' ? parseInt(manualOdds) : autoAmerican;
+  const parlayOdds = useMemo(() => {
+    const allOdds = legs.map(l => Number(l.odds));
+    return calculateParlayOdds(allOdds);
+  }, [legs]);
+
+  const effectiveOdds = manualOdds.trim() !== '' ? parseInt(manualOdds) : parlayOdds;
   const stakeNum = parseFloat(stake) || 0;
 
   const potentialPayout = useMemo(() => {
@@ -249,59 +271,60 @@ export default function ParlayStudioPage() {
   };
 
   const updateLegState = (id: string, up: Partial<LegState>) =>
-    setLegs(prev => prev.map(l => l.id === id ? { ...l, ...up } : l));
+    setLegs(prev => prev.map((l: any) => l.id === id ? { ...l, ...up } : l));
 
   const removeLegState = (id: string) => {
-    setLegs(prev => prev.filter(l => l.id !== id));
+    setLegs(prev => prev.filter((l: any) => l.id !== id));
     removeLeg(id);
   };
 
   const handleSaveParlay = async () => {
     setSaving(true);
     try {
-      // 1. "All Legs Must Win" Logic
       const hasLost = legs.some((l: any) => l.result === 'lost');
       const allWon = legs.every((l: any) => l.result === 'won');
-      
-      // 2. Determine aggregate status
-      const finalStatus = hasLost ? 'lost' : allWon ? 'won' : 'pending';
+      const finalStatus = hasLost ? 'lost' : (allWon ? 'won' : 'pending');
 
-      const parlayId = crypto.randomUUID();
       const betDoc = {
         userId: auth.user?.uid,
-        parlayId,
         type: selectedType,
-        legs: legs.map(l => ({ 
-          ...l, 
-          status: l.result, // Use the leg's result
-          line: Number(l.line), // Critical for persistence
-          odds: Number(l.odds), // Critical for persistence
-        })),
         stake: stakeNum,
-        isBonusBet,
         odds: effectiveOdds,
         boost: Number(boost) || 0,
         gameDate,
         week: Number(week),
-        status: finalStatus, // Use the derived status
+        status: finalStatus,
         createdAt: new Date().toISOString(),
+        isBonusBet,
+        legs: legs.map((l: any) => ({ 
+          ...l, 
+          status: l.result,
+          line: Number(l.line),
+          odds: Number(l.odds),
+        })),
       };
-      const response = await fetch('/api/bets/save', {
+
+      const response = await fetch('/api/save-bet', {
         method: 'POST',
         body: JSON.stringify(betDoc),
         headers: { 'Content-Type': 'application/json' },
       });
+
       if (!response.ok) {
         const err = await response.json();
         throw new Error(err.error || 'Failed to save');
       }
+
       toast.success('Parlay saved!', {
         style: { background: '#0f1115', border: '1px solid rgba(255,215,0,0.2)', color: '#FFD700' },
       });
+      
       setLegs([]);
       setDetailsOpen(false);
       clearSlip();
       router.push('/betting-log');
+      router.refresh();
+
     } catch (err: any) {
       toast.error('Save Error', { description: err.message });
     } finally {
@@ -363,14 +386,14 @@ export default function ParlayStudioPage() {
             )}
           </div>
 
-          {legs.map((s: any, i: number) => (
-            <LegCard key={s.id} leg={s} index={i} onUpdate={updateLegState} onRemove={removeLegState} />
+          {legs.map((leg: any, i: number) => (
+            <LegCard key={leg.id} leg={leg} index={i} onUpdate={updateLegState} onRemove={removeLegState} />
           ))}
 
           {legs.length > 1 && (
             <div className="flex items-center justify-between px-4 py-3 rounded-2xl bg-[#FFD700]/5 border border-[#FFD700]/10">
               <span className="text-xs text-zinc-600 font-mono">Auto parlay ({legs.length} legs)</span>
-              <span className="text-sm font-black font-mono text-[#FFD700]">{fmtAmerican(autoAmerican)}</span>
+              <span className="text-sm font-black font-mono text-[#FFD700]">{fmtAmerican(parlayOdds)}</span>
             </div>
           )}
         </section>
@@ -403,7 +426,7 @@ export default function ParlayStudioPage() {
                 <select value={selectedType} onChange={e => setSelectedType(e.target.value)}
                   className="w-full bg-black/40 border border-white/[0.08] text-white rounded-xl px-3 py-2.5 text-sm
                     outline-none focus:ring-1 focus:ring-[#FFD700]/30">
-                  {BET_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                  {BET_TYPES.map((t: any) => <option key={t} value={t}>{t}</option>)}
                 </select>
               </div>
 
@@ -425,7 +448,7 @@ export default function ParlayStudioPage() {
                     className="w-full bg-black/40 border border-white/[0.08] text-white rounded-xl px-3 py-2.5 text-sm
                       outline-none focus:ring-1 focus:ring-[#FFD700]/30">
                     <option value="">None</option>
-                    {[5,10,15,20,25,30,33,35,40,50,100].map(p => (
+                    {[5,10,15,20,25,30,33,35,40,50,100].map((p: any) => (
                       <option key={p} value={String(p)}>{p}%</option>
                     ))}
                   </select>
@@ -487,8 +510,7 @@ export default function ParlayStudioPage() {
                 transition-all disabled:opacity-40">
               {saving
                 ? <><Loader2 className="h-5 w-5 animate-spin" /> Saving…</>
-                : <><TrendingUp className="h-5 w-5" /> Save to Betting Log</>
-              }
+                : <><TrendingUp className="h-5 w-5" /> Save to Betting Log</>}
             </button>
           </section>
         )}

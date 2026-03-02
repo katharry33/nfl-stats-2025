@@ -7,7 +7,6 @@ import { useBetSlip } from '@/hooks/useBetSlip';
 import PropsTable from './PropsTable';
 import { BetSlipPanel } from './BetSlipPanel';
 import { NFLProp, SortKey, SortDir, BetLeg } from '@/lib/types';
-import { calculateParlayOdds } from '@/lib/utils/odds';
 import { RefreshCw } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -26,6 +25,7 @@ interface BetBuilderClientProps {
 export function BetBuilderClient({ initialWeek, season = 2025 }: BetBuilderClientProps) {
   const router = useRouter();
 
+  // ✅ FIX: Separated useProps and useBetSlip correctly
   const {
     props: rawProps,
     isLoading,
@@ -99,6 +99,7 @@ export function BetBuilderClient({ initialWeek, season = 2025 }: BetBuilderClien
   // ── Handlers ─────────────────────────────────────────────────────────────────
 
   const handleSaveToParlay = () => {
+    // Note: ensure your parlay-studio page checks sessionStorage on mount
     sessionStorage.setItem('pendingBetSlip', JSON.stringify(selections));
     router.push('/parlay-studio');
   };
@@ -110,7 +111,7 @@ export function BetBuilderClient({ initialWeek, season = 2025 }: BetBuilderClien
       id: crypto.randomUUID(),
       player: playerName,
       prop: selectedProp,
-      line: Number(line) || 0, // Fixed the array/number type mismatch
+      line: Number(line) || 0, 
       selection: 'Over',
       odds: -110,
       status: 'pending',
@@ -132,12 +133,8 @@ export function BetBuilderClient({ initialWeek, season = 2025 }: BetBuilderClien
     }
   };
 
-  // ─────────────────────────────────────────────────────────────────────────────
-
   return (
     <div className="flex flex-col lg:flex-row gap-6 min-h-screen bg-[#060606] p-4 md:p-8 text-white">
-
-      {/* ── Main Content Area ─────────────────────────────────────────────── */}
       <main className="flex-1 min-w-0 space-y-6">
         <header className="flex items-center justify-between">
           <div>
@@ -174,7 +171,6 @@ export function BetBuilderClient({ initialWeek, season = 2025 }: BetBuilderClien
         />
       </main>
 
-      {/* ── Sidebar Bet Slip ─────────────────────────────────────────────── */}
       <aside className="w-full lg:w-[380px] flex-shrink-0">
         <div className="sticky top-8 bg-[#0f1115] border border-white/5 rounded-[2.5rem] p-6 shadow-2xl">
           <div className="flex items-center justify-between mb-6">

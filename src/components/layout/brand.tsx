@@ -4,13 +4,12 @@ export function Brand() {
   return (
     <div className="flex items-center gap-3">
       <div className="relative h-10 w-10 bg-zinc-900 rounded-xl p-1.5 border border-white/10">
-        <Image 
-          src="/logo.png" 
-          alt="SweetSpot Logo" 
-          width={40} 
-          height={40} 
-          className="object-contain" 
-        />
+      <Image
+  src="/logo.png"
+  alt="SweetSpot Logo"
+  fill
+  sizes="(max-width: 600px) 120px, 200px"
+/>
       </div>
       <div className="flex flex-col">
         <h1 className="text-white font-black text-2xl italic tracking-tighter uppercase leading-none">

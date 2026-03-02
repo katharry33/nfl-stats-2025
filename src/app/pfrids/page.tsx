@@ -16,7 +16,7 @@ export default function PfrIdsPage() {
       setData(json);
       setLoading(false);
     }
-    fetchPfrIds();
+    fetch('/api/static-data/pfr-ids')  // was: ?type=pfr
   }, []);
 
   return (
@@ -36,8 +36,8 @@ export default function PfrIdsPage() {
             ) : (
               data.map((item: any) => (
                 <TableRow key={item.id} className="border-slate-800">
-                  <TableCell className="text-white">{item.PlayerName}</TableCell>
-                  <TableCell className="text-slate-400 font-mono">{item.PfrId}</TableCell>
+                  <TableCell className="text-white">{item.playerName}</TableCell>   // was: item.PlayerName
+                  <TableCell className="text-slate-400 font-mono">{item.pfrId}</TableCell>  // was: item.PfrId
                 </TableRow>
               ))
             )}

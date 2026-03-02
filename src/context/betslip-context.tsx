@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { Bet } from '@/lib/types';
 
 export interface BetSlipContextType {
@@ -29,7 +29,6 @@ export const useBetSlip = () => {
   return ctx;
 };
 
-const STORAGE_KEY = 'sweetspot_betslip';
 const PAGE_SIZE   = 50;
 
 function calcOdds(sels: any[]): number {
@@ -42,33 +41,23 @@ function calcOdds(sels: any[]): number {
   return dec > 1 ? parseFloat(((dec - 1) * 100).toFixed(2)) : 0;
 }
 
-// Read synchronously from localStorage — used in initial state so Parlay Studio
-// doesn't need to wait for a useEffect to hydrate.
-function readSlipFromStorage(): any[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
 export const BetSlipProvider = ({ children }: { children: React.ReactNode }) => {
-  // ── Bet slip selections ───────────────────────────────────────────────────
-  // Initialize synchronously from localStorage so selections are available
-  // immediately when Parlay Studio mounts (no useEffect delay).
-  const [selections,       setSelections]       = useState<any[]>(() => readSlipFromStorage());
-  const [totalParlayOdds,  setTotalParlayOdds]  = useState(() => calcOdds(readSlipFromStorage()));
+  const [selections,       setSelections]       = useState<any[]>([]);
+  const [totalParlayOdds,  setTotalParlayOdds]  = useState(0);
 
-  // Persist to localStorage whenever selections change
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(selections));
-    } catch {}
+    // On Mount: Load from local storage
+    const saved = localStorage.getItem('sweetspot_slip');
+    if (saved) setSelections(JSON.parse(saved));
+  }, []);
+
+  useEffect(() => {
+    // On Change: Save to local storage
+    localStorage.setItem('sweetspot_slip', JSON.stringify(selections));
+    setTotalParlayOdds(calcOdds(selections));
   }, [selections]);
 
-  // ── Historical bets ───────────────────────────────────────────────────────
+  // Historical bets
   const [bets,        setBets]        = useState<Bet[]>([]);
   const [totalCount,  setTotalCount]  = useState(0);
   const [loading,     setLoading]     = useState(false);
@@ -132,16 +121,13 @@ export const BetSlipProvider = ({ children }: { children: React.ReactNode }) => 
     setBets(prev => prev.filter(b => b.id !== id));
   };
 
-  // ── Betslip selection actions ─────────────────────────────────────────────
-
+  // Betslip selection actions
   const addLeg = useCallback((leg: any) => {
     setSelections(prev => {
-      // Guard against exact duplicate
       if (prev.some(l => (l.propId || l.id) === (leg.propId || leg.id) && l.selection === leg.selection)) {
         return prev;
       }
       const next = [...prev, leg];
-      setTotalParlayOdds(calcOdds(next));
       return next;
     });
   }, []);
@@ -149,15 +135,13 @@ export const BetSlipProvider = ({ children }: { children: React.ReactNode }) => 
   const removeLeg = useCallback((legId: string) => {
     setSelections(prev => {
       const next = prev.filter(l => (l.propId || l.id) !== legId && l.id !== legId);
-      setTotalParlayOdds(calcOdds(next));
       return next;
     });
   }, []);
 
   const clearSlip = useCallback(() => {
     setSelections([]);
-    setTotalParlayOdds(0);
-    try { localStorage.removeItem(STORAGE_KEY); } catch {}
+    try { localStorage.removeItem('sweetspot_slip'); } catch {}
   }, []);
 
   return (

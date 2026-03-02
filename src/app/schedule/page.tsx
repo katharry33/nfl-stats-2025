@@ -8,7 +8,7 @@ export default function SchedulePage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/static-data?type=schedule')
+    fetch('/api/static-data/schedule')
       .then(r => r.json())
       .then(json => { setData(json); setLoading(false); })
       .catch(() => setLoading(false));

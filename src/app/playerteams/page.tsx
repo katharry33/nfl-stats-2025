@@ -8,7 +8,7 @@ export default function PlayerTeamsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/static-data?type=player-team')
+    fetch('/api/static-data/player-teams')
       .then(r => r.json())
       .then(json => { setData(json); setLoading(false); })
       .catch(() => setLoading(false));
@@ -59,11 +59,11 @@ export default function PlayerTeamsPage() {
                 <tr key={item.id ?? i}
                   className="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors">
                   <td className="px-5 py-3 text-sm font-bold text-white italic uppercase tracking-tight">
-                    {item.PlayerName}
+                    {item.playerName}
                   </td>
                   <td className="px-5 py-3">
                     <span className="text-[10px] font-black text-[#FFD700] bg-[#FFD700]/10 border border-[#FFD700]/20 px-2 py-0.5 rounded-lg uppercase tracking-widest">
-                      {item.Team}
+                      {item.team}
                     </span>
                   </td>
                 </tr>

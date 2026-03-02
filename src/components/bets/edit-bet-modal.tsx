@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { Bet, BetLeg } from '@/lib/types';
 import { calculateParlayOdds } from '@/lib/utils/odds';
 import { Trash2, Calendar, Hash, Zap, ShieldCheck, Flame } from 'lucide-react';
@@ -20,6 +21,7 @@ export function EditBetModal({
   onSave,
   onDelete,
 }: EditBetModalProps) {
+  const router = useRouter();
   const [formData, setFormData] = useState<any>(null);
   const [oddsOverridden, setOddsOverridden] = useState(false);
 
@@ -59,7 +61,7 @@ export function EditBetModal({
         status: (bet as any).status || 'pending',
         cashedAmount: (bet as any).status === 'cashed' ? (bet as any).payout : '',
         legs: Array.isArray(bet.legs)
-          ? bet.legs.map((leg) => ({ ...leg, isLive: leg.isLive || false, odds: leg.odds || -110 }))
+          ? bet.legs.map((leg: any) => ({ ...leg, isLive: leg.isLive || false, odds: leg.odds || -110 }))
           : [],
       };
       setFormData(recalculatePayout(initialData));
@@ -78,41 +80,41 @@ export function EditBetModal({
     if (oddsOverridden) {
         handleDataChange({ legs: newLegs });
     } else {
-        const newTotalOdds = calculateParlayOdds(newLegs.map(l => Number(l.odds || -110)));
+        const newTotalOdds = calculateParlayOdds(newLegs.map((l: any) => Number(l.odds || -110)));
         handleDataChange({ legs: newLegs, odds: newTotalOdds });
     }
   };
 
-  const handleSave = () => {
-    // 1. Determine Parlay Status, but respect manual overrides like 'cashed'
-    let finalStatus = formData.status;
-    if (finalStatus !== 'cashed') {
-      const legStatuses = formData.legs.map((l: any) => l.status);
-      if (legStatuses.includes('lost')) {
-        finalStatus = 'lost';
-      } else if (legStatuses.every((s: string) => s === 'won' || s === 'void')) {
-        finalStatus = legStatuses.every((s: string) => s === 'void') ? 'void' : 'won';
-      } else {
-        finalStatus = 'pending';
-      }
-    }
+  const handleSave = async () => {
+    // Normalize to lowercase to match your API logic
+    const hasLost = formData.legs.some((l: any) => l.status.toLowerCase() === 'lost');
+    const allWon = formData.legs.every((l: any) => l.status.toLowerCase() === 'won');
+    const finalStatus = hasLost ? 'lost' : (allWon ? 'won' : 'pending');
 
     const payload = {
       ...formData,
-      status: finalStatus, // Set the derived top-level status
-      stake: Number(formData.stake || 0),
-      boost: Number(formData.boost || 0),
-      parlayOdds: Number(formData.odds || 0), // Rename for backend
-      potentialPayout: Number(formData.potentialPayout || 0),
+      status: finalStatus, // This is what persists the "All Must Win" result
       legs: formData.legs.map((leg: any) => ({
         ...leg,
-        line: Number(leg.line || 0), // Force line to be a number
-        odds: Number(leg.odds || 0), // Force odds to be a number
+        line: Number(leg.line), // Prevent numeric persistence errors
+        odds: Number(leg.odds)
       }))
     };
-    delete payload.odds; // Clean up old key
 
-    onSave(payload);
+    try {
+      const response = await fetch('/api/save-bet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (response.ok) {
+        onClose();
+        router.refresh();
+      }
+    } catch (error) {
+      console.error("Save failed:", error);
+    }
   };
 
   const handleDelete = async () => {
@@ -127,7 +129,7 @@ export function EditBetModal({
     if (oddsOverridden) {
         handleDataChange({ legs: newLegs });
     } else {
-        const newTotalOdds = calculateParlayOdds(newLegs.map(l => Number(l.odds || -110)));
+        const newTotalOdds = calculateParlayOdds(newLegs.map((l: any) => Number(l.odds || -110)));
         handleDataChange({ legs: newLegs, odds: newTotalOdds });
     }
   };

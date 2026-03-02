@@ -8,11 +8,12 @@ export async function POST(req: Request) {
     if (!authId) return new NextResponse('Unauthorized', { status: 401 });
 
     const body = await req.json();
+    console.log('Incoming Payload:', JSON.stringify(body, null, 2));
     const { id, legs, ...betData } = body;
 
     // 1. CALCULATE AGGREGATE STATUS (The "All Must Win" Rule)
-    const hasLost = legs?.some((l: any) => l.status === 'lost');
-    const allWon = legs?.every((l: any) => l.status === 'won');
+    const hasLost = legs?.some((l: any) => l.status.toLowerCase() === 'lost');
+    const allWon = legs?.every((l: any) => l.status.toLowerCase() === 'won');
     const parlayStatus = hasLost ? 'lost' : (allWon ? 'won' : 'pending');
 
     // 2. SANITIZE LEGS (Force Numbers & Types)
@@ -40,22 +41,27 @@ export async function POST(req: Request) {
       await Promise.all(propPromises);
     }
 
-    // 4. SAVE THE BET WITH DERIVED STATUS
+    // 4. PREPARE FINAL DATA
     const finalData = {
       ...betData,
       legs: sanitizedLegs,
       status: parlayStatus, // Overwrites status with parlay logic
-      userId: authId,
-      updatedAt: new Date().toISOString()
+      userId: authId
     };
 
+    // 5. SAVE THE BET
     if (id) {
-      await adminDb.collection('user_bets').doc(id).update(finalData);
+      await adminDb.collection('user_bets').doc(id).set({
+        ...finalData,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+      
       return NextResponse.json({ success: true, status: parlayStatus });
     } else {
       const newDoc = await adminDb.collection('user_bets').add({
         ...finalData,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
       });
       return NextResponse.json({ success: true, id: newDoc.id, status: parlayStatus });
     }
