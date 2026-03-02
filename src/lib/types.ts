@@ -22,7 +22,7 @@ export interface BetLeg {
   id: string;
   player: string;
   prop: string;
-  line: number | number[];
+  line: number;
   selection: 'Over' | 'Under';
   odds: number;
   status: 'pending' | 'won' | 'lost' | 'void';

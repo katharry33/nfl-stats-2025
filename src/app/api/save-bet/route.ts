@@ -8,49 +8,56 @@ export async function POST(req: Request) {
     if (!authId) return new NextResponse('Unauthorized', { status: 401 });
 
     const body = await req.json();
-    const { id, ...betData } = body;
+    const { id, legs, ...betData } = body;
 
-    // --- NEW: PERSIST INDIVIDUAL LEGS TO PROPS LIBRARY ---
-    // If there are legs in this bet, we save them to 'allProps_2025' 
-    // so they are searchable in the future.
-    if (betData.legs && Array.isArray(betData.legs)) {
+    // 1. CALCULATE AGGREGATE STATUS (The "All Must Win" Rule)
+    const hasLost = legs?.some((l: any) => l.status === 'lost');
+    const allWon = legs?.every((l: any) => l.status === 'won');
+    const parlayStatus = hasLost ? 'lost' : (allWon ? 'won' : 'pending');
+
+    // 2. SANITIZE LEGS (Force Numbers & Types)
+    const sanitizedLegs = legs?.map((leg: any) => ({
+      ...leg,
+      line: Number(leg.line) || 0,
+      odds: Number(leg.odds) || 0,
+      status: (leg.status || 'pending') as 'pending' | 'won' | 'lost' | 'void',
+      selection: leg.selection as 'Over' | 'Under'
+    })) || [];
+
+    // 3. PERSIST TO PROPS LIBRARY
+    if (sanitizedLegs.length > 0) {
       const propLibrary = adminDb.collection('allProps_2025');
-      
-      const propPromises = betData.legs.map((leg: any) => {
-        // Create a unique ID based on Player and Prop to avoid duplicates
-        const propId = `${leg.player}-${leg.prop}`.replace(/\s+/g, '-').toLowerCase();
+      const propPromises = sanitizedLegs.map((leg: any) => {
+        if (!leg.player || !leg.prop) return Promise.resolve();
+        const propId = `${leg.player}-${leg.prop}`.replace(/[^a-zA-Z0-9-]/g, '-').toLowerCase();
         
         return propLibrary.doc(propId).set({
-          player: leg.player,
-          prop: leg.prop,
-          line: leg.line,
-          team: leg.team,
-          matchup: leg.matchup || '',
-          gameDate: leg.gameDate || betData.gameDate || '',
+          ...leg,
           lastUsed: new Date().toISOString(),
-          isManual: true // Helps you filter/identify user-added props
+          isManual: true
         }, { merge: true });
       });
-
       await Promise.all(propPromises);
     }
 
-    // --- EXISTING BET SAVING LOGIC ---
+    // 4. SAVE THE BET WITH DERIVED STATUS
+    const finalData = {
+      ...betData,
+      legs: sanitizedLegs,
+      status: parlayStatus, // Overwrites status with parlay logic
+      userId: authId,
+      updatedAt: new Date().toISOString()
+    };
+
     if (id) {
-      // UPDATE existing bet
-      await adminDb.collection('user_bets').doc(id).update({
-        ...betData,
-        updatedAt: new Date().toISOString()
-      });
-      return NextResponse.json({ success: true, message: 'Bet updated' });
+      await adminDb.collection('user_bets').doc(id).update(finalData);
+      return NextResponse.json({ success: true, status: parlayStatus });
     } else {
-      // CREATE new bet
-      const newDocRef = await adminDb.collection('user_bets').add({
-        ...betData,
-        userId: authId,
+      const newDoc = await adminDb.collection('user_bets').add({
+        ...finalData,
         createdAt: new Date().toISOString()
       });
-      return NextResponse.json({ success: true, id: newDocRef.id });
+      return NextResponse.json({ success: true, id: newDoc.id, status: parlayStatus });
     }
 
   } catch (error: any) {

@@ -1,6 +1,6 @@
-'use client';
 
-import React, { useState, useMemo, useRef } from 'react';
+'use client';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useBetSlip } from '@/context/betslip-context';
@@ -8,7 +8,7 @@ import { getWeekFromDate } from '@/lib/utils/nfl-week';
 import { toDecimal, toAmerican, calculateParlayOdds } from '@/lib/utils/odds';
 import {
   Trash2, ChevronLeft, CheckCircle2, Clock, XCircle,
-  Zap, DollarSign, ArrowDown, TrendingUp, Loader2, AlertTriangle, Layers
+  Zap, DollarSign, ArrowDown, TrendingUp, Loader2, AlertTriangle, Layers, ShieldCheck
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -125,7 +125,7 @@ function LegCard({ leg, index, onUpdate, onRemove }: {
             <span className="font-mono font-black text-white">{leg.line}</span>
           </div>
           <div className="flex rounded-xl overflow-hidden border border-white/[0.08] ml-auto">
-            {(['Over', 'Under'] as const).map(s => (
+            {['Over', 'Under'].map((s: any) => (
               <button key={s} onClick={() => onUpdate(leg.id, { selection: s })}
                 className={`px-3 py-1.5 text-[11px] font-black uppercase transition-colors ${
                   leg.selection === s
@@ -164,7 +164,7 @@ function LegCard({ leg, index, onUpdate, onRemove }: {
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-[9px] uppercase font-black text-zinc-600 w-12 shrink-0">Result</span>
           <div className="flex gap-1.5 flex-wrap">
-            {RESULTS.map(r => (
+            {RESULTS.map((r: any) => (
               <button key={r.value} onClick={() => onUpdate(leg.id, { result: r.value })}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-[10px] font-black uppercase transition-all ${
                   leg.result === r.value ? r.active : r.inactive
@@ -185,6 +185,11 @@ export default function ParlayStudioPage() {
   const router        = useRouter();
   const auth          = useAuth();
   const { selections, removeLeg, clearSlip } = useBetSlip();
+
+  useEffect(() => {
+    console.log("Studio Selections:", selections);
+  }, [selections]);
+
   const detailsRef    = useRef<HTMLDivElement>(null);
 
   const [legs, setLegs] = useState<LegState[]>(() =>
@@ -216,6 +221,7 @@ export default function ParlayStudioPage() {
   const [saving,      setSaving]      = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [manualOdds,  setManualOdds]  = useState('');
+  const [isBonusBet,  setIsBonusBet]  = useState(false);
   const [dupModal,    setDupModal]    = useState(false);
   const [dupLegs,     setDupLegs]     = useState<{ player: string; prop: string }[]>([]);
 
@@ -227,8 +233,9 @@ export default function ParlayStudioPage() {
     if (!stakeNum || !effectiveOdds) return 0;
     const dec = toDecimal(effectiveOdds);
     const boostMult = boost ? 1 + parseInt(boost) / 100 : 1;
-    return stakeNum * dec * boostMult;
-  }, [stakeNum, effectiveOdds, boost]);
+    const payout = stakeNum * dec * boostMult;
+    return isBonusBet ? payout - stakeNum : payout;
+  }, [stakeNum, effectiveOdds, boost, isBonusBet]);
 
   const handleEnterDetails = () => {
     setDetailsOpen(true);
@@ -252,18 +259,31 @@ export default function ParlayStudioPage() {
   const handleSaveParlay = async () => {
     setSaving(true);
     try {
+      // 1. "All Legs Must Win" Logic
+      const hasLost = legs.some((l: any) => l.result === 'lost');
+      const allWon = legs.every((l: any) => l.result === 'won');
+      
+      // 2. Determine aggregate status
+      const finalStatus = hasLost ? 'lost' : allWon ? 'won' : 'pending';
+
       const parlayId = crypto.randomUUID();
       const betDoc = {
         userId: auth.user?.uid,
         parlayId,
         type: selectedType,
-        legs: legs.map(l => ({ ...l, status: 'pending' })),
+        legs: legs.map(l => ({ 
+          ...l, 
+          status: l.result, // Use the leg's result
+          line: Number(l.line), // Critical for persistence
+          odds: Number(l.odds), // Critical for persistence
+        })),
         stake: stakeNum,
+        isBonusBet,
         odds: effectiveOdds,
         boost: Number(boost) || 0,
         gameDate,
         week: Number(week),
-        status: 'pending',
+        status: finalStatus, // Use the derived status
         createdAt: new Date().toISOString(),
       };
       const response = await fetch('/api/bets/save', {
@@ -343,8 +363,8 @@ export default function ParlayStudioPage() {
             )}
           </div>
 
-          {legs.map((leg, i) => (
-            <LegCard key={leg.id} leg={leg} index={i} onUpdate={updateLegState} onRemove={removeLegState} />
+          {legs.map((s: any, i: number) => (
+            <LegCard key={s.id} leg={s} index={i} onUpdate={updateLegState} onRemove={removeLegState} />
           ))}
 
           {legs.length > 1 && (
@@ -412,6 +432,27 @@ export default function ParlayStudioPage() {
                 </div>
               </div>
 
+               <div className="flex items-center justify-end">
+                <label className="flex items-center gap-3 cursor-pointer text-sm font-bold text-cyan-400">
+                  <input
+                    type="checkbox"
+                    checked={isBonusBet}
+                    onChange={(e) => setIsBonusBet(e.target.checked)}
+                    className="hidden"
+                  />
+                  <div
+                    className={`w-5 h-5 rounded-md flex items-center justify-center transition-all duration-200 ${isBonusBet
+                        ? 'bg-cyan-400/20 border-cyan-500'
+                        : 'bg-black/20 border-white/10'
+                      }`}>
+                    {isBonusBet && (
+                      <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+                    )}
+                  </div>
+                  This is a Bonus Bet (No-Sweat / Free Bet)
+                </label>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <label className="text-[10px] uppercase font-black text-zinc-600">Game Date</label>
@@ -434,7 +475,7 @@ export default function ParlayStudioPage() {
               {/* Payout preview */}
               {stakeNum > 0 && (
                 <div className="flex items-center justify-between px-4 py-3 bg-[#FFD700]/5 border border-[#FFD700]/10 rounded-2xl">
-                  <span className="text-xs text-zinc-500 font-mono">Potential payout</span>
+                  <span className="text-xs text-zinc-500 font-mono">Potential {isBonusBet ? 'Profit' : 'Payout'}</span>
                   <span className="text-lg font-black font-mono text-[#FFD700]">${potentialPayout.toFixed(2)}</span>
                 </div>
               )}
@@ -446,7 +487,8 @@ export default function ParlayStudioPage() {
                 transition-all disabled:opacity-40">
               {saving
                 ? <><Loader2 className="h-5 w-5 animate-spin" /> Saving…</>
-                : <><TrendingUp className="h-5 w-5" /> Save to Betting Log</>}
+                : <><TrendingUp className="h-5 w-5" /> Save to Betting Log</>
+              }
             </button>
           </section>
         )}

@@ -1,45 +1,42 @@
+// src/app/api/betting-log/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { adminDb } from '@/lib/firebase/admin'; 
-import * as admin from 'firebase-admin';
-import { QueryDocumentSnapshot, DocumentData } from 'firebase-admin/firestore';
-import { BetLeg } from '@/lib/types';
+import { adminDb } from '@/lib/firebase/admin';
+import admin from 'firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 
-const PAGE_SIZE = 25;
+const PAGE_SIZE = 50;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function toISO(val: any): string | null {
-  if (!val) return null;
-  let date: Date;
-  
-  try {
-    if (typeof val?.toDate === 'function') {
-      date = val.toDate();
-    } else {
-      const secs = val?.seconds ?? val?._seconds;
-      if (secs != null) {
-        date = new Date(Number(secs) * 1000);
-      } else if (typeof val === 'string' && val.length > 0) {
-        date = new Date(val);
-      } else {
-        return null;
-      }
-    }
-    return isNaN(date.getTime()) ? null : date.toISOString().split('T')[0];
-  } catch {
-    return null;
-  }
+function toISO(val: any): string {
+  if (!val) return '';
+  if (typeof val?.toDate === 'function') return val.toDate().toISOString();
+  const secs = val?.seconds ?? val?._seconds;
+  if (secs != null) return new Date(Number(secs) * 1000).toISOString();
+  if (typeof val === 'string' && val.length > 0) return val;
+  return '';
 }
+
+function toMs(val: any): number {
+  if (!val) return 0;
+  if (typeof val?.toDate === 'function') return val.toDate().getTime();
+  const secs = val?.seconds ?? val?._seconds;
+  if (secs != null) return Number(secs) * 1000;
+  if (typeof val === 'string') return new Date(val).getTime() || 0;
+  return 0;
+}
+
+type LegSelection = 'Over' | 'Under';
+type LegStatus    = 'pending' | 'won' | 'lost' | 'void';
 
 function normLeg(data: any, docId: string) {
   let line = 0;
-  let selection = String(data.selection ?? data.overUnder ?? data['Over/Under?'] ?? '').trim();
+  let rawSelection = String(data.selection ?? data.overUnder ?? data['Over/Under?'] ?? '').trim();
   const rawLine = data.line ?? data.Line;
-  
   if (typeof rawLine === 'string') {
     const m = rawLine.match(/^(over|under)\s+([\d.]+)/i);
     if (m) {
-      if (!selection) selection = m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase();
+      if (!rawSelection) rawSelection = m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase();
       line = parseFloat(m[2]);
     } else {
       line = parseFloat(rawLine) || 0;
@@ -48,189 +45,256 @@ function normLeg(data: any, docId: string) {
     line = Number(rawLine) || 0;
   }
 
+  // Normalize selection to union type — default Over if unrecognized
+  const selectionNorm = rawSelection.toLowerCase();
+  const selection: LegSelection = selectionNorm === 'under' ? 'Under' : 'Over';
+
+  // Normalize status to union type
+  const rawStatus = String(data.result ?? data.status ?? 'pending').toLowerCase();
+  const statusMap: Record<string, LegStatus> = { won: 'won', win: 'won', lost: 'lost', loss: 'lost', void: 'void', push: 'void' };
+  const status: LegStatus = statusMap[rawStatus] ?? 'pending';
+
   return {
-    id: docId,
-    player: String(data.player ?? data.playerteam ?? data.Player ?? '').trim(),
-    prop: String(data.prop ?? data.Prop ?? '').trim(),
+    id:        docId,
+    player:    String(data.player ?? data.playerteam ?? data.Player ?? '').trim(),
+    prop:      String(data.prop   ?? data.Prop ?? '').trim(),
     line,
-    selection,
-    odds: Number(data.odds ?? data.Odds) || null,
-    matchup: String(data.matchup ?? data.Matchup ?? '').trim(),
-    week: Number(data.week ?? data.Week) || null,
-    status: String(data.result ?? data.status ?? 'pending').toLowerCase(),
-    gameDate: toISO(data.gameDate ?? data.date ?? data['Game Date']),
-    team: String(data.team ?? data.Team ?? '').trim(),
+    selection,                             // 'Over' | 'Under'
+    odds:      Number(data.odds ?? data.Odds) || 0,  // number (not null)
+    matchup:   String(data.matchup ?? data.Matchup ?? '').trim(),
+    week:      Number(data.week ?? data.Week) || null,
+    status,                                // 'pending' | 'won' | 'lost' | 'void'
+    gameDate:  toISO(data.gameDate ?? data.date ?? data['Game Date']),  // string (not null)
+    team:      String(data.team ?? data.Team ?? '').trim(),
+    isLive:    Boolean(data.isLive),
   };
 }
 
 function calcPayout(stake: number | null, odds: number | null): number | null {
   if (!stake || !odds) return null;
-  const payout = odds > 0
-    ? (stake * (odds / 100) + stake)
-    : (stake * (100 / Math.abs(odds)) + stake);
-  return parseFloat(payout.toFixed(2));
+  return odds > 0
+    ? parseFloat((stake * (odds / 100) + stake).toFixed(2))
+    : parseFloat((stake * (100 / Math.abs(odds)) + stake).toFixed(2));
 }
 
-// ─── GET Route ───────────────────────────────────────────────────────────────
+// ─── GET ──────────────────────────────────────────────────────────────────────
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const player = searchParams.get('player')?.trim().toLowerCase() || '';
-    const propType = searchParams.get('propType')?.trim().toLowerCase() || '';
-    const week = searchParams.get('week') || '';
-    const cursor = searchParams.get('cursor') || '';
-    const limit = Math.min(parseInt(searchParams.get('limit') ?? String(PAGE_SIZE)), 100);
+    const player   = (searchParams.get('player')  ?? '').trim().toLowerCase();
+    const propType = (searchParams.get('propType') ?? '').trim().toLowerCase();
+    const week     =  searchParams.get('week')     ?? '';
+    const cursor   =  searchParams.get('cursor')   ?? '';
+    const limit    = Math.min(parseInt(searchParams.get('limit') ?? String(PAGE_SIZE)), 200);
 
     const weekNum = week && week !== 'all' ? parseInt(week, 10) : null;
 
-    let q: admin.firestore.Query = adminDb.collection('bettingLog');
+    let q: FirebaseFirestore.Query = adminDb.collection('bettingLog');
     if (weekNum !== null && !isNaN(weekNum)) q = q.where('week', '==', weekNum);
 
-    const snap = await q.orderBy('createdAt', 'desc').limit(1000).get();
-
-    // Map to group by Parlay ID or Doc ID
-    const betGroups = new Map<string, any>();
-
-    snap.docs.forEach((doc) => {
-      const d = doc.data();
-      const pid = d.parlayid ?? d.parlayId ?? doc.id; // Fallback to doc.id for singles
-      const isParlay = !!(d.parlayid ?? d.parlayId);
-      
-      if (!betGroups.has(pid)) {
-        const stake = Number(d.stake ?? d.wager ?? d.parlayStake) || null;
-        const odds = Number(d.parlayOdds ?? d.odds) || null;
-        
-        betGroups.set(pid, {
-          id: pid,
-          isParlay,
-          legs: [],
-          week: Number(d.week) || null,
-          status: String(d.result ?? d.status ?? 'pending').toLowerCase(),
-          odds,
-          stake,
-          payout: calcPayout(stake, odds),
-          createdAt: toISO(d.createdAt ?? d._updatedAt ?? d.updatedAt ?? d.date),
-        });
-      }
-
-      // Only add to legs if it's not a "Header Only" doc
-      if (!Array.isArray(d.legs) || d.legs.length > 0 || (d.player || d.prop)) {
-        betGroups.get(pid).legs.push(normLeg(d, doc.id));
-      }
-    });
-
-    let allBets = Array.from(betGroups.values());
-
-    // Filter logic
-    if (player) {
-      allBets = allBets.filter(b => b.legs.some((l: any) => l.player.toLowerCase().includes(player)));
-    }
-    if (propType) {
-      allBets = allBets.filter(b => b.legs.some((l: any) => l.prop.toLowerCase().includes(propType)));
+    q = q.orderBy('createdAt', 'desc').limit(limit + 1);
+    if (cursor) {
+      const cursorDoc = await adminDb.collection('bettingLog').doc(cursor).get();
+      if (cursorDoc.exists) q = q.startAfter(cursorDoc);
     }
 
-    const propTypes = [...new Set(allBets.flatMap(b => b.legs.map((l: any) => l.prop)).filter(Boolean))].sort();
-    
-    // Pagination
-    const startIdx = cursor ? allBets.findIndex(b => b.id === cursor) + 1 : 0;
-    const page = allBets.slice(startIdx, startIdx + limit);
-    const hasMore = allBets.length > startIdx + limit;
-    const nextCursor = hasMore ? (page[page.length - 1]?.id ?? null) : null;
+    const snap = await q.get();
+    const docs = snap.docs.slice(0, limit);
+    const hasMore = snap.docs.length > limit;
+    const nextCursor = hasMore ? docs[docs.length - 1].id : null;
 
-    return NextResponse.json({ 
-      bets: page, 
-      hasMore, 
-      nextCursor, 
-      totalCount: allBets.length, 
-      propTypes 
-    });
+    // Normalize all legs
+    let legs = docs.map(d => normLeg(d.data(), d.id));
 
-  } catch (err: any) {
-    console.error('❌ GET Error:', err);
-    // Explicitly return JSON even on error to avoid "Unexpected Token <" in frontend
-    return NextResponse.json({ error: err.message, bets: [] }, { status: 500 });
+    // In-memory player/prop filters
+    if (player)   legs = legs.filter(l => l.player.toLowerCase().includes(player));
+    if (propType) legs = legs.filter(l => l.prop.toLowerCase().includes(propType));
+
+    // Group by parlayId to build BetRow objects
+    const parlayMap = new Map<string, typeof legs>();
+    const singles: typeof legs = [];
+
+    for (const leg of legs) {
+      const raw = docs.find(d => d.id === leg.id)?.data();
+      const pid = raw?.parlayId ?? raw?.parlayid ?? null;
+      if (pid) {
+        if (!parlayMap.has(pid)) parlayMap.set(pid, []);
+        parlayMap.get(pid)!.push(leg);
+      } else {
+        singles.push(leg);
+      }
+    }
+
+    const bets: any[] = [];
+
+    // Single bets
+    for (const leg of singles) {
+      const raw = docs.find(d => d.id === leg.id)?.data() ?? {};
+      const stake  = Number(raw.stake)  || null;
+      const odds   = Number(raw.odds)   || null;
+      bets.push({
+        id:       leg.id,
+        isParlay: false,
+        legs:     [leg],
+        week:     leg.week ?? Number(raw.week) ?? null,
+        status:   leg.status,
+        odds,
+        stake,
+        payout:   calcPayout(stake, odds),
+        createdAt: toISO(raw.createdAt),
+      });
+    }
+
+    // Parlays
+    for (const [parlayId, parlayLegs] of parlayMap) {
+      const firstRaw = docs.find(d => d.id === parlayLegs[0].id)?.data() ?? {};
+      const stake  = Number(firstRaw.stake)  || null;
+      const odds   = Number(firstRaw.odds)   || null;
+      bets.push({
+        id:       parlayId,
+        isParlay: true,
+        legs:     parlayLegs,
+        week:     Number(firstRaw.week) || null,
+        status:   String(firstRaw.status ?? 'pending'),
+        odds,
+        stake,
+        payout:   calcPayout(stake, odds),
+        createdAt: toISO(firstRaw.createdAt),
+      });
+    }
+
+    // Sort descending by createdAt
+    bets.sort((a, b) => toMs(b.createdAt) - toMs(a.createdAt));
+
+    return NextResponse.json({ bets, hasMore, nextCursor, totalCount: bets.length });
+
+  } catch (error: any) {
+    console.error('❌ betting-log GET:', error);
+    return NextResponse.json({ error: error.message, bets: [] }, { status: 500 });
   }
 }
+
+// ─── PUT (edit bet) ───────────────────────────────────────────────────────────
+
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, ...updates } = body;
-    
-    if (!id) return NextResponse.json({ error: "ID required" }, { status: 400 });
+    const { id, legs: clientLegs, parlayOdds, odds: bodyOdds, ...rest } = body;
 
-    const db = adminDb;
-    const betRef = db.collection('bettingLog').doc(id);
-    const doc = await betRef.get();
+    if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
-    // Prepare shared data for either Single or Parlay
-    const formattedData: Record<string, any> = {
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    const db  = adminDb;
+    const batch = db.batch();
+
+    // Resolve effective odds (edit modal sends parlayOdds, others send odds)
+    const effectiveOdds = Number(parlayOdds ?? bodyOdds ?? 0);
+
+    // Shared fields applied to every leg doc
+    const sharedUpdates: Record<string, any> = {
+      ...rest,
+      odds: effectiveOdds,
+      stake:    Number(rest.stake ?? 0),
+      boost:    Number(rest.boost ?? 0),
+      week:     Number(rest.week  ?? 0),
+      status:   rest.status ?? 'pending',
+      updatedAt: FieldValue.serverTimestamp(),
     };
 
-    // Map fields and ensure correct types for Firebase
-    const numFields = ['stake', 'odds', 'week', 'payout', 'profit', 'boost'];
-    Object.keys(updates).forEach(key => {
-      if (numFields.includes(key) && updates[key] !== undefined) {
-        formattedData[key] = Number(updates[key]);
-      } else if (key === 'status') {
-        formattedData[key] = String(updates[key]).toLowerCase();
-      }
-    });
-
-    // Handle Game Date Conversion
-    if (updates.gameDate) {
-      const date = new Date(updates.gameDate);
-      if (!isNaN(date.getTime())) {
-        formattedData.gameDate = admin.firestore.Timestamp.fromDate(date);
+    // Convert gameDate string → Firestore Timestamp if provided
+    if (rest.gameDate) {
+      const d = new Date(rest.gameDate);
+      if (!isNaN(d.getTime())) {
+        sharedUpdates.gameDate = admin.firestore.Timestamp.fromDate(d);
       }
     }
 
-    // 1. If it's a Single Bet (The Doc exists directly)
-    if (doc.exists) {
-      await betRef.update(formattedData);
-      return NextResponse.json({ success: true, message: "Updated single bet" });
-    } 
-    
-    // 2. If it's a Parlay (Grouped by parlayid)
-    else {
-      let parlayLegsQuery = db.collection('bettingLog').where('parlayid', '==', id);
-      let snap = await parlayLegsQuery.get();
+    // Remove keys that shouldn't be stored flat
+    delete sharedUpdates.legs;
+    delete sharedUpdates.parlayOdds;
+    delete sharedUpdates.potentialPayout;
 
-      if (snap.empty) {
-        parlayLegsQuery = db.collection('bettingLog').where('parlayId', '==', id);
-        snap = await parlayLegsQuery.get();
+    // Find docs by parlayId (parlay) or direct doc id (single)
+    let snap = await db.collection('bettingLog').where('parlayId', '==', id).get();
+    if (snap.empty) snap = await db.collection('bettingLog').where('parlayid', '==', id).get();
+
+    if (snap.empty) {
+      // Single bet — update doc directly
+      const ref = db.collection('bettingLog').doc(id);
+      const existing = await ref.get();
+      if (!existing.exists) {
+        return NextResponse.json({ error: 'Bet not found' }, { status: 404 });
       }
-
-      if (snap.empty) return NextResponse.json({ error: "Bet not found" }, { status: 404 });
-
-      const batch = db.batch();
-      const currentLegs = (updates.legs || []) as any[];
-      
-      // Update every leg in the parlay with the global info (week, date, boost)
-      // and update specific leg info (line, status)
-      snap.docs.forEach((legDoc) => {
-        const matchingUpdate = currentLegs.find(l => l.id === legDoc.id);
-        
-        const finalLegUpdate = {
-          ...formattedData,
-          ...(matchingUpdate && {
-            line: Number(matchingUpdate.line),
-            status: matchingUpdate.status,
-            selection: matchingUpdate.selection,
-            player: matchingUpdate.player,
-            prop: matchingUpdate.prop
-          })
-        };
-        
-        batch.update(legDoc.ref, finalLegUpdate);
+      // Merge leg-level fields if clientLegs provided
+      const legUpdates = (clientLegs ?? [])[0] ?? {};
+      batch.update(ref, {
+        ...sharedUpdates,
+        ...(legUpdates.player    !== undefined && { player:    legUpdates.player }),
+        ...(legUpdates.prop      !== undefined && { prop:      legUpdates.prop }),
+        ...(legUpdates.line      !== undefined && { line:      Number(legUpdates.line) }),
+        ...(legUpdates.odds      !== undefined && { odds:      Number(legUpdates.odds) }),
+        ...(legUpdates.selection !== undefined && { selection: legUpdates.selection }),
+        ...(legUpdates.status    !== undefined && { status:    legUpdates.status }),
+        ...(legUpdates.isLive    !== undefined && { isLive:    legUpdates.isLive }),
       });
-
-      await batch.commit();
-      return NextResponse.json({ success: true, message: "Updated parlay and all legs" });
+    } else {
+      // Parlay — update each leg doc
+      snap.docs.forEach(doc => {
+        const matched = (clientLegs ?? []).find((l: any) => l.id === doc.id);
+        const legUpdates: Record<string, any> = { ...sharedUpdates };
+        if (matched) {
+          if (matched.player    !== undefined) legUpdates.player    = matched.player;
+          if (matched.prop      !== undefined) legUpdates.prop      = matched.prop;
+          if (matched.line      !== undefined) legUpdates.line      = Number(matched.line);
+          if (matched.odds      !== undefined) legUpdates.odds      = Number(matched.odds);
+          if (matched.selection !== undefined) legUpdates.selection = matched.selection;
+          if (matched.isLive    !== undefined) legUpdates.isLive    = matched.isLive;
+          // Per-leg status — if overall status isn't the derived parlay status, use leg's own
+          if (sharedUpdates.status === 'pending') {
+            legUpdates.status = matched.status ?? 'pending';
+          }
+        }
+        batch.update(doc.ref, legUpdates);
+      });
     }
-  } catch (err: any) {
-    console.error('❌ PUT Error:', err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+
+    await batch.commit();
+    return NextResponse.json({ success: true, id });
+
+  } catch (error: any) {
+    console.error('❌ betting-log PUT:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+// ─── DELETE ───────────────────────────────────────────────────────────────────
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+    if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
+
+    const db    = adminDb;
+    const batch = db.batch();
+
+    // Try parlayId match first
+    let snap = await db.collection('bettingLog').where('parlayId', '==', id).get();
+    if (snap.empty) snap = await db.collection('bettingLog').where('parlayid', '==', id).get();
+
+    if (!snap.empty) {
+      snap.docs.forEach(d => batch.delete(d.ref));
+    } else {
+      const ref = db.collection('bettingLog').doc(id);
+      const doc = await ref.get();
+      if (doc.exists) batch.delete(ref);
+    }
+
+    await batch.commit();
+    return NextResponse.json({ success: true });
+
+  } catch (error: any) {
+    console.error('❌ betting-log DELETE:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
