@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Trash2, ArrowRight, Layers, X } from 'lucide-react';
 import { useBetSlip } from '@/context/betslip-context';
 import { useRouter } from 'next/navigation';
@@ -8,6 +8,11 @@ import { useRouter } from 'next/navigation';
 export function HistoricalBetSlip() {
   const { selections, removeLeg, clearSlip } = useBetSlip();
   const router = useRouter();
+
+  // Debugging: Monitor context changes to ensure legs are actually landing here
+  useEffect(() => {
+    console.log("Current BetSlip Selections:", selections);
+  }, [selections]);
 
   return (
     <div className="bg-[#0f1115] border border-white/5 rounded-3xl overflow-hidden shadow-2xl">
@@ -45,10 +50,12 @@ export function HistoricalBetSlip() {
         ) : (
           <div className="space-y-2 max-h-[420px] overflow-y-auto pr-0.5">
             {selections.map((leg: any) => {
-              const uniqueKey = leg.propId || leg.id || `${leg.player}-${leg.prop}-${leg.line}`;
+              // FIX: Ensure we have a reliable ID for both the Key and the Remove action
+              const uniqueId = leg.id || leg.propId || `${leg.player}-${leg.prop}-${leg.line}`;
               const odds = Number(leg.odds);
+
               return (
-                <div key={uniqueKey}
+                <div key={uniqueId}
                   className="group flex items-start gap-2 p-3 bg-black/40 border border-white/[0.06]
                     rounded-2xl hover:border-[#FFD700]/20 transition-colors">
 
@@ -80,7 +87,7 @@ export function HistoricalBetSlip() {
                   </div>
 
                   <button
-                    onClick={() => removeLeg(leg.propId || leg.id || '')}
+                    onClick={() => removeLeg(uniqueId)}
                     className="shrink-0 p-1.5 text-zinc-700 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all rounded-lg hover:bg-red-500/10"
                   >
                     <X className="h-3.5 w-3.5" />
@@ -104,7 +111,7 @@ export function HistoricalBetSlip() {
           <button
             onClick={() => router.push('/parlay-studio')}
             className="w-full flex items-center justify-center gap-2 py-3 bg-[#FFD700] hover:bg-[#e6c200]
-              text-black font-black italic uppercase text-sm rounded-2xl transition-colors"
+              text-black font-black italic uppercase text-sm rounded-2xl transition-colors shadow-lg shadow-[#FFD700]/10"
           >
             Parlay Studio
             <ArrowRight className="h-4 w-4" />

@@ -277,56 +277,56 @@ export default function ParlayStudioPage() {
     setLegs(prev => prev.filter((l: any) => l.id !== id));
     removeLeg(id);
   };
-
   const handleSaveParlay = async () => {
+    if (!gameDate || !stake) {
+      toast.error("Missing Info");
+      return;
+    }
+  
     setSaving(true);
     try {
-      const hasLost = legs.some((l: any) => l.result === 'lost');
-      const allWon = legs.every((l: any) => l.result === 'won');
-      const finalStatus = hasLost ? 'lost' : (allWon ? 'won' : 'pending');
-
-      const betDoc = {
+      // Create the object WITHOUT an ID key
+      const betDoc: any = {
         userId: auth.user?.uid,
         type: selectedType,
-        stake: stakeNum,
+        stake: Number(stake),
         odds: effectiveOdds,
         boost: Number(boost) || 0,
         gameDate,
         week: Number(week),
-        status: finalStatus,
-        createdAt: new Date().toISOString(),
+        status: 'pending',
         isBonusBet,
-        legs: legs.map((l: any) => ({ 
-          ...l, 
-          status: l.result,
+        legs: legs.map((l) => ({ 
+          player: l.player,
+          prop: l.prop,
           line: Number(l.line),
+          selection: l.selection,
           odds: Number(l.odds),
+          status: l.result,
+          matchup: l.matchup
         })),
       };
-
+  
+      console.log("Sending to API:", betDoc); // Check your console to ensure 'id' isn't here
+  
       const response = await fetch('/api/save-bet', {
         method: 'POST',
-        body: JSON.stringify(betDoc),
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(betDoc), 
       });
-
+  
+      const result = await response.json();
+  
       if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'Failed to save');
+        throw new Error(result.error || 'Failed to save');
       }
-
-      toast.success('Parlay saved!', {
-        style: { background: '#0f1115', border: '1px solid rgba(255,215,0,0.2)', color: '#FFD700' },
-      });
-      
-      setLegs([]);
-      setDetailsOpen(false);
+  
+      toast.success('Saved successfully!');
       clearSlip();
       router.push('/betting-log');
-      router.refresh();
-
     } catch (err: any) {
-      toast.error('Save Error', { description: err.message });
+      console.error("Save error:", err);
+      toast.error(err.message);
     } finally {
       setSaving(false);
     }
@@ -453,6 +453,22 @@ export default function ParlayStudioPage() {
                     ))}
                   </select>
                 </div>
+              </div>
+
+              {/* Overall Odds */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] uppercase font-black text-zinc-600 flex justify-between items-center">
+                  <span className="flex items-center gap-1"><TrendingUp className="h-3 w-3" /> Overall Odds</span>
+                  <span className="text-[#FFD700] font-mono">{fmtAmerican(parlayOdds)} (Auto)</span>
+                </label>
+                <input
+                  type="number"
+                  value={manualOdds}
+                  onChange={e => setManualOdds(e.target.value)}
+                  placeholder={String(parlayOdds)}
+                  className="w-full bg-black/40 border border-white/[0.08] text-white rounded-xl px-3 py-2.5 text-sm font-mono text-center
+                    focus:ring-1 focus:ring-[#FFD700]/30 outline-none"
+                />
               </div>
 
                <div className="flex items-center justify-end">

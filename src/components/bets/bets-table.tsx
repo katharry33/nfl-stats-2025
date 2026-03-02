@@ -197,7 +197,7 @@ function ParlayRow({ bet, selected, onToggle, onEdit, onDelete }: {
 
       {/* Expanded leg rows */}
       {open && bet.legs.map((leg: any, i: number) => (
-        <tr key={leg.id ?? i} className="bg-black/40 border-b border-white/[0.03]">
+        <tr key={`${bet.id}-${leg.id ?? i}`} className="bg-black/40 border-b border-white/[0.03]">
           <td colSpan={2} />
           <td className="px-4 py-2 pl-10">
             <div className="flex items-center gap-2">
@@ -325,7 +325,14 @@ export function BetsTable({ bets, loading, onDelete, onEdit }: BetsTableProps) {
   };
 
   const sorted = useMemo(() => {
-    const arr = [...bets];
+    const seen = new Set<string>();
+    const unique = bets.filter(b => {
+      if (seen.has(b.id)) return false;
+      seen.add(b.id);
+      return true;
+    });
+
+    const arr = [...unique];
     const dir = sortDir === 'asc' ? 1 : -1;
 
     arr.sort((a: any, b: any) => {

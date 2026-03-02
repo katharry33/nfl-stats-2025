@@ -4,20 +4,20 @@ import React, { createContext, useContext, useState, useCallback, useEffect } fr
 import { Bet } from '@/lib/types';
 
 export interface BetSlipContextType {
-  bets:         Bet[];
-  totalCount:   number;
-  loading:      boolean;
-  loadingMore:  boolean;
-  hasMore:      boolean;
-  error:        string | null;
-  fetchBets:    (search: string, season: string) => Promise<void>;
+  bets: Bet[];
+  totalCount: number;
+  loading: boolean;
+  loadingMore: boolean;
+  hasMore: boolean;
+  error: string | null;
+  fetchBets: (search: string, season: string) => Promise<void>;
   loadMoreBets: (search: string, season: string) => Promise<void>;
-  updateBet:    (id: string, updates: Partial<Bet>) => Promise<void>;
-  deleteBet:    (id: string) => void;
-  selections:   any[];
-  addLeg:       (leg: any) => void;
-  removeLeg:    (legId: string) => void;
-  clearSlip:    () => void;
+  updateBet: (id: string, updates: Partial<Bet>) => Promise<void>;
+  deleteBet: (id: string) => void;
+  selections: any[];
+  addLeg: (leg: any) => void;
+  removeLeg: (legId: string) => void;
+  clearSlip: () => void;
   totalParlayOdds: number;
 }
 
@@ -29,7 +29,7 @@ export const useBetSlip = () => {
   return ctx;
 };
 
-const PAGE_SIZE   = 50;
+const PAGE_SIZE = 50;
 
 function calcOdds(sels: any[]): number {
   if (!sels.length) return 0;
@@ -43,7 +43,7 @@ function calcOdds(sels: any[]): number {
 
 export const BetSlipProvider = ({ children }: { children: React.ReactNode }) => {
   const [selections, setSelections] = useState<any[]>([]);
-  const [totalParlayOdds,  setTotalParlayOdds]  = useState(0);
+  const [totalParlayOdds, setTotalParlayOdds] = useState(0);
 
   useEffect(() => {
     const savedSlip = localStorage.getItem('active_betslip');
@@ -61,25 +61,24 @@ export const BetSlipProvider = ({ children }: { children: React.ReactNode }) => 
     setTotalParlayOdds(calcOdds(selections));
   }, [selections]);
 
-  const [bets,        setBets]        = useState<Bet[]>([]);
-  const [totalCount,  setTotalCount]  = useState(0);
-  const [loading,     setLoading]     = useState(false);
+  const [bets, setBets] = useState<Bet[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore,     setHasMore]     = useState(true);
-  const [error,       setError]       = useState<string | null>(null);
-  const [nextCursor,  setNextCursor]  = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
 
   const fetchBets = useCallback(async (search: string, season: string) => {
     setLoading(true);
     setError(null);
-    setBets([]);
     try {
       const params = new URLSearchParams({
-        limit:  String(PAGE_SIZE),
+        limit: String(PAGE_SIZE),
         season: season === 'all' ? '' : season,
         player: search,
       });
-      const res  = await fetch(`/api/betting-log?${params}`);
+      const res = await fetch(`/api/betting-log?${params}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       setBets(data.bets ?? []);
@@ -98,12 +97,12 @@ export const BetSlipProvider = ({ children }: { children: React.ReactNode }) => 
     setLoadingMore(true);
     try {
       const params = new URLSearchParams({
-        limit:  String(PAGE_SIZE),
+        limit: String(PAGE_SIZE),
         season: season === 'all' ? '' : season,
         cursor: nextCursor,
         player: search,
       });
-      const res  = await fetch(`/api/betting-log?${params}`);
+      const res = await fetch(`/api/betting-log?${params}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       setBets(prev => [...prev, ...(data.bets ?? [])]);
@@ -117,7 +116,7 @@ export const BetSlipProvider = ({ children }: { children: React.ReactNode }) => 
   }, [loadingMore, hasMore, nextCursor]);
 
   const updateBet = async (id: string, updates: Partial<Bet>) => {
-    setBets(prev => prev.map(b => b.id === id ? { ...b, ...updates } : b));
+    setBets(prev => prev.map(b => (b.id === id ? { ...b, ...updates } : b)));
   };
 
   const deleteBet = (id: string) => {

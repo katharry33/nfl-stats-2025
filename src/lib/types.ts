@@ -34,24 +34,20 @@ export interface BetLeg {
 }
 
 // ─── Bet ──────────────────────────────────────────────────────────────────────
-
 export interface Bet {
   id: string;
   userId: string;
-  parlayId?: string;
-  type: string;           // Ensure this is 'type', not 'betType'
-  status: 'pending' | 'won' | 'lost' | 'void' | 'cashed'; // Added 'cashed'
+  type: string;
   stake: number;
   odds: number;
-  boost: number;
-  gameDate: string;       // We use gameDate, not date
+  status: 'pending' | 'won' | 'lost' | 'void';
+  gameDate: string;
   week: number;
-  legs: BetLeg[];
-  profit?: number;
-  payout?: number;
-  cashedAmount?: number;  // Added this
-  createdAt?: string;
-  notes?: string;
+  isBonusBet?: boolean;
+  boost?: number;
+  legs: any[]; 
+  createdAt?: any; // Added/Updated
+  updatedAt?: any; // Added/Updated (Fixes Error 2339)
 }
 
 // ─── BetSlipItem ──────────────────────────────────────────────────────────────
