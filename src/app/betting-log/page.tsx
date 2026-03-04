@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useDebounce } from '@/hooks/use-debounce';
 import type { Bet } from '@/lib/types';
-import { Search, Plus, Loader2 } from 'lucide-react';
+import { Search, Loader2 } from 'lucide-react';
 
 export default function BettingLogPage() {
   const router = useRouter();
@@ -37,7 +37,8 @@ export default function BettingLogPage() {
   const handleDelete = useCallback(async (ids: string[]) => {
     try {
       const deletePromises = ids.map(id =>
-        fetch(`/api/delete-bet?id=${id}`, { method: 'DELETE' })
+        fetch(`/api/betting-log?id=${id}`, { method: 'DELETE' })
+
       );
       const responses = await Promise.all(deletePromises);
 
@@ -64,20 +65,10 @@ export default function BettingLogPage() {
   }, [router]);
 
   const handleSave = useCallback(async (updated: Bet) => {
-    const res = await fetch('/api/save-bet', { // Use the consolidated route
-      method: 'POST', // Use POST as we set up in the route.ts
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updated),
-    });
-    
-    if (res.ok) {
-      await updateBet(updated.id, updated);
-      setEditBet(null);
-    } else {
-      const err = await res.json();
-      alert(`Save failed: ${err.error}`);
-    }
-  }, [updateBet]);
+    await updateBet(updated.id, updated);
+    setEditBet(null);
+    await fetchBets(search, 'all');  // refetch to get server-calculated values
+  }, [updateBet, fetchBets, search]);
 
   if (authLoading) {
     return (
@@ -105,10 +96,6 @@ export default function BettingLogPage() {
             <h1 className="text-2xl font-black tracking-tight text-white">Betting Log</h1>
             <p className="text-zinc-500 text-sm mt-0.5">Your complete bet history</p>
           </div>
-          <Button className="bg-amber-400 hover:bg-amber-300 text-black font-black gap-2 self-start sm:self-auto">
-            <Plus className="h-4 w-4" />
-            Add Bet
-          </Button>
         </div>
 
         {/* Stats */}
@@ -162,6 +149,7 @@ export default function BettingLogPage() {
         <EditBetModal
           bet={editBet}
           isOpen={!!editBet}
+          userId={user?.uid}
           onClose={() => setEditBet(null)}
           onSave={handleSave}
           onDelete={(id) => handleDelete([id])}

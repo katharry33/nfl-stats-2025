@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { X, Plus, Save, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { getWeekFromDate } from '@/lib/utils/nfl-week';
 
 interface ManualLeg {
   player: string;
@@ -17,11 +18,12 @@ interface ManualLeg {
   matchup: string;
   week: string;
   gameDate: string;
+  season: string;
 }
 
 const BLANK_LEG: ManualLeg = {
   player: '', prop: '', line: '', selection: 'Over',
-  odds: '-110', team: '', matchup: '', week: '', gameDate: '',
+  odds: '-110', team: '', matchup: '', week: '', gameDate: '', season: '',
 };
 
 interface ManualEntryModalProps {
@@ -36,8 +38,19 @@ export function ManualEntryModal({ isOpen, onClose, onAddLeg }: ManualEntryModal
 
   if (!isOpen) return null;
 
-  const updateLeg = (i: number, up: Partial<ManualLeg>) =>
-    setLegs(prev => prev.map((l, idx) => idx === i ? { ...l, ...up } : l));
+  const updateLeg = (i: number, up: Partial<ManualLeg>) => {
+    setLegs(prev => prev.map((l, idx) => {
+      if (idx !== i) return l;
+      const newLeg = { ...l, ...up };
+      if (up.gameDate) {
+        const derivedWeek = getWeekFromDate(up.gameDate);
+        const derivedSeason = new Date(up.gameDate).getFullYear();
+        newLeg.week = derivedWeek ? String(derivedWeek) : newLeg.week;
+        newLeg.season = derivedSeason ? String(derivedSeason) : newLeg.season;
+      }
+      return newLeg;
+    }));
+  };
 
   const addBlankLeg  = () => setLegs(prev => [...prev, { ...BLANK_LEG }]);
   const removeLeg    = (i: number) => setLegs(prev => prev.filter((_, idx) => idx !== i));
@@ -77,6 +90,7 @@ export function ManualEntryModal({ isOpen, onClose, onAddLeg }: ManualEntryModal
           team:      leg.team.trim().toUpperCase(),
           matchup:   leg.matchup.trim(),
           week:      Number(leg.week) || undefined,
+          season:    Number(leg.season) || undefined,
           gameDate:  leg.gameDate || new Date().toISOString(),
           status:    'pending',
           source:    'manual',

@@ -8,6 +8,13 @@ const PAGE_SIZE = 50;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+function fixGameDate(gameDate: string | undefined): string | undefined {
+  if (!gameDate) return undefined;
+  // Store as noon UTC to prevent timezone rollback
+  const d = new Date(`${gameDate}T12:00:00.000Z`);
+  return isNaN(d.getTime()) ? gameDate : d.toISOString();
+}
+
 function toISO(val: any): string {
   if (!val) return '';
   if (typeof val?.toDate === 'function') return val.toDate().toISOString();
@@ -26,17 +33,28 @@ function toMs(val: any): number {
   return 0;
 }
 
-type LegSelection = 'Over' | 'Under';
-type LegStatus    = 'pending' | 'won' | 'lost' | 'void';
+function parseAmericanOdds(val: any): number {
+  if (typeof val === 'number') return val;
+  if (!val) return 0;
+  const s = String(val).replace(/\s/g, '');
+  const n = parseInt(s, 10);
+  return isNaN(n) ? 0 : n;
+}
 
-function normLeg(data: any, docId: string) {
+function parseLineAndSelection(data: any): { line: number; selection: 'Over' | 'Under' } {
+  // Try explicit selection field first
+  let rawSel = String(
+    data.selection ?? data.overUnder ?? data['Over/Under?'] ?? data.pick ?? ''
+  ).trim().toLowerCase();
+
+  // Try line field — could be "Under 205.5", "Over 55.5", or a number
+  const rawLine = data.line ?? data.Line ?? data.prop_line ?? data.value ?? null;
   let line = 0;
-  let rawSelection = String(data.selection ?? data.overUnder ?? data['Over/Under?'] ?? '').trim();
-  const rawLine = data.line ?? data.Line;
+
   if (typeof rawLine === 'string') {
-    const m = rawLine.match(/^(over|under)\s+([\d.]+)/i);
+    const m = rawLine.match(/^(over|under)\s*([\d.]+)/i);
     if (m) {
-      if (!rawSelection) rawSelection = m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase();
+      if (!rawSel) rawSel = m[1].toLowerCase();
       line = parseFloat(m[2]);
     } else {
       line = parseFloat(rawLine) || 0;
@@ -45,26 +63,47 @@ function normLeg(data: any, docId: string) {
     line = Number(rawLine) || 0;
   }
 
-  const selectionNorm = rawSelection.toLowerCase();
-  const selection: LegSelection = selectionNorm === 'under' ? 'Under' : 'Over';
+  const selection: 'Over' | 'Under' = rawSel === 'under' ? 'Under' : 'Over';
+  return { line, selection };
+}
 
-  const rawStatus = String(data.result ?? data.status ?? 'pending').toLowerCase();
-  const statusMap: Record<string, LegStatus> = { won: 'won', win: 'won', lost: 'lost', loss: 'lost', void: 'void', push: 'void' };
-  const status: LegStatus = statusMap[rawStatus] ?? 'pending';
+function parseStatus(data: any): 'pending' | 'won' | 'lost' | 'void' {
+  const raw = String(data.result ?? data.status ?? 'pending').toLowerCase();
+  const map: Record<string, 'pending' | 'won' | 'lost' | 'void'> = {
+    won: 'won', win: 'won', cashed: 'won',
+    lost: 'lost', loss: 'lost',
+    void: 'void', push: 'void', voided: 'void',
+    pending: 'pending',
+  };
+  return map[raw] ?? 'pending';
+}
+
+function parseGameDate(data: any): string {
+  const raw = data.gameDate ?? data.date ?? data['Game Date'] ?? data.createdAt ?? null;
+  return toISO(raw);
+}
+
+function normLegFull(data: any, docId: string) {
+  const { line, selection } = parseLineAndSelection(data);
+  const player = String(
+    data.player ?? data.playerteam ?? data.Player ?? data.PlayerTeam ?? ''
+  ).trim();
+  const stake = Number(data.stake ?? data.wager ?? data.Stake ?? 0) || 0;
 
   return {
-    id:        docId,
-    player:    String(data.player ?? data.playerteam ?? data.Player ?? '').trim(),
-    prop:      String(data.prop   ?? data.Prop ?? '').trim(),
+    id: docId,
+    player,
+    prop:     String(data.prop ?? data.Prop ?? '').trim(),
     line,
     selection,
-    odds:      Number(data.odds ?? data.Odds) || 0,
-    matchup:   String(data.matchup ?? data.Matchup ?? '').trim(),
-    week:      Number(data.week ?? data.Week) || null,
-    status,
-    gameDate:  toISO(data.gameDate ?? data.date ?? data['Game Date']),
-    team:      String(data.team ?? data.Team ?? '').trim(),
-    isLive:    Boolean(data.isLive),
+    odds:     parseAmericanOdds(data.odds ?? data.Odds),
+    matchup:  String(data.matchup ?? data.Matchup ?? '').trim(),
+    week:     Number(data.week ?? data.Week) || null,
+    status:   parseStatus(data),
+    gameDate: parseGameDate(data),
+    team:     String(data.team ?? data.Team ?? '').trim(),
+    isLive:   Boolean(data.isLive),
+    stake,
   };
 }
 
@@ -75,15 +114,6 @@ function calcPayout(stake: number | null, odds: number | null): number | null {
     : parseFloat((stake * (100 / Math.abs(odds)) + stake).toFixed(2));
 }
 
-function getDerivedParlayStatus(legs: any[]): string {
-  const legStatuses = legs.map(l => (l.status || 'pending').toLowerCase());
-  if (legStatuses.includes('lost') || legStatuses.includes('loss')) return 'lost';
-  if (legStatuses.every(s => s === 'won' || s === 'win' || s === 'void')) {
-    return legStatuses.every(s => s === 'void') ? 'void' : 'won';
-  }
-  return 'pending';
-}
-
 // ─── GET ──────────────────────────────────────────────────────────────────────
 
 export async function GET(request: NextRequest) {
@@ -92,134 +122,156 @@ export async function GET(request: NextRequest) {
     if (!authId) return new NextResponse('Unauthorized', { status: 401 });
 
     const { searchParams } = new URL(request.url);
-    const player   = (searchParams.get('player')  ?? '').trim().toLowerCase();
-    const propType = (searchParams.get('propType') ?? '').trim().toLowerCase();
-    const week     =  searchParams.get('week')     ?? '';
-    const cursor   =  searchParams.get('cursor')   ?? '';
-    const limit    = Math.min(parseInt(searchParams.get('limit') ?? String(PAGE_SIZE)), 200);
-    const weekNum  = week && week !== 'all' ? parseInt(week, 10) : null;
+    const player  = (searchParams.get('player')  ?? '').trim().toLowerCase();
+    const week    =  searchParams.get('week')     ?? '';
+    const cursor  =  searchParams.get('cursor')   ?? '';
+    const limit   = Math.min(parseInt(searchParams.get('limit') ?? String(PAGE_SIZE)), 200);
+    const weekNum = week && week !== 'all' ? parseInt(week, 10) : null;
 
-    let q: FirebaseFirestore.Query = adminDb.collection('bettingLog').where('userId', '==', authId);
+    // No userId filter — we include legacy docs with no userId
+    let q: FirebaseFirestore.Query = adminDb.collection('bettingLog');
     if (weekNum !== null && !isNaN(weekNum)) q = q.where('week', '==', weekNum);
 
-    // We fetch a large number of docs for in-memory filtering. This is not ideal for very large datasets.
-    const snap = await q.orderBy('createdAt', 'desc').limit(1000).get();
-    const docs = snap.docs;
+    const snap = await q.orderBy('createdAt', 'desc').limit(2000).get();
 
-    const allBets: any[] = [];
-    const parlayMap = new Map<string, any[]>(); // For old-format parlays
-
-    // First pass: Group old-format parlays by parlayId
-    docs.forEach(doc => {
-        const raw = doc.data();
-        const pid = raw?.parlayId ?? raw?.parlayid ?? null;
-        if (pid) {
-            if (!parlayMap.has(pid)) parlayMap.set(pid, []);
-            parlayMap.get(pid)!.push(doc);
-        }
+    // Filter: keep docs owned by this user OR legacy docs with no userId / userId=anonymous
+    const docs = snap.docs.filter(doc => {
+      const uid = doc.data()?.userId;
+      return !uid || uid === authId || uid === 'anonymous';
     });
 
-    // Second pass: Process all docs into a unified `allBets` array
-    docs.forEach(doc => {
-        const raw = doc.data();
-        const pid = raw?.parlayId ?? raw?.parlayid ?? null;
-        const hasLegsArray = Array.isArray(raw?.legs) && raw.legs.length > 0;
+    const bets: any[] = [];
+    // parlayMap groups individual leg docs by their parlayid
+    const parlayMap = new Map<string, any[]>();
 
-        if (pid) {
-            // This is part of an old-format parlay, which will be processed in the parlayMap loop below.
-            return; 
-        }
+    for (const doc of docs) {
+      const raw = doc.data();
+      const parlayId = raw?.parlayId ?? raw?.parlayid ?? null;
 
-        if (hasLegsArray) {
-            // NEW FORMAT: legs are stored as an array on a single document
-            const stake  = Number(raw.stake)  || null;
-            const odds   = Number(raw.odds)   || null;
-            const normalizedLegs = raw.legs.map((l: any, i: number) => ({
-              ...normLeg(l, `${doc.id}-leg-${i}`),
-              id: l.id ?? `${doc.id}-leg-${i}` // ensure id exists
-            }));
+      // ── RULE 1: If doc has a parlayid, it is a leg in a grouped parlay.
+      //    Route to parlayMap regardless of whether it also has a legs sub-array
+      //    (legacy imports have both; we prefer top-level fields for accuracy).
+      if (parlayId) {
+        if (!parlayMap.has(parlayId)) parlayMap.set(parlayId, []);
+        parlayMap.get(parlayId)!.push({ doc, raw });
+        continue;
+      }
 
-            allBets.push({
-              id:        doc.id,
-              isParlay:  normalizedLegs.length > 1,
-              legs:      normalizedLegs,
-              week:      Number(raw.week) || null,
-              status:    String(raw.status ?? 'pending'),
-              odds,
-              stake,
-              payout:    raw.payout ?? calcPayout(stake, odds),
-              profit:    raw.profit,
-              isBonusBet: raw.isBonusBet,
-              boost:     raw.boost,
-              createdAt: toISO(raw.createdAt),
-              gameDate:  toISO(raw.gameDate),
-            });
-        } else {
-            // OLD FORMAT SINGLE LEG BET
-            const leg = normLeg(raw, doc.id);
-            const stake  = Number(raw.stake)  || null;
-            const odds   = Number(raw.odds)   || null;
-            allBets.push({
-                id:       leg.id,
-                isParlay: false,
-                legs:     [leg],
-                week:     leg.week ?? Number(raw.week) ?? null,
-                status:   leg.status,
-                odds,
-                stake,
-                payout:   raw.payout ?? calcPayout(stake, odds),
-                profit:   raw.profit,
-                isBonusBet: raw.isBonusBet,
-                boost:    raw.boost,
-                createdAt: toISO(raw.createdAt),
-                gameDate: toISO(raw.gameDate),
-            });
-        }
-    });
+      // ── RULE 2: New format — single doc with legs[] array (created by Parlay Studio)
+      const hasLegsArray = Array.isArray(raw?.legs) && raw.legs.length > 0;
+      if (hasLegsArray) {
+        const stake = Number(raw.stake) || null;
+        const odds  = Number(raw.odds)  || null;
 
-    // Process the old-format parlays from the map
-    for (const [parlayId, parlayDocs] of parlayMap) {
-      const firstDoc = parlayDocs[0];
-      const firstRaw = firstDoc.data();
-      const stake  = Number(firstRaw.stake)  || null;
-      const odds   = Number(firstRaw.odds)   || null;
-      const parlayLegs = parlayDocs.map(doc => normLeg(doc.data(), doc.id));
-      
-      allBets.push({
-        id:       parlayId,
-        isParlay: true,
-        legs:     parlayLegs,
-        week:     Number(firstRaw.week) || null,
-        status:   firstRaw.status && firstRaw.status !== 'pending' ? firstRaw.status : getDerivedParlayStatus(parlayLegs),
+        const normalizedLegs = raw.legs.map((l: any, i: number) => {
+          const { line, selection } = parseLineAndSelection(l);
+          return {
+            id:        l.id ?? `${doc.id}-leg-${i}`,
+            player:    String(l.player ?? l.playerteam ?? l.Player ?? '').trim(),
+            prop:      String(l.prop   ?? l.Prop ?? '').trim(),
+            line,
+            selection,
+            odds:      parseAmericanOdds(l.odds ?? l.Odds),
+            matchup:   String(l.matchup ?? l.Matchup ?? '').trim(),
+            week:      Number(l.week ?? raw.week) || null,
+            status:    parseStatus(l),
+            gameDate:  toISO(l.gameDate ?? raw.gameDate),
+            team:      String(l.team ?? l.Team ?? '').trim(),
+            isLive:    Boolean(l.isLive),
+          };
+        });
+
+        bets.push({
+          id:       doc.id,
+          isParlay: normalizedLegs.length > 1,
+          legs:     normalizedLegs,
+          week:     Number(raw.week) || null,
+          status:   String(raw.status || 'pending'),
+          odds,
+          stake,
+          boost:      raw.boost,
+          isBonusBet: raw.isBonusBet,
+          type:       raw.type ?? raw.betType ?? raw.bettype,
+          payout:   calcPayout(stake, odds),
+          createdAt: toISO(raw.createdAt),
+        });
+        continue;
+      }
+
+      // ── RULE 3: Standalone single-leg doc with no parlayid and no legs array
+      const leg   = normLegFull(raw, doc.id);
+      const stake = Number(raw.stake ?? raw.wager) || null;
+      const odds  = parseAmericanOdds(raw.odds) || null;
+      bets.push({
+        id:       doc.id,
+        isParlay: false,
+        legs:     [leg],
+        week:     leg.week ?? Number(raw.week) ?? null,
+        status:   leg.status,
         odds,
         stake,
-        payout:   firstRaw.payout ?? calcPayout(stake, odds),
-        profit:   firstRaw.profit,
-        isBonusBet: firstRaw.isBonusBet,
-        boost:    firstRaw.boost,
-        createdAt: toISO(firstRaw.createdAt),
-        gameDate: toISO(firstRaw.gameDate),
+        boost:      raw.boost,
+        isBonusBet: raw.isBonusBet,
+        type:       raw.type ?? raw.betType ?? raw.bettype,
+        payout:   calcPayout(stake, odds),
+        createdAt: toISO(raw.createdAt),
       });
     }
 
-    // Apply in-memory filters
-    let filteredBets = allBets;
-    if (player)   filteredBets = filteredBets.filter(b => b.legs.some((l: any) => l.player.toLowerCase().includes(player)));
-    if (propType) filteredBets = filteredBets.filter(b => b.legs.some((l: any) => l.prop.toLowerCase().includes(propType)));
+    // ── Assemble parlayMap entries into grouped parlay bets
+    for (const [parlayId, entries] of parlayMap) {
+      // Use the entry with the most complete stake/odds data as the "header"
+      const header = entries.find(e => Number(e.raw.stake ?? e.raw.wager) > 0) ?? entries[0];
+      const headerRaw = header.raw;
 
-    // Sort all bets together by date
+      const stake = Number(headerRaw.stake ?? headerRaw.wager) || null;
+      const odds  = parseAmericanOdds(headerRaw.odds ?? headerRaw.parlayOdds) || null;
+
+      const legs = entries.map(({ doc, raw }) => normLegFull(raw, doc.id));
+
+      bets.push({
+        id:       parlayId,
+        isParlay: legs.length > 1,
+        legs,
+        week:     Number(headerRaw.week) || null,
+        status:   parseStatus(headerRaw),
+        odds,
+        stake,
+        boost:      headerRaw.boost,
+        isBonusBet: headerRaw.isBonusBet,
+        type:       headerRaw.type ?? headerRaw.betType ?? headerRaw.bettype,
+        payout:   calcPayout(stake, odds),
+        createdAt: toISO(headerRaw.createdAt ?? headerRaw.date),
+      });
+    }
+
+    // ── Player filter (in-memory, case-insensitive substring)
+    let filteredBets = player
+      ? bets.filter(bet =>
+          bet.legs?.some((leg: any) =>
+            (leg.player ?? '').toLowerCase().includes(player)
+          )
+        )
+      : bets;
+
     filteredBets.sort((a, b) => toMs(b.createdAt) - toMs(a.createdAt));
-    
-    // Get all unique prop types for the filter dropdown
-    const propTypes = [...new Set(filteredBets.flatMap(b => b.legs.map((l: any) => l.prop)).filter(Boolean))].sort();
 
-    // Apply pagination to the final, sorted, filtered list
-    const startIdx = cursor ? filteredBets.findIndex(b => b.id === cursor) + 1 : 0;
-    const page = filteredBets.slice(startIdx, startIdx + limit);
-    const hasMore = filteredBets.length > startIdx + limit;
-    const nextCursor = hasMore ? (page[page.length - 1]?.id ?? null) : null;
+    // ── Cursor pagination on filtered result
+    let startIndex = 0;
+    if (cursor) {
+      const idx = filteredBets.findIndex((b: any) => b.id === cursor);
+      if (idx !== -1) startIndex = idx + 1;
+    }
+    const page = filteredBets.slice(startIndex, startIndex + limit);
+    const hasMore = startIndex + limit < filteredBets.length;
+    const nextCursor = hasMore ? page[page.length - 1]?.id ?? null : null;
 
-    return NextResponse.json({ bets: page, hasMore, nextCursor, totalCount: filteredBets.length, propTypes });
+    return NextResponse.json({
+      bets: page,
+      hasMore,
+      nextCursor,
+      totalCount: filteredBets.length,
+    });
 
   } catch (error: any) {
     console.error('❌ betting-log GET:', error);
@@ -227,91 +279,69 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// ─── PUT (edit bet) ───────────────────────────────────────────────────────────
+
+// ─── UNIFIED PUT (edit bet) ───────────────────────────────────────────────────
 
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { id, legs: clientLegs, parlayOdds, odds: bodyOdds, ...rest } = body;
+    const { userId: clerkId } = await auth();
+    const authId = clerkId || body.userId;
+    if (!authId) return new NextResponse('Unauthorized', { status: 401 });
 
-    if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
+    const { id, legs, ...betData } = body;
 
-    const db  = adminDb;
-    const batch = db.batch();
+    if (!id) {
+      return new NextResponse('Bet ID is required', { status: 400 });
+    }
 
-    // Resolve effective odds (edit modal sends parlayOdds, others send odds)
-    const effectiveOdds = Number(parlayOdds ?? bodyOdds ?? 0);
+    const betRef = adminDb.collection('bettingLog').doc(id);
+    const betDoc = await betRef.get();
 
-    // Shared fields applied to every leg doc
-    const sharedUpdates: Record<string, any> = {
-      ...rest,
-      odds: effectiveOdds,
-      stake:    Number(rest.stake ?? 0),
-      boost:    Number(rest.boost ?? 0),
-      week:     Number(rest.week  ?? 0),
-      status:   rest.status ?? 'pending',
+    if (!betDoc.exists) {
+      return new NextResponse('Bet not found', { status: 404 });
+    }
+
+    if (betDoc.data()?.userId !== authId) {
+      return new NextResponse('Forbidden', { status: 403 });
+    }
+
+    const hasLost = legs?.some((l: any) => l.status === 'lost');
+    const allWon = legs?.every((l: any) => l.status === 'won');
+    const parlayStatus = betData.status === 'cashed' 
+        ? 'cashed'
+        : hasLost ? 'lost' : (allWon ? 'won' : 'pending');
+
+    const sanitizedLegs = legs?.map((leg: any) => ({
+      ...leg,
+      player: String(leg.player || ''),
+      prop: String(leg.prop || ''),
+      line: Number(leg.line) || 0,
+      odds: Number(leg.odds) || 0,
+      status: (leg.status || 'pending') as 'pending' | 'won' | 'lost' | 'void',
+      selection: leg.selection as 'Over' | 'Under'
+    })) || [];
+
+    const { gameDate, ...restOfBetData } = betData;
+
+    const finalData = {
+      ...restOfBetData,
+      legs: sanitizedLegs,
+      status: parlayStatus,
+      stake: Number(betData.stake ?? 0),
+      odds: Number(betData.odds ?? 0),
+      userId: authId,
       updatedAt: FieldValue.serverTimestamp(),
+      ...(gameDate && { gameDate: fixGameDate(gameDate) }),
     };
 
-    // Convert gameDate string → Firestore Timestamp if provided
-    if (rest.gameDate) {
-      const d = new Date(rest.gameDate);
-      if (!isNaN(d.getTime())) {
-        sharedUpdates.gameDate = admin.firestore.Timestamp.fromDate(d);
-      }
-    }
+    await betRef.update(finalData);
 
-    delete sharedUpdates.legs;
-    delete sharedUpdates.parlayOdds;
-    delete sharedUpdates.potentialPayout;
-
-    let snap = await db.collection('bettingLog').where('parlayId', '==', id).get();
-    if (snap.empty) snap = await db.collection('bettingLog').where('parlayid', '==', id).get();
-
-    if (snap.empty) {
-      // Single bet — update doc directly
-      const ref = db.collection('bettingLog').doc(id);
-      const existing = await ref.get();
-      if (!existing.exists) {
-        return NextResponse.json({ error: 'Bet not found' }, { status: 404 });
-      }
-      const legUpdates = (clientLegs ?? [])[0] ?? {};
-      batch.update(ref, {
-        ...sharedUpdates,
-        ...(legUpdates.player    !== undefined && { player:    legUpdates.player }),
-        ...(legUpdates.prop      !== undefined && { prop:      legUpdates.prop }),
-        ...(legUpdates.line      !== undefined && { line:      Number(legUpdates.line) }),
-        ...(legUpdates.odds      !== undefined && { odds:      Number(legUpdates.odds) }),
-        ...(legUpdates.selection !== undefined && { selection: legUpdates.selection }),
-        ...(legUpdates.status    !== undefined && { status:    legUpdates.status }),
-        ...(legUpdates.isLive    !== undefined && { isLive:    legUpdates.isLive }),
-      });
-    } else {
-      // Parlay — update each leg doc
-      snap.docs.forEach(doc => {
-        const matched = (clientLegs ?? []).find((l: any) => l.id === doc.id);
-        const legUpdates: Record<string, any> = { ...sharedUpdates };
-        if (matched) {
-          if (matched.player    !== undefined) legUpdates.player    = matched.player;
-          if (matched.prop      !== undefined) legUpdates.prop      = matched.prop;
-          if (matched.line      !== undefined) legUpdates.line      = Number(matched.line);
-          if (matched.odds      !== undefined) legUpdates.odds      = Number(matched.odds);
-          if (matched.selection !== undefined) legUpdates.selection = matched.selection;
-          if (matched.isLive    !== undefined) legUpdates.isLive    = matched.isLive;
-          if (sharedUpdates.status === 'pending') {
-            legUpdates.status = matched.status ?? 'pending';
-          }
-        }
-        batch.update(doc.ref, legUpdates);
-      });
-    }
-
-    await batch.commit();
-    return NextResponse.json({ success: true, id });
+    return NextResponse.json({ success: true, id, status: parlayStatus });
 
   } catch (error: any) {
     console.error('❌ betting-log PUT:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return new NextResponse(error.message, { status: 500 });
   }
 }
 
@@ -319,29 +349,65 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    const { userId: authId } = await auth();
+    if (!authId) return new NextResponse('Unauthorized', { status: 401 });
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
-    if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
-    const db    = adminDb;
-    const batch = db.batch();
-
-    let snap = await db.collection('bettingLog').where('parlayId', '==', id).get();
-    if (snap.empty) snap = await db.collection('bettingLog').where('parlayid', '==', id).get();
-
-    if (!snap.empty) {
-      snap.docs.forEach(d => batch.delete(d.ref));
-    } else {
-      const ref = db.collection('bettingLog').doc(id);
-      const doc = await ref.get();
-      if (doc.exists) batch.delete(ref);
+    if (!id) {
+      return NextResponse.json({ error: 'ID is required' }, { status: 400 });
     }
 
-    await batch.commit();
-    return NextResponse.json({ success: true });
+    const db = adminDb;
+    const betRef = db.collection('bettingLog').doc(id);
+    const doc = await betRef.get();
+
+    if (!doc.exists) {
+      return await deleteByParlayId(db, id, authId);
+    }
+    
+    const data = doc.data();
+    if (data?.userId !== authId) {
+      return new NextResponse('Forbidden', { status: 403 });
+    }
+
+    const parlayId = data?.parlayId || data?.parlayid;
+    if (parlayId) {
+      return await deleteByParlayId(db, parlayId, authId);
+    }
+
+    await betRef.delete();
+    return NextResponse.json({ success: true, message: 'Bet deleted' });
 
   } catch (error: any) {
-    console.error('❌ betting-log DELETE:', error);
+    console.error('❌ DELETE Error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+}
+
+async function deleteByParlayId(db: any, pId: string, authId: string) {
+  let snap = await db.collection('bettingLog').where('parlayId', '==', pId).where('userId', '==', authId).get();
+  if (snap.empty) {
+    snap = await db.collection('bettingLog').where('parlayid', '==', pId).where('userId', '==', authId).get();
+  }
+
+  if (!snap.empty) {
+    const batch = db.batch();
+    snap.docs.forEach((doc: any) => batch.delete(doc.ref));
+    await batch.commit();
+    return NextResponse.json({ success: true, message: `Deleted parlay with ${snap.size} legs` });
+  }
+
+  const directRef = db.collection('bettingLog').doc(pId);
+  const directDoc = await directRef.get();
+  if (directDoc.exists) {
+    if (directDoc.data()?.userId !== authId) {
+      return new NextResponse('Forbidden', { status: 403 });
+    }
+    await directRef.delete();
+    return NextResponse.json({ success: true, message: 'Bet deleted' });
+  }
+
+  return NextResponse.json({ error: 'Bet not found' }, { status: 404 });
 }

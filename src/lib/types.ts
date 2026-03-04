@@ -111,28 +111,33 @@ export interface WeeklyProp extends PropData {
   Odds?:      number;
 }
 
-// ─── NFLProp ──────────────────────────────────────────────────────────────────
-// Used by enrichment pipeline. fdOdds/dkOdds are per-book accumulation values.
 
 export interface NFLProp {
-  id?:        string;
-  player?:    string;
-  prop?:      string;
-  line?:      number;
-  team?:      string;
-  matchup?:   string;
-  week?:      number;
-  season?:    string;
-  gameDate?:  string;
-  gameTime?:  string;
-  overUnder?: string;
-  overOdds?:  number;
-  underOdds?: number;
-  fdOdds?:    number;
-  dkOdds?:    number;
-  bestOdds?:  number;
-  bestBook?:  string;
-  bestEV?:    number;
+  id?:          string;
+  player?:      string;
+  Player?:      string; 
+  prop?:        string;
+  Prop?:        string;   
+  line?:        number;
+  Line?:        number;   
+  odds?:        number; // Added to fix Error 2339
+  Odds?:        number; // Added to fix Error 2339
+  team?:        string;
+  Team?:        string;   
+  matchup?:     string;
+  Matchup?:     string; 
+  week?:        number;
+  season?:      string;
+  gameDate?:    string;
+  gameTime?:    string;
+  overUnder?:   string;
+  overOdds?:    number;
+  underOdds?:   number;
+  fdOdds?:      number;
+  dkOdds?:      number;
+  bestOdds?:    number;
+  bestBook?:    string;
+  bestEV?:      number;
   bestEdgePct?:     number;
   bestImpliedProb?: number;
   bestKellyPct?:    number;
@@ -146,6 +151,9 @@ export interface NFLProp {
   avgWinProb?:        number;
   gameStat?:          number;
   actualResult?:      'won' | 'lost' | 'push' | 'pending';
+  expertPick?:      string | null;
+  expertStars?:     number;
+  updatedAt?:       string;
 }
 
 // ─── PFRGame ──────────────────────────────────────────────────────────────────

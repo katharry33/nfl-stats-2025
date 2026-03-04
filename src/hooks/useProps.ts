@@ -1,35 +1,61 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
-// This is the line you're looking for:
-import type { NFLProp, SortKey, SortDir } from '@/lib/types'; 
+import { useState, useEffect, useCallback } from 'react';
+import type { NFLProp } from '@/lib/types';
 
-export function useProps(week: number, seasons: number[] = [2025, 2024]) {
-  const [props, setProps] = useState<any[]>([]);
+interface ApiFilters {
+  propType?: string;
+  team?: string;
+}
+
+export function useProps(week: number, seasons: number[], filters: ApiFilters) {
+  const [props, setProps] = useState<NFLProp[]>([]);
+  const [propTypes, setPropTypes] = useState<string[]>([]);
+  const [teams, setTeams] = useState<string[]>([]);
   const [isLoading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchProps = useCallback(async () => {
-    // ... your fetch logic ...
-  }, [week, seasons]);
+  const fetchAll = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Fetch props with filters
+      const propsParams = new URLSearchParams({ week: week.toString() });
+      seasons.forEach(s => propsParams.append('season', s.toString()));
+      if (filters.propType) propsParams.append('prop', filters.propType);
+      if (filters.team) propsParams.append('team', filters.team);
 
-  useEffect(() => { fetchProps(); }, [fetchProps]);
+      const propsRes = await fetch(`/api/props?${propsParams.toString()}`);
+      if (!propsRes.ok) {
+        const err = await propsRes.json();
+        throw new Error(err.error || 'Failed to fetch props');
+      }
+      const propsData = await propsRes.json();
+      setProps(propsData.props || []);
 
-  // FIX: Type Guard to prevent "string | undefined" errors
-  const propTypes = useMemo(() => {
-    return Array.from(new Set(props.map(p => p.Prop).filter((v): v is string => !!v))).sort();
-  }, [props]);
+      // Fetch all available filter options for the UI
+      const optionsParams = new URLSearchParams({ week: week.toString() });
+      seasons.forEach(s => optionsParams.append('season', s.toString()));
+      
+      const optionsRes = await fetch(`/api/all-props/options?${optionsParams.toString()}`);
+      if (optionsRes.ok) {
+        const optionsData = await optionsRes.json();
+        setPropTypes(optionsData.propTypes || []);
+        setTeams(optionsData.teams || []);
+      } else {
+        console.warn('Could not load filter options.');
+      }
+    } catch (err: any) {
+      setError(err.message);
+      setProps([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [week, JSON.stringify(seasons), filters.propType, filters.team]);
 
-  const teams = useMemo(() => {
-    return Array.from(new Set(props.map(p => p.Team).filter((v): v is string => !!v))).sort();
-  }, [props]);
+  useEffect(() => {
+    fetchAll();
+  }, [fetchAll]);
 
-  return {
-    props,
-    isLoading,
-    error,
-    propTypes,
-    teams,
-    // ... rest of your returns
-  };
-} // <--- ENSURE THIS CLOSING BRACE EXISTS AT THE END OF THE FILE
+  return { props, isLoading, error, propTypes, teams };
+}

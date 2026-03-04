@@ -442,13 +442,14 @@ export function BetsTable({ bets, loading, onDelete, onEdit }: BetsTableProps) {
             </tr>
           </thead>
           <tbody>
-            {sorted.map(bet =>
-              (bet as any).isParlay !== false
+            {sorted.map(bet => {
+              const isParlay = Array.isArray(bet.legs) && bet.legs.length > 1;
+              return isParlay
                 ? <ParlayRow key={bet.id} bet={bet} selected={selectedIds.has(bet.id)}
                     onToggle={toggleSelect} onEdit={onEdit} onDelete={id => onDelete([id])} />
                 : <SingleRow key={bet.id} bet={bet} selected={selectedIds.has(bet.id)}
                     onToggle={toggleSelect} onEdit={onEdit} onDelete={id => onDelete([id])} />
-            )}
+            })}
           </tbody>
         </table>
       </div>

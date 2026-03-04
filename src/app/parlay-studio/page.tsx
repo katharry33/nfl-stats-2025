@@ -121,7 +121,9 @@ function LegCard({ leg, index, onUpdate, onRemove }: {
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2">
             <span className="text-zinc-500 text-xs">{leg.prop}</span>
-            <span className="font-mono font-black text-white">{leg.line}</span>
+            <input type="number" value={leg.line} 
+              onChange={e => onUpdate(leg.id, { line: parseFloat(e.target.value) || 0 })}
+              className="w-16 bg-black/40 border border-white/[0.08] text-white font-mono text-xs rounded-xl px-2 py-1.5 text-center focus:ring-1 focus:ring-[#FFD700]/30 outline-none" />
           </div>
           <div className="flex rounded-xl overflow-hidden border border-white/[0.08] ml-auto">
             {(['Over', 'Under'] as const).map((s: any) => (
@@ -183,7 +185,7 @@ function LegCard({ leg, index, onUpdate, onRemove }: {
 export default function ParlayStudioPage() {
   const router        = useRouter();
   const auth          = useAuth();
-  const { selections, addLeg, removeLeg, clearSlip } = useBetSlip();
+  const { selections, addLeg, removeLeg, clearSlip, isInitialized } = useBetSlip();
   const detailsRef    = useRef<HTMLDivElement>(null);
 
   const [legs, setLegs] = useState<LegState[]>([]);
@@ -236,6 +238,16 @@ export default function ParlayStudioPage() {
       return d.toISOString().split('T')[0];
     } catch { return ''; }
   });
+  const [season, setSeason] = useState(() => {
+    const gd = selections[0]?.gameDate;
+    if (!gd) return String(new Date().getFullYear());
+    try {
+      const d = typeof gd === 'string'
+        ? new Date(gd.includes('T') ? gd : `${gd}T12:00:00`)
+        : new Date((gd as any).seconds * 1000);
+      return String(d.getFullYear());
+    } catch { return String(new Date().getFullYear()); }
+  });
   const [saving,      setSaving]      = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [manualOdds,  setManualOdds]  = useState('');
@@ -266,8 +278,14 @@ export default function ParlayStudioPage() {
 
   const handleDateChange = (val: string) => {
     setGameDate(val);
-    const derived = getWeekFromDate(val);
-    if (derived && !week) setWeek(String(derived));
+    const derivedWeek = getWeekFromDate(val);
+    setWeek(derivedWeek ? String(derivedWeek) : week);
+    if (val) {
+      const d = new Date(val);
+      if (d instanceof Date && !isNaN(d.valueOf())) {
+        setSeason(String(d.getFullYear()));
+      }
+    }
   };
 
   const updateLegState = (id: string, up: Partial<LegState>) =>
@@ -294,6 +312,7 @@ export default function ParlayStudioPage() {
         boost: Number(boost) || 0,
         gameDate,
         week: Number(week),
+        season: Number(season),
         status: 'pending',
         isBonusBet,
         legs: legs.map((l) => ({ 
@@ -312,7 +331,8 @@ export default function ParlayStudioPage() {
       const response = await fetch('/api/save-bet', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(betDoc), 
+        body: JSON.stringify(betDoc),
+        credentials: 'same-origin',  // ← ADD THIS
       });
   
       const result = await response.json();
@@ -332,7 +352,15 @@ export default function ParlayStudioPage() {
     }
   };
 
-  if (legs.length === 0 && selections.length === 0) {
+  if (!isInitialized) {
+    return (
+      <div className="min-h-screen bg-[#060606] flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-[#FFD700]" />
+      </div>
+    );
+  }
+
+  if (isInitialized && legs.length === 0 && selections.length === 0) {
     return (
       <div className="min-h-screen bg-[#060606] flex items-center justify-center">
         <div className="text-center space-y-3">
