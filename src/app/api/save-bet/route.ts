@@ -1,7 +1,5 @@
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
-import { auth } from '@clerk/nextjs/server';
-import admin from 'firebase-admin';
 
 function fixGameDate(gameDate: string | undefined): string | undefined {
   if (!gameDate) return undefined;
@@ -13,19 +11,16 @@ function fixGameDate(gameDate: string | undefined): string | undefined {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    
-    // Try Clerk auth first, fall back to Firebase userId sent in body
-    const { userId: clerkId } = await auth();
-    const authId = clerkId || body.userId || 'dev-user';
-    // TODO: restore proper auth once auth system is confirmed
+    const authId = body.userId;
 
-    console.log('save-bet auth debug:', { clerkId, bodyUserId: body.userId, authId });
+    if (!authId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
-    const { id, ...data } = body;
+    const { id, userId, ...data } = body;  // strip userId from data so it's not doubled
+    const { gameDate, legs, ...rest } = data;
 
     const logCollection = adminDb.collection('bettingLog');
-
-    const { gameDate, legs, ...rest } = data;
 
     if (id) {
       // UPDATE case
@@ -38,9 +33,18 @@ export async function POST(req: Request) {
         // Allow edit of own data regardless of userId format mismatch
       }
 
+      const hasLost = (legs ?? []).some((l: any) => 
+        ['lost', 'loss'].includes((l.status ?? l.result ?? '').toLowerCase())
+      );
+      const allWon = (legs ?? []).length > 0 && (legs ?? []).every((l: any) => 
+        ['won', 'win'].includes((l.status ?? l.result ?? '').toLowerCase())
+      );
+      const derivedStatus = hasLost ? 'lost' : allWon ? 'won' : (rest.status ?? 'pending');
+
       await logCollection.doc(id).set({
         ...rest,
-        userId: authId,  // claim ownership on edit
+        status: derivedStatus,   // ← override whatever client sent
+        userId: authId,
         legs: legs ?? [],
         ...(gameDate && { gameDate: fixGameDate(gameDate) }),
         updatedAt: new Date().toISOString()

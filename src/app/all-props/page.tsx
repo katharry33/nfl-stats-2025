@@ -1,5 +1,4 @@
 'use client';
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { HistoricalBetSlip } from '@/components/bets/historical-betslip';
 import { AddToBetslipButton } from '@/components/bets/add-to-betslip-button';
@@ -15,8 +14,9 @@ function titleCase(s: string): string {
 // ─── PropCard ─────────────────────────────────────────────────────────────────
 // Single card — shows player, matchup, week badge, prop type, line value
 // One "Add to Slip" button (no over/under — just adds the prop)
-
 function PropCard({ prop }: { prop: any }) {
+  const [selection, setSelection] = useState<'Over' | 'Under'>('Over');
+
   const player  = prop.player  ?? prop.Player  ?? '—';
   const team    = prop.team    ?? prop.Team    ?? '';
   const propLbl = prop.prop    ?? prop.Prop    ?? '—';
@@ -28,16 +28,13 @@ function PropCard({ prop }: { prop: any }) {
     <div className="bg-[#0f1115] border border-white/5 p-5 rounded-3xl shadow-2xl flex flex-col gap-3
       hover:border-[#FFD700]/20 transition-colors">
 
-      {/* Top: player name + week badge */}
       <div className="flex justify-between items-start gap-2">
         <div className="flex-1 min-w-0">
           <h3 className="text-white font-black text-base uppercase italic tracking-tighter leading-tight truncate">
             {player}
           </h3>
           {matchup && (
-            <p className="text-[10px] text-[#FFD700] font-black uppercase tracking-[0.2em] mt-1">
-              {matchup}
-            </p>
+            <p className="text-[10px] text-[#FFD700] font-black uppercase tracking-[0.2em] mt-1">{matchup}</p>
           )}
         </div>
         {week && (
@@ -55,13 +52,23 @@ function PropCard({ prop }: { prop: any }) {
         </div>
       </div>
 
-      {/* Prop type + team */}
+      {/* Over / Under toggle */}
+      <div className="flex rounded-xl overflow-hidden border border-white/[0.08]">
+        {(['Over', 'Under'] as const).map(s => (
+          <button key={s} onClick={() => setSelection(s)}
+            className={`flex-1 py-2 text-[11px] font-black uppercase transition-colors ${
+              selection === s
+                ? s === 'Over' ? 'bg-blue-600 text-white' : 'bg-orange-600 text-white'
+                : 'bg-black/40 text-zinc-600 hover:bg-white/[0.04]'
+            }`}>{s}</button>
+        ))}
+      </div>
+
       <p className="text-[10px] text-center text-zinc-600 font-bold uppercase tracking-widest truncate">
         {[team, titleCase(propLbl)].filter(Boolean).join(' • ')}
       </p>
 
-      {/* Single add button — no over/under choice */}
-      <AddToBetslipButton prop={prop} selection={prop.overUnder || 'Over'} />
+      <AddToBetslipButton prop={prop} selection={selection} />
     </div>
   );
 }

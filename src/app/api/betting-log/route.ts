@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
-import { auth } from '@clerk/nextjs/server';
 import admin from 'firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 
@@ -118,10 +117,9 @@ function calcPayout(stake: number | null, odds: number | null): number | null {
 
 export async function GET(request: NextRequest) {
   try {
-    const { userId: authId } = await auth();
-    if (!authId) return new NextResponse('Unauthorized', { status: 401 });
-
     const { searchParams } = new URL(request.url);
+    const requestedUserId = searchParams.get('userId') ?? '';
+
     const player  = (searchParams.get('player')  ?? '').trim().toLowerCase();
     const week    =  searchParams.get('week')     ?? '';
     const cursor  =  searchParams.get('cursor')   ?? '';
@@ -134,11 +132,7 @@ export async function GET(request: NextRequest) {
 
     const snap = await q.orderBy('createdAt', 'desc').limit(2000).get();
 
-    // Filter: keep docs owned by this user OR legacy docs with no userId / userId=anonymous
-    const docs = snap.docs.filter(doc => {
-      const uid = doc.data()?.userId;
-      return !uid || uid === authId || uid === 'anonymous';
-    });
+    const docs = snap.docs;
 
     const bets: any[] = [];
     // parlayMap groups individual leg docs by their parlayid
@@ -285,9 +279,7 @@ export async function GET(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { userId: clerkId } = await auth();
-    const authId = clerkId || body.userId;
-    if (!authId) return new NextResponse('Unauthorized', { status: 401 });
+    const authId = body.userId || 'dev-user';
 
     const { id, legs, ...betData } = body;
 
@@ -349,10 +341,9 @@ export async function PUT(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
-    const { userId: authId } = await auth();
-    if (!authId) return new NextResponse('Unauthorized', { status: 401 });
-
     const { searchParams } = new URL(request.url);
+    const authId = searchParams.get('userId') || 'dev-user';
+
     const id = searchParams.get('id');
 
     if (!id) {
@@ -387,14 +378,14 @@ export async function DELETE(request: NextRequest) {
 }
 
 async function deleteByParlayId(db: any, pId: string, authId: string) {
-  let snap = await db.collection('bettingLog').where('parlayId', '==', pId).where('userId', '==', authId).get();
+  let snap = await db.collection('bettingLog').where('parlayId', '==', pId).get();
   if (snap.empty) {
-    snap = await db.collection('bettingLog').where('parlayid', '==', pId).where('userId', '==', authId).get();
+    snap = await db.collection('bettingLog').where('parlayid', '==', pId).get();
   }
 
   if (!snap.empty) {
     const batch = db.batch();
-    snap.docs.forEach((doc: any) => batch.delete(doc.ref));
+     snap.docs.forEach((doc: any) => batch.delete(doc.ref));
     await batch.commit();
     return NextResponse.json({ success: true, message: `Deleted parlay with ${snap.size} legs` });
   }

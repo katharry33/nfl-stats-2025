@@ -17,7 +17,7 @@ function fmtLine(n: any): string {
 }
 
 function fmtMoney(n: number | null | undefined): string {
-  if (!n) return '—';
+  if (n == null || n === 0) return '—';
   return `$${Number(n).toFixed(2)}`;
 }
 
@@ -40,9 +40,14 @@ function StatusBadge({ status }: { status?: string }) {
     s === 'void' || s === 'push' ? 'bg-zinc-700/20 text-zinc-500 border-zinc-700/20' :
     s === 'cashed'               ? 'bg-blue-500/15 text-blue-400 border-blue-500/25' :
                                    'bg-amber-500/10 text-amber-400 border-amber-500/20';
+  const label = s === 'won' || s === 'win' ? 'WON'
+    : s === 'lost' || s === 'loss' ? 'LOST'
+    : s === 'void' || s === 'push' ? 'VOID'
+    : s === 'cashed' ? 'CASHED'
+    : 'PENDING';
   return (
     <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-black uppercase border ${cls}`}>
-      {status ?? 'PENDING'}
+      {label}
     </span>
   );
 }
@@ -57,10 +62,10 @@ function PayoutCell({ payout, status, stake }: {
     return (
       <div className="flex flex-col items-end">
         <span className="text-red-400 font-mono font-black">{stake ? `-${fmtMoney(stake)}` : '—'}</span>
-        {payout && <span className="text-[9px] text-zinc-600 uppercase">Pot: {fmtMoney(payout)}</span>}
+        {payout ? <span className="text-[10px] text-zinc-600 uppercase">POT: {fmtMoney(payout)}</span> : null}
       </div>
     );
-  return <span className="text-zinc-500 font-mono text-xs">{payout ? fmtMoney(payout) : '—'}</span>;
+  return <span className="text-amber-400/80 font-mono text-sm font-black">{payout ? fmtMoney(payout) : '—'}</span>;
 }
 
 function CheckCell({ id, selected, onToggle }: {
@@ -112,9 +117,11 @@ function ParlayRow({ bet, selected, onToggle, onEdit, onDelete }: {
 }) {
   const [open, setOpen] = useState(false);
   const legsEmpty = !bet.legs || bet.legs.length === 0;
-
-  // Best game date: prefer leg-level gameDate, fall back to createdAt
-  const displayDate = bet.legs?.[0]?.gameDate ?? bet.createdAt;
+  const displayDate = bet.legs?.[0]?.gameDate ?? bet.gameDate ?? bet.createdAt;
+  // Collect unique matchups across legs
+  const matchups = [...new Set(
+    (bet.legs ?? []).map((l: any) => l.matchup).filter(Boolean)
+  )].slice(0, 2).join(', ');
 
   return (
     <>
@@ -126,10 +133,10 @@ function ParlayRow({ bet, selected, onToggle, onEdit, onDelete }: {
       >
         <CheckCell id={bet.id} selected={selected} onToggle={onToggle} />
 
-        {/* Expand */}
+        {/* Expand toggle */}
         <td className="w-8 px-2 py-3 text-center">
           {legsEmpty
-            ? <Minus      className="h-3.5 w-3.5 text-zinc-800 mx-auto" />
+            ? <Minus className="h-3.5 w-3.5 text-zinc-800 mx-auto" />
             : open
               ? <ChevronDown  className="h-4 w-4 text-zinc-400 mx-auto" />
               : <ChevronRight className="h-4 w-4 text-zinc-600 mx-auto" />}
@@ -139,22 +146,17 @@ function ParlayRow({ bet, selected, onToggle, onEdit, onDelete }: {
         <td className="px-4 py-3">
           <div className="flex items-center gap-2">
             <Layers className="h-3.5 w-3.5 text-[#FFD700]/50 shrink-0" />
-            <div>
+            <div className="min-w-0">
               <div className="font-black text-white text-sm italic uppercase tracking-tight">
                 {legsEmpty ? 'Parlay (no legs)' : `${bet.legs.length}-Leg Parlay`}
               </div>
               {!legsEmpty && (
-                <div className="text-[10px] text-zinc-600 mt-0.5 truncate max-w-[240px]">
+                <div className="text-[10px] text-zinc-500 mt-0.5 truncate max-w-[220px]">
                   {bet.legs.map((l: any) => l.player).filter(Boolean).join(' · ')}
                 </div>
               )}
             </div>
           </div>
-        </td>
-
-        {/* Selection */}
-        <td className="px-4 py-3 text-xs text-zinc-600">
-          {legsEmpty ? '—' : `${bet.legs.length} legs`}
         </td>
 
         {/* Week */}
@@ -164,7 +166,12 @@ function ParlayRow({ bet, selected, onToggle, onEdit, onDelete }: {
             : <span className="text-zinc-700">—</span>}
         </td>
 
-        {/* Game Date — use leg gameDate preferentially */}
+        {/* Matchup */}
+        <td className="px-4 py-3 text-xs text-zinc-500 font-mono max-w-[120px] truncate">
+          {matchups || <span className="text-zinc-700">—</span>}
+        </td>
+
+        {/* Date */}
         <td className="px-4 py-3 text-xs text-zinc-400">{fmtDate(displayDate)}</td>
 
         {/* Status */}
@@ -199,30 +206,44 @@ function ParlayRow({ bet, selected, onToggle, onEdit, onDelete }: {
       {open && bet.legs.map((leg: any, i: number) => (
         <tr key={`${bet.id}-${leg.id ?? i}`} className="bg-black/40 border-b border-white/[0.03]">
           <td colSpan={2} />
+
+          {/* Leg player/prop */}
           <td className="px-4 py-2 pl-10">
             <div className="flex items-center gap-2">
-              <span className="text-[9px] bg-[#FFD700]/10 text-[#FFD700] border border-[#FFD700]/20 px-1.5 py-0.5 rounded font-black">
+              <span className="text-[9px] bg-[#FFD700]/10 text-[#FFD700] border border-[#FFD700]/20 px-1.5 py-0.5 rounded font-black shrink-0">
                 LEG {i + 1}
               </span>
-              <div>
-                <div className="text-sm text-zinc-200 font-bold">{leg.player || '—'}</div>
+              <div className="min-w-0">
+                <div className="text-sm text-zinc-200 font-bold truncate">{leg.player || '—'}</div>
                 <div className="text-[10px] text-zinc-600 capitalize">{leg.prop || '—'}</div>
               </div>
             </div>
           </td>
-          <td className="px-4 py-2 text-xs">
+
+          {/* Week */}
+          <td className="px-4 py-2 text-xs font-mono text-zinc-600">
+            {leg.week ? `WK ${leg.week}` : '—'}
+          </td>
+
+          {/* Matchup */}
+          <td className="px-4 py-2 text-xs text-zinc-600 font-mono">{leg.matchup || '—'}</td>
+
+          {/* Date */}
+          <td className="px-4 py-2 text-xs text-zinc-600">{fmtDate(leg.gameDate)}</td>
+
+          {/* Leg status */}
+          <td className="px-4 py-2"><StatusBadge status={leg.status} /></td>
+
+          {/* Selection / line */}
+          <td className="px-4 py-2 text-xs" colSpan={2}>
             <span className={leg.selection?.toLowerCase() === 'over' ? 'text-blue-400 font-bold' : 'text-orange-400 font-bold'}>
               {leg.selection || '—'}
             </span>
             <span className="text-zinc-500 font-mono ml-1">{fmtLine(leg.line)}</span>
+            {leg.odds ? <span className="text-zinc-600 font-mono ml-2">({leg.odds > 0 ? '+' : ''}{leg.odds})</span> : null}
           </td>
-          <td className="px-4 py-2 text-xs font-mono text-zinc-600">
-            {leg.week ? `WK ${leg.week}` : '—'}
-          </td>
-          {/* Leg game date */}
-          <td className="px-4 py-2 text-xs text-zinc-600">{fmtDate(leg.gameDate)}</td>
-          <td className="px-4 py-2"><StatusBadge status={leg.status} /></td>
-          <td colSpan={3} />
+
+          <td />
         </tr>
       ))}
     </>
@@ -238,8 +259,7 @@ function SingleRow({ bet, selected, onToggle, onEdit, onDelete }: {
   onDelete: (id: string) => void;
 }) {
   const leg = bet.legs?.[0] ?? {};
-  // Use leg.gameDate as the game date — more accurate than createdAt
-  const displayDate = leg.gameDate ?? bet.createdAt;
+  const displayDate = leg.gameDate ?? bet.gameDate ?? bet.createdAt;
 
   return (
     <tr className={`border-b border-white/5 hover:bg-white/[0.02] transition-colors group ${selected ? 'bg-[#FFD700]/[0.04]' : ''}`}>
@@ -248,16 +268,10 @@ function SingleRow({ bet, selected, onToggle, onEdit, onDelete }: {
 
       {/* Player */}
       <td className="px-4 py-3">
-        <div className="font-black text-white text-sm italic uppercase tracking-tight">{leg.player || '—'}</div>
-        <div className="text-[10px] text-zinc-600 uppercase mt-0.5">{leg.prop}</div>
-      </td>
-
-      {/* Selection */}
-      <td className="px-4 py-3 text-sm">
-        <span className={`font-black ${leg.selection?.toLowerCase() === 'over' ? 'text-blue-400' : 'text-orange-400'}`}>
-          {leg.selection || '—'}
-        </span>
-        <span className="text-zinc-400 font-mono ml-1.5">{fmtLine(leg.line)}</span>
+        <div className="font-black text-white text-sm italic uppercase tracking-tight truncate max-w-[200px]">
+          {leg.player || '—'}
+        </div>
+        <div className="text-[10px] text-zinc-600 uppercase mt-0.5">{leg.prop || ''}</div>
       </td>
 
       {/* Week */}
@@ -267,7 +281,12 @@ function SingleRow({ bet, selected, onToggle, onEdit, onDelete }: {
           : <span className="text-zinc-700">—</span>}
       </td>
 
-      {/* Game Date */}
+      {/* Matchup */}
+      <td className="px-4 py-3 text-xs text-zinc-500 font-mono max-w-[120px] truncate">
+        {leg.matchup || <span className="text-zinc-700">—</span>}
+      </td>
+
+      {/* Date */}
       <td className="px-4 py-3 text-xs text-zinc-400">{fmtDate(displayDate)}</td>
 
       {/* Status */}
@@ -298,7 +317,7 @@ function SingleRow({ bet, selected, onToggle, onEdit, onDelete }: {
   );
 }
 
-// ─── BetsTable (sortable) ─────────────────────────────────────────────────────
+// ─── BetsTable ────────────────────────────────────────────────────────────────
 
 type SortKey = 'player' | 'week' | 'date' | 'status' | 'stake' | 'payout';
 
@@ -316,50 +335,29 @@ export function BetsTable({ bets, loading, onDelete, onEdit }: BetsTableProps) {
   const [sortDir,      setSortDir]      = useState<SortDir>('desc');
 
   const handleSort = (col: string) => {
-    if (sortCol === col) {
-      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortCol(col as SortKey);
-      setSortDir('desc');
-    }
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortCol(col as SortKey); setSortDir('desc'); }
   };
 
   const sorted = useMemo(() => {
     const seen = new Set<string>();
-    const unique = bets.filter(b => {
-      if (seen.has(b.id)) return false;
-      seen.add(b.id);
-      return true;
-    });
-
-    const arr = [...unique];
+    const unique = bets.filter(b => { if (seen.has(b.id)) return false; seen.add(b.id); return true; });
     const dir = sortDir === 'asc' ? 1 : -1;
-
-    arr.sort((a: any, b: any) => {
+    return [...unique].sort((a: any, b: any) => {
       switch (sortCol) {
-        case 'player': {
-          const ap = a.legs?.[0]?.player ?? '';
-          const bp = b.legs?.[0]?.player ?? '';
-          return ap.localeCompare(bp) * dir;
-        }
-        case 'week':
-          return ((a.week ?? 0) - (b.week ?? 0)) * dir;
+        case 'player': return (a.legs?.[0]?.player ?? '').localeCompare(b.legs?.[0]?.player ?? '') * dir;
+        case 'week':   return ((a.week ?? 0) - (b.week ?? 0)) * dir;
         case 'date': {
-          const ad = new Date(a.legs?.[0]?.gameDate ?? a.createdAt ?? 0).getTime();
-          const bd = new Date(b.legs?.[0]?.gameDate ?? b.createdAt ?? 0).getTime();
+          const ad = new Date(a.legs?.[0]?.gameDate ?? a.gameDate ?? a.createdAt ?? 0).getTime();
+          const bd = new Date(b.legs?.[0]?.gameDate ?? b.gameDate ?? b.createdAt ?? 0).getTime();
           return (ad - bd) * dir;
         }
-        case 'status':
-          return (a.status ?? '').localeCompare(b.status ?? '') * dir;
-        case 'stake':
-          return ((a.stake ?? 0) - (b.stake ?? 0)) * dir;
-        case 'payout':
-          return ((a.payout ?? 0) - (b.payout ?? 0)) * dir;
-        default:
-          return 0;
+        case 'status': return (a.status ?? '').localeCompare(b.status ?? '') * dir;
+        case 'stake':  return ((a.stake ?? 0) - (b.stake ?? 0)) * dir;
+        case 'payout': return ((a.payout ?? 0) - (b.payout ?? 0)) * dir;
+        default: return 0;
       }
     });
-    return arr;
   }, [bets, sortCol, sortDir]);
 
   const allVisibleIds = useMemo(() => bets.map(b => b.id), [bets]);
@@ -367,11 +365,7 @@ export function BetsTable({ bets, loading, onDelete, onEdit }: BetsTableProps) {
   const someSelected  = selectedIds.size > 0;
 
   const toggleSelect = useCallback((id: string) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
+    setSelectedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   }, []);
 
   const handleBulkDelete = async () => {
@@ -419,25 +413,26 @@ export function BetsTable({ bets, loading, onDelete, onEdit }: BetsTableProps) {
       )}
 
       <div className="rounded-[2rem] border border-white/[0.06] bg-[#0f1115] overflow-x-auto shadow-2xl">
-        <table className="w-full min-w-[860px]">
+        <table className="w-full min-w-[980px]">
           <thead className="border-b border-white/[0.06]">
             <tr>
+              {/* Checkbox */}
               <th className="w-10 px-3 py-4 text-center">
                 <button onClick={() => setSelectedIds(allSelected ? new Set() : new Set(allVisibleIds))}
                   className="text-zinc-600 hover:text-[#FFD700] transition-colors">
                   <Square className="h-4 w-4 mx-auto" />
                 </button>
               </th>
+              {/* Expand */}
               <th className="w-8 px-2 py-4" />
+              {/* Columns in requested order */}
               <Th col="player"  label="Player / Parlay" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
-              <th className="px-4 py-4 text-left text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">
-                Selection
-              </th>
-              <Th col="week"   label="Week"   sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
-              <Th col="date"   label="Date"   sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
-              <Th col="status" label="Status" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
-              <Th col="stake"  label="Stake"  sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
-              <Th col="payout" label="Payout" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} align="right" />
+              <Th col="week"    label="Week"            sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+              <th className="px-4 py-4 text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em] text-left">Matchup</th>
+              <Th col="date"    label="Date"            sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+              <Th col="status"  label="Status"          sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+              <Th col="stake"   label="Stake"           sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
+              <Th col="payout"  label="Payout"          sortCol={sortCol} sortDir={sortDir} onSort={handleSort} align="right" />
               <th className="px-3 py-4 w-20" />
             </tr>
           </thead>

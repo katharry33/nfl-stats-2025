@@ -37,7 +37,7 @@ export default function BettingLogPage() {
   const handleDelete = useCallback(async (ids: string[]) => {
     try {
       const deletePromises = ids.map(id =>
-        fetch(`/api/betting-log?id=${id}`, { method: 'DELETE' })
+        fetch(`/api/betting-log?id=${id}&userId=${user?.uid ?? ''}`, { method: 'DELETE' })
 
       );
       const responses = await Promise.all(deletePromises);
@@ -65,9 +65,28 @@ export default function BettingLogPage() {
   }, [router]);
 
   const handleSave = useCallback(async (updated: Bet) => {
-    await updateBet(updated.id, updated);
+    // Derive correct status from legs before updating local state
+    const legs = (updated as any).legs ?? [];
+    const hasLost = legs.some((l: any) => ['lost', 'loss'].includes((l.status ?? '').toLowerCase()));
+    const allWon = legs.length > 0 && legs.every((l: any) => ['won', 'win'].includes((l.status ?? '').toLowerCase()));
+    const correctStatus = hasLost ? 'lost' : allWon ? 'won' : updated.status;
+
+    // Recalculate payout
+    const odds = Number(updated.odds) || 0;
+    const stake = Number(updated.stake) || 0;
+    const boost = Number((updated as any).boost || 0);
+    const isBonusBet = Boolean((updated as any).isBonusBet);
+    let payout: number | null = null;
+    if (odds && stake) {
+      const dec = odds > 0 ? odds / 100 + 1 : 100 / Math.abs(odds) + 1;
+      const raw = stake * dec * (1 + boost / 100);
+      payout = parseFloat((isBonusBet ? raw - stake : raw).toFixed(2));
+    }
+
+    await updateBet(updated.id, { ...updated, status: correctStatus as any, payout } as any);
     setEditBet(null);
-    await fetchBets(search, 'all');  // refetch to get server-calculated values
+    // Refetch after a longer delay to let Firestore propagate
+    setTimeout(() => fetchBets(search, 'all'), 3000);
   }, [updateBet, fetchBets, search]);
 
   if (authLoading) {
