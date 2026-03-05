@@ -11,7 +11,7 @@ interface EditBetModalProps {
   isOpen: boolean;
   userId?: string;
   onClose: () => void;
-  onSave: (updated: Bet) => Promise<void>;
+  onSave: (updated: Bet) => void;
   onDelete: (id: string) => void;
 }
 
@@ -72,36 +72,26 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      // Legs always win — if any leg is lost, parlay is lost regardless of manual status
-      const finalStatus = legs.some(l => l.status === 'lost') ? 'lost'
-        : legs.every(l => l.status === 'won') ? 'won'
-        : legs.some(l => l.status === 'pending') ? 'pending'
-        : formData.status;
-
       const payload = {
         id: formData.id,
         userId,
-        odds: Number(formData.odds),
-        stake: Number(formData.stake),
-        boost: Number((formData as any).boost || 0),
-        week: Number((formData as any).week || 0),
-        gameDate: formData.gameDate,
-        status: finalStatus,
-        type: (formData as any).type,
+        odds:       parseInt(String(formData.odds), 10) || 0,
+        stake:      Number(formData.stake),
+        status:     formData.status,
+        week:       Number((formData as any).week),
+        gameDate:   formData.gameDate,
+        boost:      (formData as any).boost,
         isBonusBet: (formData as any).isBonusBet,
-        legs: legs.map(l => ({
-          ...l,
-          line: Number(l.line),
-          odds: Number(l.odds),
-          status: l.status || 'pending',
-        })),
+        isGhostParlay: (formData as any).isGhostParlay,
+        type:       (formData as any).type,
+        legs:       legs,
       };
 
-      const response = await fetch('/api/save-bet', {
+      const response = await fetch('/api/betting-log', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-        credentials: 'same-origin',
+        credentials: 'include',
       });
 
       if (!response.ok) {
@@ -109,7 +99,13 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
         throw new Error(err.error || `HTTP ${response.status}`);
       }
 
-      await onSave({ ...formData, status: finalStatus as any, legs } as any);
+      onSave({ 
+        ...formData, 
+        legs,
+        odds: parseInt(String(formData.odds), 10) || 0,
+        stake: Number(formData.stake),
+        status: formData.status,
+      } as Bet);
       toast.success('Bet updated', {
         style: { background: '#0f1115', border: '1px solid rgba(255,215,0,0.2)', color: '#FFD700' },
       });
@@ -221,6 +217,30 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
                 <option value="lost">Lost</option>
                 <option value="void">Void</option>
               </select>
+            </div>
+          </div>
+
+          {/* Bonus Bet + Ghost Parlay */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex items-center gap-2">
+                <input
+                    type="checkbox"
+                    id="isBonusBet"
+                    checked={(formData as any).isBonusBet || false}
+                    onChange={e => handleFieldChange({ isBonusBet: e.target.checked } as any)}
+                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                <label htmlFor="isBonusBet" className="text-sm text-white">Bonus Bet</label>
+            </div>
+            <div className="flex items-center gap-2">
+                <input
+                    type="checkbox"
+                    id="isGhostParlay"
+                    checked={(formData as any).isGhostParlay || false}
+                    onChange={e => handleFieldChange({ isGhostParlay: e.target.checked } as any)}
+                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                <label htmlFor="isGhostParlay" className="text-sm text-white">Ghost Parlay</label>
             </div>
           </div>
 

@@ -1,24 +1,23 @@
 'use client';
 
 import React, { useState, useCallback, useMemo } from 'react';
-import { Bet } from '@/lib/types';
-import {
-  Loader2, CheckSquare, Square, Layers, Minus,
-  ChevronDown, ChevronRight, ChevronUp,
-  Pencil, Trash2, X
+import { 
+  Loader2, CheckSquare, Square, Layers, Minus, 
+  ChevronDown, ChevronRight, ChevronUp, 
+  Pencil, Trash2, X, Zap 
 } from 'lucide-react';
+import { Bet } from '@/lib/types';
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Updated Helpers ──────────────────────────────────────────────────────────
 
-function fmtLine(n: any): string {
-  if (n == null || n === '') return '—';
-  const num = typeof n === 'number' ? n : parseFloat(String(n));
-  return isNaN(num) ? '—' : num.toFixed(1);
+function fmtOdds(odds: number | null | undefined): string {
+  if (odds == null) return '—';
+  return odds > 0 ? `+${odds}` : `${odds}`;
 }
 
 function fmtMoney(n: number | null | undefined): string {
   if (n == null || n === 0) return '—';
-  return `$${Number(n).toFixed(2)}`;
+  return `$${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function fmtDate(raw: string | null | undefined): string {
@@ -30,7 +29,50 @@ function fmtDate(raw: string | null | undefined): string {
   } catch { return '—'; }
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+
+// ─── Visual Boost & Payout Components ────────────────────────────────────────
+
+function PayoutCell({ payout, status, stake, odds, boost }: {
+  payout: number | null; status: string; stake: number | null; odds?: number; boost?: number;
+}) {
+  const s = (status ?? '').toLowerCase();
+  const isWon = s === 'won' || s === 'win' || s === 'cashed';
+  const isLost = s === 'lost' || s === 'loss';
+  
+  return (
+    <div className="flex flex-col items-end gap-0.5">
+      {/* Primary Value: The Outcome or the POT */}
+      <div className="flex flex-col items-end">
+        <span className={`text-sm font-mono font-black tracking-tight ${
+          isWon ? 'text-emerald-400' : isLost ? 'text-zinc-500' : 'text-[#FFD700]'
+        }`}>
+          {isWon ? fmtMoney(payout) : isLost ? '—' : fmtMoney(payout)}
+        </span>
+        
+        {/* POT Label - Highlighted for visibility */}
+        {!isWon && payout && (
+          <div className="flex items-center gap-1 mt-0.5">
+             <span className="text-[9px] px-1 bg-zinc-800 text-zinc-400 font-bold rounded">POT</span>
+             <span className="text-xs text-zinc-300 font-mono font-bold tracking-tighter">
+               {fmtMoney(payout)}
+             </span>
+          </div>
+        )}
+      </div>
+
+      {/* Sub-details: Odds and Boost */}
+      <div className="flex items-center gap-2 mt-1 opacity-80">
+        <span className="text-[10px] font-mono text-zinc-500 font-bold">{fmtOdds(odds)}</span>
+        {boost && boost > 0 ? (
+          <span className="flex items-center gap-0.5 text-[10px] text-amber-400 font-black italic">
+            <Zap className="h-2.5 w-2.5 fill-current" />
+            {boost}%
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
 function StatusBadge({ status }: { status?: string }) {
   const s = (status ?? '').toLowerCase();
@@ -52,22 +94,6 @@ function StatusBadge({ status }: { status?: string }) {
   );
 }
 
-function PayoutCell({ payout, status, stake }: {
-  payout: number | null; status: string; stake: number | null;
-}) {
-  const s = (status ?? '').toLowerCase();
-  if (s === 'won' || s === 'win' || s === 'cashed')
-    return <span className="text-emerald-400 font-mono font-black">{fmtMoney(payout)}</span>;
-  if (s === 'lost' || s === 'loss')
-    return (
-      <div className="flex flex-col items-end">
-        <span className="text-red-400 font-mono font-black">{stake ? `-${fmtMoney(stake)}` : '—'}</span>
-        {payout ? <span className="text-[10px] text-zinc-600 uppercase">POT: {fmtMoney(payout)}</span> : null}
-      </div>
-    );
-  return <span className="text-amber-400/80 font-mono text-sm font-black">{payout ? fmtMoney(payout) : '—'}</span>;
-}
-
 function CheckCell({ id, selected, onToggle }: {
   id: string; selected: boolean; onToggle: (id: string) => void;
 }) {
@@ -80,129 +106,82 @@ function CheckCell({ id, selected, onToggle }: {
   );
 }
 
-// ─── Sortable TH ─────────────────────────────────────────────────────────────
+// ─── Updated ParlayRow ────────────────────────────────────────────────────────
 
-type SortDir = 'asc' | 'desc';
-
-function Th({ col, label, sortCol, sortDir, onSort, align = 'left' }: {
-  col: string; label: string; sortCol: string; sortDir: SortDir;
-  onSort: (c: string) => void; align?: 'left' | 'right';
-}) {
-  const active = sortCol === col;
-  return (
-    <th
-      onClick={() => onSort(col)}
-      className={`px-4 py-4 text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]
-        cursor-pointer select-none hover:text-zinc-300 transition-colors text-${align}`}
-    >
-      <span className="inline-flex items-center gap-1">
-        {label}
-        {active
-          ? sortDir === 'asc'
-            ? <ChevronUp   className="h-3 w-3 text-[#FFD700]" />
-            : <ChevronDown className="h-3 w-3 text-[#FFD700]" />
-          : <ChevronDown className="h-3 w-3 text-zinc-800" />}
-      </span>
-    </th>
-  );
-}
-
-// ─── ParlayRow ────────────────────────────────────────────────────────────────
-
-function ParlayRow({ bet, selected, onToggle, onEdit, onDelete }: {
-  bet: any; selected: boolean;
-  onToggle: (id: string) => void;
-  onEdit:   (b: any) => void;
-  onDelete: (id: string) => void;
-}) {
+function ParlayRow({ bet, selected, onToggle, onEdit, onDelete }: any) {
   const [open, setOpen] = useState(false);
   const legsEmpty = !bet.legs || bet.legs.length === 0;
   const displayDate = bet.legs?.[0]?.gameDate ?? bet.gameDate ?? bet.createdAt;
-  // Collect unique matchups across legs
-  const matchups = [...new Set(
-    (bet.legs ?? []).map((l: any) => l.matchup).filter(Boolean)
-  )].slice(0, 2).join(', ');
+  const matchups = [...new Set((bet.legs ?? []).map((l: any) => l.matchup).filter(Boolean))].slice(0, 2).join(', ');
 
   return (
     <>
-      <tr
-        onClick={() => !legsEmpty && setOpen(o => !o)}
-        className={`border-b border-white/5 transition-colors group
-          ${selected ? 'bg-[#FFD700]/[0.04]' : ''}
-          ${!legsEmpty ? 'cursor-pointer hover:bg-white/[0.02]' : 'opacity-60'}`}
-      >
+      <tr onClick={() => !legsEmpty && setOpen(o => !o)} 
+          className={`border-b border-white/5 transition-all group ${selected ? 'bg-[#FFD700]/[0.06]' : 'hover:bg-white/[0.02]'}`}>
         <CheckCell id={bet.id} selected={selected} onToggle={onToggle} />
-
-        {/* Expand toggle */}
         <td className="w-8 px-2 py-3 text-center">
-          {legsEmpty
-            ? <Minus className="h-3.5 w-3.5 text-zinc-800 mx-auto" />
-            : open
-              ? <ChevronDown  className="h-4 w-4 text-zinc-400 mx-auto" />
-              : <ChevronRight className="h-4 w-4 text-zinc-600 mx-auto" />}
+           {!legsEmpty && (open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />)}
         </td>
 
-        {/* Player / Parlay */}
         <td className="px-4 py-3">
           <div className="flex items-center gap-2">
-            <Layers className="h-3.5 w-3.5 text-[#FFD700]/50 shrink-0" />
-            <div className="min-w-0">
+            <Layers className="h-3.5 w-3.5 text-[#FFD700]/50" />
+            <div>
               <div className="font-black text-white text-sm italic uppercase tracking-tight">
-                {legsEmpty ? 'Parlay (no legs)' : `${bet.legs.length}-Leg Parlay`}
+                {legsEmpty ? 'Parlay' : `${bet.legs.length}-Leg Parlay`}
               </div>
-              {!legsEmpty && (
-                <div className="text-[10px] text-zinc-500 mt-0.5 truncate max-w-[220px]">
-                  {bet.legs.map((l: any) => l.player).filter(Boolean).join(' · ')}
-                </div>
-              )}
+              <div className="text-[10px] text-zinc-500 truncate max-w-[180px]">
+                 {bet.legs.map((l: any) => l.player).filter(Boolean).join(' · ')}
+              </div>
             </div>
           </div>
         </td>
 
-        {/* Week */}
-        <td className="px-4 py-3 text-xs font-mono">
-          {bet.week
-            ? <span className="text-[#FFD700]/80 font-black">WK {bet.week}</span>
-            : <span className="text-zinc-700">—</span>}
-        </td>
-
-        {/* Matchup */}
-        <td className="px-4 py-3 text-xs text-zinc-500 font-mono max-w-[120px] truncate">
-          {matchups || <span className="text-zinc-700">—</span>}
-        </td>
-
-        {/* Date */}
+        <td className="px-4 py-3 text-xs font-mono font-black text-[#FFD700]/80">WK {bet.week || '—'}</td>
+        <td className="px-4 py-3 text-xs text-zinc-500 font-mono truncate max-w-[100px]">{matchups || '—'}</td>
         <td className="px-4 py-3 text-xs text-zinc-400">{fmtDate(displayDate)}</td>
-
-        {/* Status */}
         <td className="px-4 py-3"><StatusBadge status={bet.status} /></td>
 
-        {/* Stake */}
-        <td className="px-4 py-3 text-sm font-mono font-black text-zinc-300">
-          {bet.stake ? `$${Number(bet.stake).toFixed(2)}` : <span className="text-zinc-700">—</span>}
+        {/* Updated Stake Display */}
+        <td className="px-4 py-3">
+          <div className="flex flex-col">
+            <span className="text-sm font-mono font-black text-zinc-300">{fmtMoney(bet.stake)}</span>
+            <div className="flex items-center gap-2">
+              {bet.isBonusBet && <span className="text-[8px] text-blue-400 font-bold uppercase">Bonus Bet</span>}
+              {bet.isGhostParlay && <span className="text-[8px] text-purple-400 font-bold uppercase">GHOST</span>}
+            </div>
+          </div>
         </td>
 
-        {/* Payout */}
+        {/* Updated Payout with Boost/Odds */}
         <td className="px-4 py-3 text-right">
-          <PayoutCell payout={bet.payout} status={bet.status} stake={bet.stake} />
+          <PayoutCell 
+            payout={bet.payout} 
+            status={bet.status} 
+            stake={bet.stake} 
+            odds={bet.odds} 
+            boost={bet.boost} 
+          />
         </td>
 
-        {/* Actions */}
         <td className="px-3 py-3 text-right">
           <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
             <button onClick={e => { e.stopPropagation(); onEdit(bet); }}
               className="p-1.5 text-zinc-600 hover:text-white rounded transition-colors">
               <Pencil className="h-3.5 w-3.5" />
             </button>
-            <button onClick={e => { e.stopPropagation(); onDelete(bet.id); }}
-              className="p-1.5 text-zinc-600 hover:text-red-400 rounded transition-colors">
+            <button 
+              onClick={(e) => { 
+                e.stopPropagation(); 
+                onDelete([bet.id as string]);
+              }}
+              className="p-1.5 text-zinc-600 hover:text-red-400 rounded transition-colors"
+            >
               <Trash2 className="h-3.5 w-3.5" />
             </button>
           </div>
         </td>
       </tr>
-
-      {/* Expanded leg rows */}
       {open && bet.legs.map((leg: any, i: number) => (
         <tr key={`${bet.id}-${leg.id ?? i}`} className="bg-black/40 border-b border-white/[0.03]">
           <td colSpan={2} />
@@ -239,7 +218,7 @@ function ParlayRow({ bet, selected, onToggle, onEdit, onDelete }: {
             <span className={leg.selection?.toLowerCase() === 'over' ? 'text-blue-400 font-bold' : 'text-orange-400 font-bold'}>
               {leg.selection || '—'}
             </span>
-            <span className="text-zinc-500 font-mono ml-1">{fmtLine(leg.line)}</span>
+            <span className="text-zinc-500 font-mono ml-1">{leg.line}</span>
             {leg.odds ? <span className="text-zinc-600 font-mono ml-2">({leg.odds > 0 ? '+' : ''}{leg.odds})</span> : null}
           </td>
 
@@ -250,76 +229,84 @@ function ParlayRow({ bet, selected, onToggle, onEdit, onDelete }: {
   );
 }
 
-// ─── SingleRow ────────────────────────────────────────────────────────────────
+// ─── Updated SingleRow ────────────────────────────────────────────────────────
 
-function SingleRow({ bet, selected, onToggle, onEdit, onDelete }: {
-  bet: any; selected: boolean;
-  onToggle: (id: string) => void;
-  onEdit:   (b: any) => void;
-  onDelete: (id: string) => void;
-}) {
+function SingleRow({ bet, selected, onToggle, onEdit, onDelete }: any) {
   const leg = bet.legs?.[0] ?? {};
   const displayDate = leg.gameDate ?? bet.gameDate ?? bet.createdAt;
 
   return (
-    <tr className={`border-b border-white/5 hover:bg-white/[0.02] transition-colors group ${selected ? 'bg-[#FFD700]/[0.04]' : ''}`}>
+    <tr className={`border-b border-white/5 transition-all group ${selected ? 'bg-[#FFD700]/[0.06]' : 'hover:bg-white/[0.02]'}`}>
       <CheckCell id={bet.id} selected={selected} onToggle={onToggle} />
       <td className="w-8 px-2 py-3" />
-
-      {/* Player */}
       <td className="px-4 py-3">
-        <div className="font-black text-white text-sm italic uppercase tracking-tight truncate max-w-[200px]">
-          {leg.player || '—'}
-        </div>
-        <div className="text-[10px] text-zinc-600 uppercase mt-0.5">{leg.prop || ''}</div>
+        <div className="font-black text-white text-sm italic uppercase tracking-tight">{leg.player || '—'}</div>
+        <div className="text-[10px] text-zinc-600 uppercase">{leg.prop || '—'}</div>
       </td>
-
-      {/* Week */}
-      <td className="px-4 py-3 text-xs font-mono">
-        {bet.week
-          ? <span className="text-[#FFD700]/80 font-black">WK {bet.week}</span>
-          : <span className="text-zinc-700">—</span>}
-      </td>
-
-      {/* Matchup */}
-      <td className="px-4 py-3 text-xs text-zinc-500 font-mono max-w-[120px] truncate">
-        {leg.matchup || <span className="text-zinc-700">—</span>}
-      </td>
-
-      {/* Date */}
+      <td className="px-4 py-3 text-xs font-mono font-black text-[#FFD700]/80">WK {bet.week || '—'}</td>
+      <td className="px-4 py-3 text-xs text-zinc-500 font-mono">{leg.matchup || '—'}</td>
       <td className="px-4 py-3 text-xs text-zinc-400">{fmtDate(displayDate)}</td>
-
-      {/* Status */}
       <td className="px-4 py-3"><StatusBadge status={bet.status} /></td>
-
-      {/* Stake */}
-      <td className="px-4 py-3 text-sm font-mono font-black text-zinc-300">
-        {bet.stake ? `$${Number(bet.stake).toFixed(2)}` : <span className="text-zinc-700">—</span>}
+      
+      <td className="px-4 py-3">
+        <div className="flex flex-col">
+          <span className="text-sm font-mono font-black text-zinc-300">{fmtMoney(bet.stake)}</span>
+          <div className="flex items-center gap-2">
+            {bet.isBonusBet && <span className="text-[8px] text-blue-400 font-bold uppercase tracking-widest">Bonus Bet</span>}
+            {bet.isGhostParlay && <span className="text-[8px] text-purple-400 font-bold uppercase tracking-widest">GHOST</span>}
+          </div>
+        </div>
       </td>
 
-      {/* Payout */}
       <td className="px-4 py-3 text-right">
-        <PayoutCell payout={bet.payout} status={bet.status} stake={bet.stake} />
+        <PayoutCell 
+          payout={bet.payout} 
+          status={bet.status} 
+          stake={bet.stake} 
+          odds={bet.odds} 
+          boost={bet.boost} 
+        />
       </td>
-
-      {/* Actions */}
       <td className="px-3 py-3 text-right">
         <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button onClick={() => onEdit(bet)} className="p-1.5 text-zinc-600 hover:text-white rounded transition-colors">
-            <Pencil className="h-3.5 w-3.5" />
-          </button>
-          <button onClick={() => onDelete(bet.id)} className="p-1.5 text-zinc-600 hover:text-red-400 rounded transition-colors">
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
-        </div>
+            <button onClick={(e) => { e.stopPropagation(); onEdit(bet); }} className="p-1.5 text-zinc-600 hover:text-white rounded transition-colors">
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+            <button onClick={(e) => { e.stopPropagation(); onDelete([bet.id as string]); }} className="p-1.5 text-zinc-600 hover:text-red-400 rounded transition-colors">
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
       </td>
     </tr>
   );
 }
 
-// ─── BetsTable ────────────────────────────────────────────────────────────────
-
 type SortKey = 'player' | 'week' | 'date' | 'status' | 'stake' | 'payout';
+
+type SortDir = 'asc' | 'desc';
+
+function Th({ col, label, sortCol, sortDir, onSort, align = 'left' }: {
+  col: string; label: string; sortCol: string; sortDir: SortDir;
+  onSort: (c: string) => void; align?: 'left' | 'right';
+}) {
+  const active = sortCol === col;
+  return (
+    <th
+      onClick={() => onSort(col)}
+      className={`px-4 py-4 text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]
+        cursor-pointer select-none hover:text-zinc-300 transition-colors text-${align}`}
+    >
+      <span className="inline-flex items-center gap-1">
+        {label}
+        {active
+          ? sortDir === 'asc'
+            ? <ChevronUp   className="h-3 w-3 text-[#FFD700]" />
+            : <ChevronDown className="h-3 w-3 text-[#FFD700]" />
+          : <ChevronDown className="h-3 w-3 text-zinc-800" />}
+      </span>
+    </th>
+  );
+}
 
 interface BetsTableProps {
   bets: Bet[];
@@ -441,9 +428,9 @@ export function BetsTable({ bets, loading, onDelete, onEdit }: BetsTableProps) {
               const isParlay = Array.isArray(bet.legs) && bet.legs.length > 1;
               return isParlay
                 ? <ParlayRow key={bet.id} bet={bet} selected={selectedIds.has(bet.id)}
-                    onToggle={toggleSelect} onEdit={onEdit} onDelete={id => onDelete([id])} />
+                    onToggle={toggleSelect} onEdit={onEdit} onDelete={onDelete} />
                 : <SingleRow key={bet.id} bet={bet} selected={selectedIds.has(bet.id)}
-                    onToggle={toggleSelect} onEdit={onEdit} onDelete={id => onDelete([id])} />
+                    onToggle={toggleSelect} onEdit={onEdit} onDelete={onDelete} />
             })}
           </tbody>
         </table>

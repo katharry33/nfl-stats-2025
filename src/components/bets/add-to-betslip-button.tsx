@@ -19,7 +19,7 @@ export function AddToBetslipButton({
 }) {
   const { addLeg, selections } = useBetSlip();
 
-  const propId = prop.id ?? `${prop.player ?? prop.Player ?? ''}-${prop.prop ?? prop.Prop ?? ''}-${prop.line ?? prop.Line ?? 0}`;
+  const propId = `${prop.player ?? prop.Player ?? ''}-${prop.prop ?? prop.Prop ?? ''}-${prop.line ?? prop.Line ?? 0}-${prop.week ?? ''}-${prop.matchup ?? ''}`;
   const legId = `${propId}-${selection}`;
 
   const isInBetSlip = useMemo(() => {

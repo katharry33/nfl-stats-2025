@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/firebase/provider';
-import { useBetSlip } from '@/context/betslip-context';
+import { useFirebaseBets } from '@/hooks/useBets';
 import { BetsTable } from '@/components/bets/bets-table';
 import { BettingStats } from '@/components/bets/betting-stats';
 import { EditBetModal } from '@/components/bets/edit-bet-modal';
@@ -18,10 +18,17 @@ export default function BettingLogPage() {
   const auth = useAuth();
   const user = auth?.user;
   const authLoading = auth?.loading;
-  const {
-    bets, loading, loadingMore, hasMore, error,
-    fetchBets, loadMoreBets, updateBet
-  } = useBetSlip();
+  
+  const { 
+    bets, 
+    loading,
+    loadingMore,
+    hasMore,
+    error,
+    fetchBets,
+    updateBet,
+    deleteBet
+  } = useFirebaseBets(user?.uid ?? '');
 
   const [search, setSearch] = useState('');
   const [editBet, setEditBet] = useState<Bet | null>(null);
@@ -30,64 +37,30 @@ export default function BettingLogPage() {
   // Fetch on mount + whenever search changes
   useEffect(() => {
     if (user) {
-      fetchBets(debouncedSearch, 'all');
+      fetchBets(true, debouncedSearch, 'all');
     }
   }, [debouncedSearch, user, fetchBets]);
 
   const handleDelete = useCallback(async (ids: string[]) => {
     try {
-      const deletePromises = ids.map(id =>
-        fetch(`/api/betting-log?id=${id}&userId=${user?.uid ?? ''}`, { method: 'DELETE' })
-
-      );
-      const responses = await Promise.all(deletePromises);
-
-      const allOk = responses.every(res => res.ok);
-
-      if (allOk) {
-        if (ids.length === 1) {
-          setEditBet(null); // Close modal on single delete
-        }
-        router.refresh(); // Re-fetch data
-      } else {
-        const failedResponse = responses.find(res => !res.ok);
-        if (failedResponse) {
-          const err = await failedResponse.json().catch(() => ({ error: 'Failed to parse error response.' }));
-          alert(`Delete failed: ${err.error || failedResponse.statusText}`);
-        } else {
-          alert('An unknown error occurred during deletion.');
-        }
-      }
+      // Call the single delete function for every ID in the array
+      await Promise.all(ids.map(id => deleteBet(id)));
+      
+      // Refresh local state or re-fetch
+      router.refresh(); 
     } catch (error) {
-      console.error("Delete request failed", error);
-      alert('An error occurred while sending the delete request.');
+      console.error("Failed to delete bets", error);
     }
-  }, [router]);
+  }, [deleteBet, router]);
 
   const handleSave = useCallback(async (updated: Bet) => {
-    // Derive correct status from legs before updating local state
-    const legs = (updated as any).legs ?? [];
-    const hasLost = legs.some((l: any) => ['lost', 'loss'].includes((l.status ?? '').toLowerCase()));
-    const allWon = legs.length > 0 && legs.every((l: any) => ['won', 'win'].includes((l.status ?? '').toLowerCase()));
-    const correctStatus = hasLost ? 'lost' : allWon ? 'won' : updated.status;
-
-    // Recalculate payout
-    const odds = Number(updated.odds) || 0;
-    const stake = Number(updated.stake) || 0;
-    const boost = Number((updated as any).boost || 0);
-    const isBonusBet = Boolean((updated as any).isBonusBet);
-    let payout: number | null = null;
-    if (odds && stake) {
-      const dec = odds > 0 ? odds / 100 + 1 : 100 / Math.abs(odds) + 1;
-      const raw = stake * dec * (1 + boost / 100);
-      payout = parseFloat((isBonusBet ? raw - stake : raw).toFixed(2));
+    try {
+      await updateBet(updated);
+      setEditBet(null);
+    } catch (e) {
+      console.error('handleSave failed:', e);
     }
-
-    await updateBet(updated.id, { ...updated, status: correctStatus as any, payout } as any);
-    setEditBet(null);
-    // Refetch after a longer delay to let Firestore propagate
-    setTimeout(() => fetchBets(search, 'all'), 3000);
-  }, [updateBet, fetchBets, search]);
+  }, [updateBet]);
 
   if (authLoading) {
     return (
@@ -151,7 +124,7 @@ export default function BettingLogPage() {
           <div className="flex justify-center pt-2">
             <Button
               variant="outline"
-              onClick={() => loadMoreBets(search, 'all')}
+              onClick={() => fetchBets(false, search, 'all')}
               disabled={loadingMore}
               className="border-zinc-800 text-zinc-400 hover:text-white"
             >

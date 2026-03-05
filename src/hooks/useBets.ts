@@ -1,16 +1,9 @@
 // src/hooks/useBets.ts
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import {
-  collection, query, orderBy, limit, startAfter,
-  getDocs, updateDoc, doc, serverTimestamp,
-  QueryDocumentSnapshot,
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase/client';
+import { useState, useCallback, useRef } from 'react';
 
 const PAGE_SIZE = 50;
-const COLLECTION_NAME = 'betting_logs';
 
 export function useFirebaseBets(userId: string) {
   const [bets, setBets]               = useState<any[]>([]);
@@ -18,139 +11,121 @@ export function useFirebaseBets(userId: string) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore]         = useState(true);
   const [error, setError]             = useState<string | null>(null);
-  const lastDocRef = useRef<QueryDocumentSnapshot | null>(null);
+  const lastCursor = useRef<string | null>(null);
 
-  const fetchBets = useCallback(async (reset = false) => {
+  // ── Fetch via API route (handles all legacy format normalization) ──────────
+  const fetchBets = useCallback(async (
+    reset  = false,
+    search = '',
+    week   = 'all',
+  ) => {
     if (reset) {
       setLoading(true);
       setError(null);
-      lastDocRef.current = null;
+      lastCursor.current = null;
     } else {
       setLoadingMore(true);
     }
 
     try {
-      let snapshot;
+      const params = new URLSearchParams({ limit: String(PAGE_SIZE) });
+      if (search) params.set('player', search.trim().toLowerCase());
+      if (week && week !== 'all') params.set('week', week);
+      if (userId) params.set('userId', userId);
+      if (!reset && lastCursor.current) params.set('cursor', lastCursor.current);
 
-      // Primary query: ordered by createdAt desc
-      try {
-        let q = query(
-          collection(db, COLLECTION_NAME),
-          orderBy('createdAt', 'desc'),
-          limit(PAGE_SIZE)
-        );
-
-        if (!reset && lastDocRef.current) {
-          q = query(
-            collection(db, COLLECTION_NAME),
-            orderBy('createdAt', 'desc'),
-            startAfter(lastDocRef.current),
-            limit(PAGE_SIZE)
-          );
-        }
-
-        snapshot = await getDocs(q);
-      } catch (orderErr) {
-        // Fallback: if orderBy fails (mixed types / missing index), fetch without ordering
-        console.warn('[useFirebaseBets] orderBy failed, falling back to unordered fetch:', orderErr);
-        const fallback = query(collection(db, COLLECTION_NAME), limit(PAGE_SIZE));
-        snapshot = await getDocs(fallback);
-      }
-
-      const newBets = snapshot.docs.map(d => {
-        const data = d.data();
-        return {
-          id: d.id, 
-          player: data.player || data.Player || 'N/A',
-          prop: data.prop || data.Prop || 'N/A',
-          line: data.line || data.Line,
-          odds: data.odds || data.Odds,
-          status: data.status || 'pending',
-          parlayId: data.parlayid || null, 
-          ...data,
-          _sortMs: (() => {
-            const v = data.createdAt;
-            if (!v) return 0;
-            if (typeof v === 'string') return new Date(v).getTime();
-            if (v?.seconds) return v.seconds * 1000;
-            if (v instanceof Date) return v.getTime();
-            return 0;
-          })(),
-        }
+      const res = await fetch(`/api/betting-log?${params.toString()}`, {
+        credentials: 'include',
       });
 
-      // Sort client-side as safety net regardless of which query path ran
-      newBets.sort((a, b) => b._sortMs - a._sortMs);
-
-      if (snapshot.docs.length > 0) {
-        lastDocRef.current = snapshot.docs[snapshot.docs.length - 1];
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`HTTP ${res.status}: ${text.slice(0, 100)}`);
       }
 
-      setHasMore(snapshot.docs.length === PAGE_SIZE);
-      setBets(prev => reset ? newBets : [...prev, ...newBets]);
+      const data = await res.json();
+      const incoming: any[] = data.bets ?? [];
+
+      lastCursor.current = data.nextCursor ?? null;
+      setHasMore(data.hasMore ?? false);
+      setBets(prev => reset ? incoming : [...prev, ...incoming]);
     } catch (err: any) {
-      console.error('[useFirebaseBets] fetch error:', err);
+      console.error('[useBets] fetch error:', err);
       setError(err?.message ?? 'Failed to load bets');
-      setBets([]);
+      if (reset) setBets([]);
     } finally {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, []);
-
-  useEffect(() => {
-    fetchBets(true);
-  }, [fetchBets]);
+  }, [userId]);
 
   const loadMore = useCallback(() => {
     if (!loadingMore && hasMore) fetchBets(false);
   }, [fetchBets, loadingMore, hasMore]);
 
-  // ── Delete via admin API (bypasses Firestore client security rules) ──────
-  const deleteBet = useCallback(async (id: string) => {
-    // Optimistic update — remove from UI immediately
-    setBets(prev => prev.filter(b => b.id !== id));
+  // ── Update via save-bet API (handles status derivation, gameDate, etc.) ───
+  const updateBet = useCallback(async (updates: any) => {
+    const id = updates.id;
+    if (!id) throw new Error('updateBet: missing id');
+    // Optimistic update
+    setBets(prev => prev.map(b => b.id === id ? { ...b, ...updates } : b));
     try {
-      const res = await fetch(`/api/betting-log?id=${encodeURIComponent(id)}`, {
-        method: 'DELETE',
+      const res = await fetch('/api/betting-log', {  // ← change from /api/save-bet
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ ...updates, userId }),  // spread full updates including id
       });
+
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error ?? 'Delete failed');
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error(err.error ?? 'Save failed');
       }
     } catch (err) {
-      console.error('[useFirebaseBets] delete error:', err);
-      // Restore state on failure by re-fetching
+      console.error('[useBets] update error:', err);
+      // Revert optimistic update on failure
       fetchBets(true);
       throw err;
     }
-  }, [fetchBets]);
+  }, [userId, fetchBets]);
 
-  // ── Update via client SDK ─────────────────────────────────────────────────
-  const updateBet = useCallback(async (updates: any) => {
-    const { id, ...rest } = updates;
-    if (!id) return;
+  // ── Delete via API ─────────────────────────────────────────────────────────
+  const deleteBet = useCallback(async (id: string) => {
+    // Optimistic remove
+    setBets(prev => prev.filter(b => b.id !== id));
+
     try {
-      await updateDoc(doc(db, COLLECTION_NAME, id), {
-        ...rest,
-        updatedAt: serverTimestamp(),
+      const params = new URLSearchParams({ id });
+      if (userId) params.set('userId', userId);
+
+      const res = await fetch(`/api/betting-log?${params.toString()}`, {
+        method: 'DELETE',
+        credentials: 'include',
       });
-      setBets(prev => prev.map(b => b.id === id ? { ...b, ...rest } : b));
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error(err.error ?? 'Delete failed');
+      }
     } catch (err) {
-      console.error('[useFirebaseBets] update error:', err);
+      console.error('[useBets] delete error:', err);
+      // Restore on failure
+      fetchBets(true);
       throw err;
     }
-  }, []);
+  }, [userId, fetchBets]);
 
   return {
     bets,
+    setBets,
     loading,
     loadingMore,
     hasMore,
     error,
-    deleteBet,
-    updateBet,
+    fetchBets,
     loadMore,
+    updateBet,
+    deleteBet,
     refresh: () => fetchBets(true),
   };
 }

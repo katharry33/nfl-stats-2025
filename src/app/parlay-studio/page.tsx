@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/context/AuthContext';
+import { useAuth } from '@/lib/firebase/provider';
 import { useBetSlip } from '@/context/betslip-context';
 import { getWeekFromDate } from '@/lib/utils/nfl-week';
 import { toDecimal, toAmerican, calculateParlayOdds } from '@/lib/utils/odds';
@@ -184,7 +184,7 @@ function LegCard({ leg, index, onUpdate, onRemove }: {
 
 export default function ParlayStudioPage() {
   const router        = useRouter();
-  const auth          = useAuth();
+  const { user } = useAuth();
   const { selections, addLeg, removeLeg, clearSlip, isInitialized } = useBetSlip();
   const detailsRef    = useRef<HTMLDivElement>(null);
 
@@ -305,7 +305,7 @@ export default function ParlayStudioPage() {
     try {
       // Create the object WITHOUT an ID key
       const betDoc: any = {
-        userId: auth.user?.uid,
+        userId: user?.uid,
         type: selectedType,
         stake: Number(stake),
         odds: effectiveOdds,
@@ -328,11 +328,11 @@ export default function ParlayStudioPage() {
   
       console.log("Sending to API:", betDoc); // Check your console to ensure 'id' isn't here
   
-      const response = await fetch('/api/save-bet', {
+      const response = await fetch('/api/betting-log', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(betDoc),
-        credentials: 'same-origin',  // ← ADD THIS
+        credentials: 'include',
       });
   
       const result = await response.json();

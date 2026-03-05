@@ -5,6 +5,7 @@ import { Bet } from '@/lib/types';
 
 export interface BetSlipContextType {
   bets: Bet[];
+  setBets: React.Dispatch<React.SetStateAction<Bet[]>>;
   totalCount: number;
   loading: boolean;
   loadingMore: boolean;
@@ -15,6 +16,7 @@ export interface BetSlipContextType {
   updateBet: (id: string, updates: Partial<Bet>) => Promise<void>;
   deleteBet: (id: string) => void;
   selections: any[];
+  setSelections: React.Dispatch<React.SetStateAction<any[]>>;
   addLeg: (leg: any) => void;
   removeLeg: (legId: string) => void;
   clearSlip: () => void;
@@ -130,11 +132,14 @@ export const BetSlipProvider = ({ children }: { children: React.ReactNode }) => 
 
   const addLeg = useCallback((leg: any) => {
     setSelections(prev => {
-      if (prev.some(l => (l.propId || l.id) === (leg.propId || l.id) && l.selection === leg.selection)) {
-        return prev;
-      }
-      const next = [...prev, leg];
-      return next;
+      // leg.id already encodes propId + selection, so just match on id alone
+      const incomingId = leg.id || leg.propId;
+      const isDupe = prev.some(l => {
+        const existingId = l.id || l.propId;
+        return existingId === incomingId;
+      });
+      if (isDupe) return prev;
+      return [...prev, leg];
     });
   }, []);
 
@@ -152,9 +157,9 @@ export const BetSlipProvider = ({ children }: { children: React.ReactNode }) => 
 
   return (
     <BetSlipContext.Provider value={{
-      bets, totalCount, loading, loadingMore, hasMore, error,
+      bets, setBets, totalCount, loading, loadingMore, hasMore, error,
       fetchBets, loadMoreBets, updateBet, deleteBet,
-      selections, addLeg, removeLeg, clearSlip, totalParlayOdds, isInitialized,
+      selections, setSelections, addLeg, removeLeg, clearSlip, totalParlayOdds, isInitialized,
     }}>
       {children}
     </BetSlipContext.Provider>

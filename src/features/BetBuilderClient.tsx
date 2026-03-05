@@ -25,7 +25,7 @@ interface BetBuilderClientProps {
 export function BetBuilderClient({ initialWeek, season = 2025 }: BetBuilderClientProps) {
   const router = useRouter();
 
-  const { props: rawProps, isLoading, error, propTypes, teams } = useProps(initialWeek, [season]);
+  const { props: rawProps, isLoading, error, propTypes, teams } = useProps(initialWeek, [season], {});
  
 
   const {
