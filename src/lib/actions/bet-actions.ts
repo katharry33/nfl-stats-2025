@@ -1,7 +1,7 @@
 'use server';
 
 // src/lib/actions/bet-actions.ts
-import { getAdminDb } from '@/lib/firebase/admin';
+import { adminDb } from '@/lib/firebase/admin';
 import { Bet } from "../types";
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 
@@ -13,13 +13,21 @@ interface BetSubmissionResult {
 
 export async function addBet(userId: string, betData: Partial<Bet>): Promise<BetSubmissionResult> {
   try {
-    const db = getAdminDb();
+    const db = adminDb;
     
-    // Convert date string to Timestamp if provided
     let createdAt;
-    if (betData.date) {
-      const [year, month, day] = (betData.date as string).split('-').map(Number);
-      createdAt = Timestamp.fromDate(new Date(year, month - 1, day, 12, 0, 0));
+    const betDate = betData.gameDate || betData.createdAt; // Use correct properties
+
+    if (betDate) {
+      // new Date() is robust and can parse ISO strings, date strings, and Date objects
+      const d = new Date(betDate as any); 
+      if (!isNaN(d.getTime())) {
+        // Preserve original logic of setting time to midday to avoid timezone issues
+        d.setHours(12, 0, 0, 0);
+        createdAt = Timestamp.fromDate(d);
+      } else {
+        createdAt = FieldValue.serverTimestamp();
+      }
     } else {
       createdAt = FieldValue.serverTimestamp();
     }
@@ -49,7 +57,7 @@ export async function updateBetStatus(
   status: Bet['status']
 ): Promise<void> {
   try {
-    const db = getAdminDb();
+    const db = adminDb;
     await db.collection('bettingLog').doc(betId).update({
       status,
       updatedAt: FieldValue.serverTimestamp(),
@@ -62,7 +70,7 @@ export async function updateBetStatus(
 
 export async function deleteBet(betId: string): Promise<BetSubmissionResult> {
   try {
-    const db = getAdminDb();
+    const db = adminDb;
     
     // Try to delete from all collections
     const collections = ['bettingLog', '2025_bets', 'bets'];
@@ -87,7 +95,7 @@ export async function deleteBet(betId: string): Promise<BetSubmissionResult> {
 
 export async function getBetById(betId: string): Promise<Bet | null> {
   try {
-    const db = getAdminDb();
+    const db = adminDb;
     const doc = await db.collection('bettingLog').doc(betId).get();
     
     if (!doc.exists) {

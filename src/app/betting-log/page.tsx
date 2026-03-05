@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/firebase/provider';
 import { useFirebaseBets } from '@/hooks/useBets';
@@ -34,12 +34,13 @@ export default function BettingLogPage() {
   const [editBet, setEditBet] = useState<Bet | null>(null);
   const debouncedSearch = useDebounce(search, 400);
 
+  const fetchBetsRef = useRef(fetchBets);
+  useEffect(() => { fetchBetsRef.current = fetchBets; }, [fetchBets]);
+
   // Fetch on mount + whenever search changes
   useEffect(() => {
-    if (user) {
-      fetchBets(true, debouncedSearch, 'all');
-    }
-  }, [debouncedSearch, user, fetchBets]);
+    if (user) fetchBetsRef.current(true, debouncedSearch, 'all');
+  }, [debouncedSearch, user]);
 
   const handleDelete = useCallback(async (ids: string[]) => {
     try {
@@ -139,6 +140,7 @@ export default function BettingLogPage() {
 
       {editBet && (
         <EditBetModal
+          key={editBet?.id}
           bet={editBet}
           isOpen={!!editBet}
           userId={user?.uid}

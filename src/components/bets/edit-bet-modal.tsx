@@ -1,8 +1,8 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { X, Save, Trash2, TrendingUp, DollarSign, Calendar, Copy, Loader2, ChevronDown, ChevronUp, CheckCircle2, XCircle, Clock, Zap } from 'lucide-react';
+import { X, Save, Trash2, TrendingUp, DollarSign, Calendar, Loader2, ChevronDown, ChevronUp, CheckCircle2, XCircle, Clock, Zap } from 'lucide-react';
 import { Bet } from '@/lib/types';
-import { toDecimal } from '@/lib/utils/odds';
+import { toDecimal, toAmerican } from '@/lib/utils/odds';
 import { toast } from 'sonner';
 import { getWeekFromDate } from '@/lib/utils/nfl-week';
 
@@ -22,35 +22,52 @@ const LEG_STATUSES = [
   { value: 'void',    label: 'Void',    icon: XCircle,      cls: 'bg-white/[0.06] text-zinc-400 border-white/20' },
 ];
 
+function calcParlayOdds(legs: any[]): number {
+  if (!legs || legs.length === 0) return 0;
+  const dec = legs.reduce((acc, leg) => {
+    if (leg.status === 'void') return acc;
+    return acc * toDecimal(Number(leg.odds) || -110);
+  }, 1);
+  return dec > 1 ? Math.round(toAmerican(dec)) : 0;
+}
+
 export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }: EditBetModalProps) {
-  const [formData, setFormData] = useState<Bet>(bet);
+  const [formData, setFormData] = useState<any>(bet);
   const [legs, setLegs] = useState<any[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [legsExpanded, setLegsExpanded] = useState(true);
+  const [oddsManual, setOddsManual] = useState(false);
 
   useEffect(() => {
+    const initialLegs = Array.isArray((bet as any).legs) ? (bet as any).legs : [];
     setFormData(bet);
-    setLegs(Array.isArray((bet as any).legs) ? (bet as any).legs : []);
+    setLegs(initialLegs);
+    setOddsManual(false);
+    setLegsExpanded(true);
   }, [bet]);
 
-  const handleFieldChange = (fields: Partial<Bet>) => {
-    setFormData(prev => ({ ...prev, ...fields }));
-  };
+  // Auto-calc parlay odds from legs UNLESS user manually edited overall odds
+  useEffect(() => {
+    if (legs.length > 1 && !oddsManual) {
+      const calc = calcParlayOdds(legs);
+      if (calc !== 0) setFormData((prev: any) => ({ ...prev, odds: calc }));
+    }
+  }, [legs, oddsManual]);
+
+  const set = (fields: any) => setFormData((prev: any) => ({ ...prev, ...fields }));
 
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newDate = e.target.value;
-    const derivedWeek = getWeekFromDate(newDate);
-    const derivedYear = new Date(newDate).getFullYear();
-
-    setFormData(prev => ({
-      ...prev,
-      gameDate: newDate,
-      week: derivedWeek ?? (prev as any).week,
-      season: derivedYear ?? (prev as any).season
-    } as Bet));
+    const val = e.target.value;
+    const year = parseInt(val.split('-')[0]);
+    if (year < 2000 || year > 2100) return;
+    set({
+      gameDate: val,
+      week: getWeekFromDate(val) ?? formData.week,
+      season: new Date(val).getFullYear(),
+    });
   };
 
-  const handleLegChange = (index: number, fields: Partial<any>) => {
+  const handleLegChange = (index: number, fields: any) => {
     setLegs(prev => prev.map((leg, i) => i === index ? { ...leg, ...fields } : leg));
   };
 
@@ -58,60 +75,54 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
     setLegs(prev => prev.filter((_, i) => i !== index));
   };
 
-  const calculatePayout = () => {
+  const calcPayout = () => {
     const stake = Number(formData.stake) || 0;
-    const odds = Number(formData.odds) || 0;
-    const boost = Number((formData as any).boost || 0);
+    const odds  = Number(formData.odds)  || 0;
+    const boost = Number(formData.boost  || 0);
     if (!stake || !odds) return 0;
     const dec = toDecimal(odds);
-    const boostMult = 1 + (boost / 100);
-    const payout = stake * dec * boostMult;
-    return (formData as any).isBonusBet ? (payout - stake) : payout;
+    const raw = stake * dec * (1 + boost / 100);
+    return formData.isBonusBet ? raw - stake : raw;
   };
 
   const handleSave = async () => {
     setIsSaving(true);
     try {
       const payload = {
-        id: formData.id,
+        id:            formData.id,
         userId,
-        odds:       parseInt(String(formData.odds), 10) || 0,
-        stake:      Number(formData.stake),
-        status:     formData.status,
-        week:       Number((formData as any).week),
-        gameDate:   formData.gameDate,
-        boost:      (formData as any).boost,
-        isBonusBet: (formData as any).isBonusBet,
-        isGhostParlay: (formData as any).isGhostParlay,
-        type:       (formData as any).type,
-        legs:       legs,
+        odds:          parseInt(String(formData.odds), 10) || 0,
+        stake:         Number(formData.stake),
+        status:        formData.status,
+        week:          Number(formData.week),
+        season:        Number(formData.season),
+        gameDate:      formData.gameDate,
+        boost:         formData.boost,
+        isBonusBet:    formData.isBonusBet    ?? false,
+        isGhostParlay: formData.isGhostParlay ?? false,
+        type:          formData.type,
+        legs,
       };
 
-      const response = await fetch('/api/betting-log', {
+      const res = await fetch('/api/betting-log', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
         credentials: 'include',
+        body: JSON.stringify(payload),
       });
 
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({ error: response.statusText }));
-        throw new Error(err.error || `HTTP ${response.status}`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error(err.error || `HTTP ${res.status}`);
       }
 
-      onSave({ 
-        ...formData, 
-        legs,
-        odds: parseInt(String(formData.odds), 10) || 0,
-        stake: Number(formData.stake),
-        status: formData.status,
-      } as Bet);
+      onSave({ ...formData, legs, odds: payload.odds, stake: payload.stake, status: payload.status } as Bet);
       toast.success('Bet updated', {
         style: { background: '#0f1115', border: '1px solid rgba(255,215,0,0.2)', color: '#FFD700' },
       });
       onClose();
-    } catch (error: any) {
-      toast.error('Error saving bet', { description: error.message });
+    } catch (err: any) {
+      toast.error('Error saving bet', { description: err.message });
     } finally {
       setIsSaving(false);
     }
@@ -119,7 +130,8 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
 
   if (!isOpen) return null;
 
-  const payout = calculatePayout();
+  const payout = calcPayout();
+  const isParlay = legs.length > 1;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
@@ -144,20 +156,34 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
             <div className="space-y-1.5">
               <label className="text-[10px] font-black text-zinc-500 uppercase flex items-center gap-1">
                 <TrendingUp className="h-3 w-3" /> Overall Odds
+                {isParlay && !oddsManual && (
+                  <span className="text-[8px] text-[#FFD700]/50 font-mono ml-1">(AUTO)</span>
+                )}
               </label>
-              <input type="number"
-                value={formData.odds as any}
-                onChange={e => handleFieldChange({ odds: Number(e.target.value) as any })}
+              <input
+                type="number"
+                value={formData.odds ?? ''}
+                onChange={e => { set({ odds: Number(e.target.value) }); setOddsManual(true); }}
+                onFocus={() => setOddsManual(true)}
                 className="w-full bg-black/40 border border-white/[0.08] rounded-2xl px-4 py-3 text-[#FFD700] font-mono text-sm outline-none focus:ring-1 focus:ring-[#FFD700]/40"
               />
+              {isParlay && oddsManual && (
+                <button
+                  onClick={() => setOddsManual(false)}
+                  className="text-[9px] text-zinc-600 hover:text-[#FFD700] transition-colors"
+                >
+                  ↺ Use calculated odds
+                </button>
+              )}
             </div>
             <div className="space-y-1.5">
               <label className="text-[10px] font-black text-zinc-500 uppercase flex items-center gap-1">
                 <DollarSign className="h-3 w-3" /> Stake ($)
               </label>
-              <input type="number"
-                value={formData.stake as any}
-                onChange={e => handleFieldChange({ stake: Number(e.target.value) as any })}
+              <input
+                type="number"
+                value={formData.stake ?? ''}
+                onChange={e => set({ stake: Number(e.target.value) })}
                 className="w-full bg-black/40 border border-white/[0.08] rounded-2xl px-4 py-3 text-white font-mono text-sm outline-none focus:ring-1 focus:ring-white/20"
               />
             </div>
@@ -170,8 +196,8 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
                 <Zap className="h-3 w-3 text-[#FFD700]" /> Boost %
               </label>
               <select
-                value={(formData as any).boost || ''}
-                onChange={e => handleFieldChange({ boost: e.target.value } as any)}
+                value={formData.boost ?? ''}
+                onChange={e => set({ boost: e.target.value })}
                 className="w-full bg-black/40 border border-white/[0.08] rounded-2xl px-4 py-3 text-white text-sm outline-none focus:ring-1 focus:ring-[#FFD700]/30"
               >
                 <option value="">None</option>
@@ -182,9 +208,10 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
             </div>
             <div className="space-y-1.5">
               <label className="text-[10px] font-black text-zinc-500 uppercase">NFL Week</label>
-              <input type="number" min={1} max={22}
-                value={(formData as any).week || ''}
-                onChange={e => handleFieldChange({ week: e.target.value } as any)}
+              <input
+                type="number" min={1} max={22}
+                value={formData.week ?? ''}
+                onChange={e => set({ week: e.target.value })}
                 placeholder="1–22"
                 className="w-full bg-black/40 border border-white/[0.08] rounded-2xl px-4 py-3 text-white font-mono text-sm outline-none focus:ring-1 focus:ring-white/20"
               />
@@ -197,10 +224,9 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
               <label className="text-[10px] font-black text-zinc-500 uppercase flex items-center gap-1">
                 <Calendar className="h-3 w-3" /> Game Date
               </label>
-              <input type="date"
-                value={typeof formData.gameDate === 'string'
-                  ? formData.gameDate.split('T')[0]
-                  : ''}
+              <input
+                type="date"
+                value={typeof formData.gameDate === 'string' ? formData.gameDate.split('T')[0] : ''}
                 onChange={handleDateChange}
                 className="w-full bg-black/40 border border-white/[0.08] rounded-2xl px-4 py-3 text-white text-sm outline-none [color-scheme:dark]"
               />
@@ -208,9 +234,9 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
             <div className="space-y-1.5">
               <label className="text-[10px] font-black text-zinc-500 uppercase">Status</label>
               <select
-                value={formData.status}
-                onChange={e => handleFieldChange({ status: e.target.value as any })}
-                className="w-full bg-black/40 border border-white/[0.08] rounded-2xl px-4 py-3 text-white text.sm outline-none"
+                value={formData.status ?? 'pending'}
+                onChange={e => set({ status: e.target.value })}
+                className="w-full bg-black/40 border border-white/[0.08] rounded-2xl px-4 py-3 text-white text-sm outline-none"
               >
                 <option value="pending">Pending</option>
                 <option value="won">Won</option>
@@ -222,26 +248,24 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
 
           {/* Bonus Bet + Ghost Parlay */}
           <div className="grid grid-cols-2 gap-3">
-            <div className="flex items-center gap-2">
-                <input
-                    type="checkbox"
-                    id="isBonusBet"
-                    checked={(formData as any).isBonusBet || false}
-                    onChange={e => handleFieldChange({ isBonusBet: e.target.checked } as any)}
-                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                />
-                <label htmlFor="isBonusBet" className="text-sm text-white">Bonus Bet</label>
-            </div>
-            <div className="flex items-center gap-2">
-                <input
-                    type="checkbox"
-                    id="isGhostParlay"
-                    checked={(formData as any).isGhostParlay || false}
-                    onChange={e => handleFieldChange({ isGhostParlay: e.target.checked } as any)}
-                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                />
-                <label htmlFor="isGhostParlay" className="text-sm text-white">Ghost Parlay</label>
-            </div>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={formData.isBonusBet ?? false}
+                onChange={e => set({ isBonusBet: e.target.checked })}
+                className="h-4 w-4 rounded border-zinc-700 bg-black/40"
+              />
+              <span className="text-sm text-white">Bonus Bet</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={formData.isGhostParlay ?? false}
+                onChange={e => set({ isGhostParlay: e.target.checked })}
+                className="h-4 w-4 rounded border-zinc-700 bg-black/40"
+              />
+              <span className="text-sm text-white">Ghost Parlay</span>
+            </label>
           </div>
 
           {/* Legs */}
@@ -259,26 +283,28 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
                 <div className="space-y-2">
                   {legs.map((leg, i) => (
                     <div key={leg.id || i} className="bg-black/30 border border-white/[0.06] rounded-2xl p-4 space-y-3">
-                      {/* Player + prop header */}
                       <div className="flex items-center gap-2">
                         <span className="w-5 h-5 rounded-full bg-[#FFD700]/10 border border-[#FFD700]/20 text-[9px] font-black text-[#FFD700] flex items-center justify-center shrink-0">
                           {i + 1}
                         </span>
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                           <p className="text-white font-black text-xs uppercase italic truncate">{leg.player || '—'}</p>
                           <p className="text-zinc-600 text-[10px] font-mono">{leg.prop}</p>
                         </div>
-                        <button onClick={() => handleDeleteLeg(i)} className="ml-auto p-1.5 text-zinc-600 hover:text-red-500 hover:bg-red-500/10 rounded-full">
+                        <button
+                          onClick={() => handleDeleteLeg(i)}
+                          className="p-1.5 text-zinc-600 hover:text-red-500 hover:bg-red-500/10 rounded-full transition-colors"
+                        >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </div>
 
-                      {/* Line + Over/Under + Odds */}
                       <div className="flex items-center gap-2 flex-wrap">
                         <div className="flex items-center gap-1.5">
                           <span className="text-[9px] text-zinc-600 uppercase font-black">Line</span>
-                          <input type="number" step="0.5"
-                            value={leg.line}
+                          <input
+                            type="number" step="0.5"
+                            value={leg.line ?? ''}
                             onChange={e => handleLegChange(i, { line: parseFloat(e.target.value) || 0 })}
                             className="w-16 bg-black/40 border border-white/[0.08] text-white font-mono text-xs rounded-xl px-2 py-1.5 text-center outline-none focus:ring-1 focus:ring-[#FFD700]/30"
                           />
@@ -286,38 +312,42 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
 
                         <div className="flex rounded-xl overflow-hidden border border-white/[0.08]">
                           {(['Over', 'Under'] as const).map(s => (
-                            <button key={s}
+                            <button
+                              key={s}
                               onClick={() => handleLegChange(i, { selection: s })}
                               className={`px-3 py-1.5 text-[10px] font-black uppercase transition-colors ${
                                 leg.selection === s
                                   ? s === 'Over' ? 'bg-blue-600 text-white' : 'bg-orange-600 text-white'
                                   : 'bg-black/40 text-zinc-600 hover:bg-white/[0.04]'
-                              }`}>{s}</button>
+                              }`}
+                            >{s}</button>
                           ))}
                         </div>
 
                         <div className="flex items-center gap-1.5 ml-auto">
                           <span className="text-[9px] text-zinc-600 uppercase font-black">Odds</span>
-                          <input type="number"
-                            value={leg.odds}
+                          <input
+                            type="number"
+                            value={leg.odds ?? ''}
                             onChange={e => handleLegChange(i, { odds: parseInt(e.target.value) || -110 })}
                             className="w-20 bg-black/40 border border-white/[0.08] text-white font-mono text-xs rounded-xl px-2 py-1.5 text-center outline-none focus:ring-1 focus:ring-[#FFD700]/30"
                           />
                         </div>
                       </div>
 
-                      {/* Leg result */}
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="text-[9px] text-zinc-600 uppercase font-black w-10">Result</span>
                         {LEG_STATUSES.map(r => {
                           const Icon = r.icon;
                           const active = (leg.status || 'pending') === r.value;
                           return (
-                            <button key={r.value}
+                            <button
+                              key={r.value}
                               onClick={() => handleLegChange(i, { status: r.value })}
                               className={`flex items-center gap-1 px-2 py-1 rounded-lg border text-[9px] font-black uppercase transition-all ${
                                 active ? r.cls : 'border-white/[0.08] text-zinc-600 hover:border-white/20 hover:text-zinc-400'
-                              }`}>
+                              }`}
+                            >
                               <Icon className="h-3 w-3" />{r.label}
                             </button>
                           );
@@ -337,7 +367,7 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
           </div>
         </div>
 
-        {/* Footer actions */}
+        {/* Footer */}
         <div className="flex gap-3 px-6 pb-6 pt-2 border-t border-white/5 shrink-0">
           <button
             onClick={() => { if (confirm('Delete this bet?')) onDelete(bet.id); }}

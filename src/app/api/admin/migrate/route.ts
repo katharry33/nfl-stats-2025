@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getAdminDb } from '@/lib/firebase/admin';
+import { adminDb } from '@/lib/firebase/admin';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -8,7 +8,7 @@ export async function GET() {
   console.log('🚀 Starting Migration: normalizing bettingLog collection...');
   
   try {
-    const db = getAdminDb();
+    const db = adminDb;
     const bettingLogRef = db.collection('bettingLog');
     
     const snapshot = await bettingLogRef.get();

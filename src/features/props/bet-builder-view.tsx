@@ -1,8 +1,3 @@
-Integrated BetBuilderView (The Table)
-I've merged your WeeklyProps logic and the detailed BetBuilderView table into a single, high-performance component that handles the "Expert Picks" from our previous scraper.
-
-TypeScript
-// components/bet-builder/PropsTable.tsx
 'use client';
 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -32,10 +27,10 @@ export default function PropsTable({ props, isInBetSlip, onAddToBetSlip, onRemov
           </TableRow>
         </TableHeader>
         <TableBody>
-          {props.map((p) => {
-            const selected = isInBetSlip(p.id);
+          {props.map((p, i) => {
+            const isSelected = p.id ? isInBetSlip(p.id) : false;
             return (
-              <TableRow key={p.id} className="border-white/5 hover:bg-white/[0.02] transition-colors">
+              <TableRow key={p.id ?? i} className="border-white/5 hover:bg-white/[0.02] transition-colors">
                 <TableCell>
                   <div className="font-bold text-white">{p.Player}</div>
                   <div className="text-[10px] text-zinc-500 uppercase font-black">{p.matchup}</div>
@@ -67,12 +62,16 @@ export default function PropsTable({ props, isInBetSlip, onAddToBetSlip, onRemov
                 <TableCell className="text-right">
                   <Button
                     size="sm"
-                    onClick={() => selected ? onRemoveFromBetSlip(p.id) : onAddToBetSlip(p)}
-                    className={selected 
+                    onClick={() => {
+                      if (p.id) {
+                        isSelected ? onRemoveFromBetSlip(p.id) : onAddToBetSlip(p);
+                      }
+                    }}
+                    className={isSelected 
                       ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 hover:bg-emerald-500/20" 
                       : "bg-white text-black hover:bg-zinc-200"}
                   >
-                    {selected ? <Check size={14} /> : <Plus size={14} />}
+                    {isSelected ? <Check size={14} /> : <Plus size={14} />}
                   </Button>
                 </TableCell>
               </TableRow>
