@@ -1,7 +1,19 @@
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 
-// Helper to ensure dates are ISO strings for Firestore sorting
+// ─── Module-level legacy parlay cache ────────────────────────────────────────
+// Legacy parlayId docs are migrated historical data — they never change.
+// Cache them once per server instance to avoid re-fetching 5000+ docs every request.
+let legacyBetsCache: any[] | null = null;
+let legacyCacheTime = 0;
+const LEGACY_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+function isLegacyCacheValid() {
+  return legacyBetsCache !== null && Date.now() - legacyCacheTime < LEGACY_CACHE_TTL_MS;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 function processGameDate(gameDate: any): string {
   if (!gameDate) return new Date().toISOString();
   if (gameDate instanceof Date) return gameDate.toISOString();
@@ -13,179 +25,416 @@ function processGameDate(gameDate: any): string {
   return new Date().toISOString();
 }
 
-// GET: Fetching bets with pagination and user filtering
+function parseOdds(val: any): number {
+  if (val == null) return 0;
+  if (typeof val === 'number') return val;
+  const s = String(val).trim().replace(/\s/g, '');
+  const n = parseInt(s);
+  return isNaN(n) ? 0 : n;
+}
+
+function parseLineAndSelection(raw: any): { line: number; selection: string } {
+  const legLine = raw.line;
+  if (typeof legLine === 'string') {
+    const lower = legLine.toLowerCase();
+    const match = legLine.match(/[\d.]+/);
+    const num = match ? parseFloat(match[0]) : 0;
+    if (lower.startsWith('under')) return { line: num, selection: 'Under' };
+    if (lower.startsWith('over'))  return { line: num, selection: 'Over' };
+  }
+  return {
+    line:      Number(legLine) || 0,
+    selection: raw.selection || '',
+  };
+}
+
+function parseDate(raw: any): string | null {
+  const d = raw.gameDate ?? raw.date ?? raw.createdAt ?? null;
+  if (!d) return null;
+  if (typeof d === 'object' && d.toDate) return d.toDate().toISOString();
+  if (typeof d === 'string') return d;
+  return null;
+}
+
+function parseStatus(raw: any): string {
+  const s = (raw.status ?? raw.result ?? 'pending').toString().toLowerCase();
+  if (s === 'win'  || s === 'won')  return 'won';
+  if (s === 'loss' || s === 'lost') return 'lost';
+  if (s === 'void' || s === 'push') return 'void';
+  return 'pending';
+}
+
+function parsePlayer(raw: any): string {
+  if (raw.playerteam && raw.playerteam !== 'Legacy Bet') return raw.playerteam;
+  if (raw.player    && raw.player    !== 'Legacy Bet') return raw.player;
+  if (raw.playerteam) return raw.playerteam;
+  return raw.player ?? '';
+}
+
+function normalizeLegDoc(doc: any, raw: any): any {
+  const { line, selection } = parseLineAndSelection(raw);
+  return {
+    id:        doc.id,
+    player:    parsePlayer(raw),
+    prop:      raw.prop ?? '',
+    line,
+    selection: raw.selection || selection,
+    odds:      parseOdds(raw.odds),
+    matchup:   raw.matchup ?? '',
+    week:      Number(raw.week) || null,
+    status:    parseStatus(raw),
+    gameDate:  parseDate(raw),
+    team:      raw.team ?? '',
+  };
+}
+
+function normalizeLegItem(l: any, fallbackRaw: any, docId: string, i: number): any {
+  const { line, selection } = parseLineAndSelection(l);
+  return {
+    id:        l.id ?? `${docId}-${i}`,
+    player:    l.player && l.player !== 'Legacy Bet' ? l.player : parsePlayer(fallbackRaw),
+    prop:      l.prop ?? fallbackRaw.prop ?? '',
+    line,
+    selection: l.selection || selection,
+    odds:      parseOdds(l.odds ?? fallbackRaw.odds),
+    matchup:   l.matchup ?? fallbackRaw.matchup ?? '',
+    week:      Number(l.week ?? fallbackRaw.week) || null,
+    status:    parseStatus(l),
+    gameDate:  l.gameDate ?? parseDate(fallbackRaw),
+    team:      l.team ?? '',
+  };
+}
+
+function calcPayout(stake: number | null, odds: number | null, isBonusBet?: boolean): number | null {
+  if (!stake || !odds) return null;
+  const multiplier = odds > 0 ? odds / 100 + 1 : 100 / Math.abs(odds) + 1;
+  const total = stake * multiplier;
+  return parseFloat((isBonusBet ? total - stake : total).toFixed(2));
+}
+
+// Build a normalized bet object from a single Firestore doc (new format)
+function buildBetFromDoc(doc: any, raw: any): any {
+  const stake  = Number(raw.stake ?? raw.wager) || null;
+  const odds   = parseOdds(raw.odds);
+  const payout = calcPayout(stake, odds, !!raw.isBonusBet);
+  const hasLegsArray = Array.isArray(raw.legs) && raw.legs.length > 0;
+  const legs = hasLegsArray
+    ? raw.legs.map((l: any, i: number) => normalizeLegItem(l, raw, doc.id, i))
+    : [normalizeLegDoc(doc, raw)];
+
+  return {
+    id:            doc.id,
+    isParlay:      legs.length > 1,
+    legs,
+    week:          Number(raw.week) || null,
+    status:        parseStatus(raw),
+    odds:          odds || null,
+    stake,
+    boost:         raw.boost,
+    isBonusBet:    raw.isBonusBet,
+    isGhostParlay: raw.isGhostParlay,
+    type:          raw.type ?? raw.betType ?? raw.bettype,
+    payout,
+    gameDate:      parseDate(raw),
+    createdAt:     raw.createdAt?.toDate?.().toISOString() ?? raw.createdAt ?? null,
+    userId:        raw.userId,
+  };
+}
+
+// Build a normalized parlay from grouped legacy leg docs
+function buildParlayFromEntries(parlayId: string, entries: { doc: any; raw: any }[]): any {
+  const header = entries.find(e => Number(e.raw.stake ?? e.raw.wager) > 0) ?? entries[0];
+  const hr     = header.raw;
+  const stake  = Number(hr.stake ?? hr.wager) || null;
+  const odds   = parseOdds(hr.parlayOdds ?? hr.odds);
+  const payout = calcPayout(stake, odds, !!hr.isBonusBet);
+
+  const legs = entries.map(({ doc, raw }) => {
+    const { line, selection } = parseLineAndSelection(raw);
+    let legSelection = raw.selection || selection;
+    if (Array.isArray(raw.legs) && raw.legs.length > 0 && raw.legs[0].selection) {
+      legSelection = raw.legs[0].selection;
+    }
+    return {
+      id:        doc.id,
+      player:    parsePlayer(raw),
+      prop:      raw.prop ?? '',
+      line,
+      selection: legSelection,
+      odds:      parseOdds(raw.odds),
+      matchup:   raw.matchup ?? '',
+      week:      Number(raw.week) || null,
+      status:    parseStatus(raw),
+      gameDate:  parseDate(raw),
+      team:      raw.team ?? '',
+    };
+  });
+
+  const legStatuses = legs.map((l: any) => l.status);
+  const hasLost    = legStatuses.some((s: string) => s === 'lost');
+  const allWon     = legStatuses.length > 0 && legStatuses.every((s: string) => s === 'won');
+  const hasPending = legStatuses.some((s: string) => s === 'pending');
+  const parlayStatus = hr.status
+    ? parseStatus(hr)
+    : hasLost ? 'lost' : allWon ? 'won' : hasPending ? 'pending' : 'void';
+
+  return {
+    id:            parlayId,
+    isParlay:      entries.length > 1,
+    legs,
+    week:          Number(hr.week) || null,
+    status:        parlayStatus,
+    odds:          odds || null,
+    stake,
+    boost:         hr.boost,
+    isBonusBet:    hr.isBonusBet,
+    isGhostParlay: hr.isGhostParlay,
+    type:          hr.type ?? hr.betType ?? hr.bettype,
+    payout,
+    gameDate:      parseDate(hr),
+    createdAt:     hr.createdAt?.toDate?.().toISOString() ?? hr.createdAt ?? hr.date ?? null,
+    userId:        hr.userId,
+  };
+}
+
+// ─── GET ──────────────────────────────────────────────────────────────────────
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const userId  = searchParams.get('userId'); // CRITICAL: Only get current user's bets
-    const player  = (searchParams.get('player') ?? '').trim().toLowerCase();
-    const week    = searchParams.get('week') ?? '';
-    const cursor  = searchParams.get('cursor') ?? '';
-    const limit   = Math.min(parseInt(searchParams.get('limit') ?? '50'), 200);
+    const userId    = searchParams.get('userId');
+    const player    = (searchParams.get('player') ?? '').trim().toLowerCase();
+    const week      = searchParams.get('week') ?? '';
+    const cursor    = searchParams.get('cursor') ?? '';
+    const limit     = Math.min(parseInt(searchParams.get('limit') ?? '50'), 200);
+    const bustCache = searchParams.get('bust') === '1';
 
-    if (!userId) return NextResponse.json({ error: 'UserId required', bets: [] }, { status: 400 });
-
-    let q: any = adminDb.collection('bettingLog');
-    
+    const col     = adminDb.collection('bettingLog');
     const weekNum = week && week !== 'all' ? parseInt(week, 10) : null;
-    if (weekNum !== null && !isNaN(weekNum)) q = q.where('week', '==', weekNum);
 
-    const snap = await q.orderBy('createdAt', 'desc').limit(1000).get();
-    const docs = snap.docs;
-
-    const bets: any[] = [];
-    const parlayMap = new Map<string, any[]>();
-
-    for (const doc of docs) {
-      const raw = doc.data();
-      const parlayId = raw?.parlayId ?? raw?.parlayid ?? null;
-    
-      if (parlayId) {
-        if (!parlayMap.has(parlayId)) parlayMap.set(parlayId, []);
-        parlayMap.get(parlayId)!.push({ doc, raw });
-        continue;
+    // ── 1. New-format bets (have userId + legs array, no parlayId) ────────────
+    // Query scoped to userId — fast with index on (userId, createdAt)
+    let newBets: any[] = [];
+    if (userId) {
+      let q: any = col.where('userId', '==', userId);
+      if (weekNum !== null && !isNaN(weekNum)) {
+        q = q.where('week', '==', weekNum);
       }
-    
-      const stake = Number(raw.stake ?? raw.wager) || null;
-      const odds  = typeof raw.odds === 'string' ? parseInt(raw.odds) : Number(raw.odds) || null;
-      const payout = stake && odds ? parseFloat((stake * (odds > 0 ? odds/100+1 : 100/Math.abs(odds)+1)).toFixed(2)) : null;
-    
-      const hasLegsArray = Array.isArray(raw?.legs) && raw.legs.length > 0;
-      if (hasLegsArray) {
-        bets.push({
-          id: doc.id, isParlay: raw.legs.length > 1,
-          legs: raw.legs.map((l: any, i: number) => ({
-            ...l, id: l.id ?? `${doc.id}-${i}`,
-            line: Number(l.line) || 0, odds: Number(l.odds) || 0,
-          })),
-          ...raw, payout,
-          createdAt: raw.createdAt?.toDate?.().toISOString() ?? raw.createdAt ?? null,
-        });
-        continue;
+      q = q.orderBy('createdAt', 'desc').limit(500);
+      const snap = await q.get();
+
+      for (const doc of snap.docs) {
+        const raw = doc.data();
+        // Skip any doc that is a legacy parlay leg
+        if (raw?.parlayId ?? raw?.parlayid) continue;
+        newBets.push(buildBetFromDoc(doc, raw));
       }
-    
-      // Single leg doc (no legs array, no parlayId)
-      bets.push({
-        id: doc.id, isParlay: false,
-        legs: [{ id: doc.id, player: raw.player ?? raw.playerteam ?? '',
-          prop: raw.prop ?? '', line: Number(raw.line) || 0,
-          selection: raw.selection ?? 'Over', odds: odds || 0,
-          matchup: raw.matchup ?? '', week: Number(raw.week) || null,
-          status: raw.status ?? raw.result ?? 'pending',
-          gameDate: raw.gameDate ?? raw.date ?? null, team: raw.team ?? '' }],
-        ...raw, payout,
-        createdAt: raw.createdAt?.toDate?.().toISOString() ?? raw.createdAt ?? null,
-      });
-    }
-    
-    // Process legacy parlays
-    for (const [parlayId, entries] of parlayMap) {
-      const header = entries.find(e => Number(e.raw.stake ?? e.raw.wager) > 0) ?? entries[0];
-      const hr = header.raw;
-      const stake = Number(hr.stake ?? hr.wager) || null;
-      const odds = typeof hr.odds === 'string' ? parseInt(hr.odds) : Number(hr.parlayOdds ?? hr.odds) || null;
-      bets.push({
-        id: parlayId, isParlay: entries.length > 1,
-        legs: entries.map(({ doc, raw }: any) => ({
-          id: doc.id, player: raw.player ?? raw.playerteam ?? '',
-          prop: raw.prop ?? '', line: Number(raw.line) || 0,
-          selection: raw.selection ?? 'Over',
-          odds: typeof raw.odds === 'string' ? parseInt(raw.odds) : Number(raw.odds) || 0,
-          matchup: raw.matchup ?? '', week: Number(raw.week) || null,
-          status: raw.status ?? raw.result ?? 'pending',
-          gameDate: raw.gameDate ?? raw.date ?? null, team: raw.team ?? '',
-        })),
-        ...hr, odds, stake,
-        payout: stake && odds ? parseFloat((stake * (odds > 0 ? odds/100+1 : 100/Math.abs(odds)+1)).toFixed(2)) : null,
-        createdAt: hr.createdAt?.toDate?.().toISOString() ?? hr.createdAt ?? hr.date ?? null,
-        gameDate: hr.gameDate ?? hr.date ?? null,
-      });
     }
 
-    const userBets = bets.filter(b => b.userId === userId || !b.userId);
+    // ── 2. Legacy parlay bets (grouped by parlayId) — cached ─────────────────
+    if (bustCache) legacyBetsCache = null;
 
-    let result = player
-      ? userBets.filter(b => b.legs?.some((l: any) => (l.player ?? '').toLowerCase().includes(player)))
-      : userBets;
+    if (!isLegacyCacheValid()) {
+      console.log('🔄 betting-log: loading legacy parlay docs...');
+      const parlayMap = new Map<string, { doc: any; raw: any }[]>();
 
-    result.sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime());
+      // Fetch all docs with a parlayId field (both casings used in legacy data)
+      const [s1, s2] = await Promise.all([
+        col.where('parlayId',  '>', '').limit(5000).get(),
+        col.where('parlayid', '>', '').limit(5000).get(),
+      ]);
 
+      const seen = new Set<string>();
+      for (const doc of [...s1.docs, ...s2.docs]) {
+        if (seen.has(doc.id)) continue;
+        seen.add(doc.id);
+        const raw = doc.data();
+        const pid = raw?.parlayId ?? raw?.parlayid;
+        if (!pid) continue;
+        if (!parlayMap.has(pid)) parlayMap.set(pid, []);
+        parlayMap.get(pid)!.push({ doc, raw });
+      }
+
+      const built: any[] = [];
+      for (const [parlayId, entries] of parlayMap) {
+        built.push(buildParlayFromEntries(parlayId, entries));
+      }
+
+      legacyBetsCache = built;
+      legacyCacheTime = Date.now();
+      console.log(`✅ Legacy cache: ${built.length} parlays from ${seen.size} leg docs`);
+    }
+
+    // ── 3. Merge ──────────────────────────────────────────────────────────────
+    let allBets = [...newBets, ...(legacyBetsCache ?? [])];
+
+    // Week filter on legacy (new bets already filtered by Firestore query above)
+    if (weekNum !== null && !isNaN(weekNum)) {
+      const newBetIds = new Set(newBets.map(b => b.id));
+      allBets = allBets.filter(b => newBetIds.has(b.id) || b.week === weekNum);
+    }
+
+    // Player search (in-memory — Firestore doesn't support substring search)
+    if (player) {
+      allBets = allBets.filter(b =>
+        b.legs?.some((l: any) => (l.player ?? '').toLowerCase().includes(player))
+      );
+    }
+
+    // Sort by date desc
+    allBets.sort((a, b) =>
+      new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime()
+    );
+
+    // Deduplicate by id
+    const seenIds = new Set<string>();
+    allBets = allBets.filter(b => {
+      if (seenIds.has(b.id)) return false;
+      seenIds.add(b.id);
+      return true;
+    });
+
+    // ── 4. Cursor pagination ──────────────────────────────────────────────────
     let start = 0;
     if (cursor) {
-      const i = result.findIndex(b => b.id === cursor);
+      const i = allBets.findIndex(b => b.id === cursor);
       if (i !== -1) start = i + 1;
     }
-    const page = result.slice(start, start + limit);
-    const hasMore = start + limit < result.length;
+    const page    = allBets.slice(start, start + limit);
+    const hasMore = start + limit < allBets.length;
 
     return NextResponse.json({
       bets: page,
       hasMore,
       nextCursor: hasMore ? page[page.length - 1]?.id : null,
-      totalCount: result.length,
+      totalCount: allBets.length,
     });
+
   } catch (error: any) {
+    console.error('betting-log GET error:', error);
     return NextResponse.json({ error: error.message, bets: [] }, { status: 500 });
   }
 }
 
-// POST: Save or Create
+// ─── POST (Save / Update) ─────────────────────────────────────────────────────
+
 export async function POST(req: Request) {
   try {
     const body = await req.json();
     const { id, userId, gameDate, legs, ...rest } = body;
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const col = adminDb.collection('bettingLog');
-    
-    const hasLost = (legs ?? []).some((l: any) => ['lost','loss'].includes((l.status ?? '').toLowerCase()));
-    const allWon  = (legs ?? []).length > 0 && (legs ?? []).every((l: any) => ['won','win'].includes((l.status ?? '').toLowerCase()));
-    const status  = rest.status ?? (hasLost ? 'lost' : allWon ? 'won' : 'pending');
-    
-    const docData = {
-      ...rest,
-      status,
-      userId,
-      legs: legs ?? [],
-      gameDate: processGameDate(gameDate),
+    const col       = adminDb.collection('bettingLog');
+    const hasLost   = (legs ?? []).some((l: any) => ['lost','loss'].includes((l.status ?? '').toLowerCase()));
+    const allWon    = (legs ?? []).length > 0 && (legs ?? []).every((l: any) => ['won','win'].includes((l.status ?? '').toLowerCase()));
+    const status    = rest.status ?? (hasLost ? 'lost' : allWon ? 'won' : 'pending');
+    const fixedGameDate = processGameDate(gameDate);
+
+    const rawDoc = {
+      ...rest, status, userId,
+      legs:      legs ?? [],
+      gameDate:  fixedGameDate,
       updatedAt: new Date().toISOString(),
     };
+    const cleanDoc = Object.fromEntries(
+      Object.entries(rawDoc).filter(([_, v]) => v !== undefined)
+    );
 
-    const cleanDoc = Object.fromEntries(Object.entries(docData).filter(([_, v]) => v !== undefined));
+    // Bust legacy cache so edits are reflected immediately
+    legacyBetsCache = null;
 
     if (id) {
-       await col.doc(id).set(cleanDoc, { merge: true });
+      const existing = await col.doc(id).get();
+
+      if (!existing.exists) {
+        // Legacy parlayId — update all individual leg docs via batch
+        const [s1, s2] = await Promise.all([
+          col.where('parlayId',  '==', id).get(),
+          col.where('parlayid', '==', id).get(),
+        ]);
+        const legDocs = [...s1.docs, ...s2.docs];
+
+        if (legDocs.length > 0) {
+          const batch = adminDb.batch();
+          // Shared fields on every leg doc
+          legDocs.forEach(legDoc => {
+            const update: Record<string, any> = {
+              status,
+              gameDate:      fixedGameDate,
+              updatedAt:     new Date().toISOString(),
+              isBonusBet:    cleanDoc.isBonusBet    ?? false,
+              isGhostParlay: cleanDoc.isGhostParlay ?? false,
+            };
+            if (cleanDoc.stake !== undefined) update.stake = cleanDoc.stake;
+            if (cleanDoc.odds  !== undefined) update.odds  = cleanDoc.odds;
+            if (cleanDoc.week  !== undefined) update.week  = cleanDoc.week;
+            if (cleanDoc.boost !== undefined) update.boost = cleanDoc.boost;
+            batch.update(legDoc.ref, update);
+          });
+          // Per-leg fields (status, line, odds, selection) for matched legs
+          (legs ?? []).forEach((editedLeg: any) => {
+            const match = legDocs.find(d => d.id === editedLeg.id);
+            if (match) batch.update(match.ref, {
+              status:    editedLeg.status,
+              line:      editedLeg.line,
+              odds:      editedLeg.odds,
+              selection: editedLeg.selection,
+            });
+          });
+          await batch.commit();
+          return NextResponse.json({ success: true, id });
+        }
+      }
+
+      // Normal Firestore doc — merge update
+      await col.doc(id).set(cleanDoc, { merge: true });
+      return NextResponse.json({ success: true, id });
+
     } else {
-       await col.add({ ...cleanDoc, createdAt: new Date().toISOString() });
+      // New bet — create
+      const ref = await col.add({ ...cleanDoc, createdAt: new Date().toISOString() });
+      return NextResponse.json({ success: true, id: ref.id });
     }
 
-    return NextResponse.json({ success: true });
   } catch (e: any) {
+    console.error('betting-log POST error:', e);
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }
 
-// DELETE: Bulk support
+// ─── DELETE ───────────────────────────────────────────────────────────────────
+
 export async function DELETE(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const idParam = searchParams.get('id');
     if (!idParam) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
 
-    const ids = idParam.split(',');
+    const col   = adminDb.collection('bettingLog');
+    const ids   = idParam.split(',');
     const batch = adminDb.batch();
-    const col = adminDb.collection('bettingLog');
 
-    ids.forEach(id => {
-      batch.delete(col.doc(id));
-    });
-
-    // Handle legacy parlays
-    const legSnaps = await Promise.all(ids.map(id => col.where('parlayId', '==', id).get()));
-    legSnaps.forEach(snap => snap.forEach(doc => batch.delete(doc.ref)));
+    for (const id of ids) {
+      const direct = await col.doc(id).get();
+      if (direct.exists) {
+        batch.delete(col.doc(id));
+      } else {
+        // Legacy parlayId — delete all matching leg docs
+        const [s1, s2] = await Promise.all([
+          col.where('parlayId',  '==', id).get(),
+          col.where('parlayid', '==', id).get(),
+        ]);
+        [...s1.docs, ...s2.docs].forEach(d => batch.delete(d.ref));
+      }
+    }
 
     await batch.commit();
+
+    // Bust legacy cache so deleted bets don't reappear
+    legacyBetsCache = null;
+
     return NextResponse.json({ success: true });
+
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }

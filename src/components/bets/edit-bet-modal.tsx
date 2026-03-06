@@ -1,422 +1,259 @@
 'use client';
-import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { X, Save, Trash2, TrendingUp, DollarSign, Calendar, Loader2, ChevronDown, ChevronUp, CheckCircle2, XCircle, Clock, Zap } from 'lucide-react';
-import { Bet } from '@/lib/types';
-import { toDecimal, toAmerican } from '@/lib/utils/odds';
+import React, { useState, useEffect, useMemo } from 'react';
+import { 
+  X, Ghost, ShieldCheck, TrendingUp, Trash2, 
+  CheckCircle2, XCircle, Clock, HandCoins
+} from 'lucide-react';
 import { toast } from 'sonner';
+import { toDecimal } from '@/lib/utils/odds';
 import { getWeekFromDate } from '@/lib/utils/nfl-week';
+import type { Bet, BetLeg, BetStatus } from '@/lib/types';
 
 interface EditBetModalProps {
   bet: Bet;
   isOpen: boolean;
-  userId?: string;
   onClose: () => void;
+  onSave: (updatedBet: Bet) => void;
 }
 
-const LEG_STATUSES = [
-  { value: 'won',     label: 'Win',     icon: CheckCircle2, cls: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' },
-  { value: 'lost',    label: 'Loss',    icon: XCircle,      cls: 'bg-red-500/20 text-red-400 border-red-500/40' },
-  { value: 'pending', label: 'Pending', icon: Clock,        cls: 'bg-[#FFD700]/10 text-[#FFD700] border-[#FFD700]/30' },
-  { value: 'void',    label: 'Void',    icon: XCircle,      cls: 'bg-white/[0.06] text-zinc-400 border-white/20' },
-];
+const BOOST_OPTIONS = [0, 10, 15, 20, 25, 30, 33, 35, 40, 50, 100];
+// Status options now explicitly match the BetStatus type
+const STATUS_OPTIONS: BetStatus[] = ['pending', 'won', 'lost', 'void', 'cashed'];
 
-function calcParlayOdds(legs: any[]): number {
-  if (!legs || legs.length === 0) return 0;
-  const dec = legs.reduce((acc, leg) => {
-    if (leg.status === 'void') return acc;
-    return acc * toDecimal(Number(leg.odds) || -110);
-  }, 1);
-  return dec > 1 ? Math.round(toAmerican(dec)) : 0;
-}
-
-export function EditBetModal({ bet, isOpen, userId, onClose }: EditBetModalProps) {
-  const router = useRouter();
-  const [formData, setFormData] = useState<any>(bet);
-  const [legs, setLegs] = useState<any[]>([]);
+export function EditBetModal({ bet, isOpen, onClose, onSave }: EditBetModalProps) {
+  const [editedBet, setEditedBet] = useState<Bet | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [legsExpanded, setLegsExpanded] = useState(true);
-  const [oddsManual, setOddsManual] = useState(false);
+  const [useManualOdds, setUseManualOdds] = useState(false);
 
   useEffect(() => {
-    const initialLegs = Array.isArray((bet as any).legs) ? (bet as any).legs : [];
-    setFormData(bet);
-    setLegs(initialLegs);
-    setOddsManual(false);
-    setLegsExpanded(true);
+    if (bet) {
+      setEditedBet({ ...bet });
+      if (bet.manualOdds) setUseManualOdds(true);
+    }
   }, [bet]);
 
-  useEffect(() => {
-    if (legs.length > 1 && !oddsManual) {
-      const calc = calcParlayOdds(legs);
-      if (calc !== 0) setFormData((prev: any) => ({ ...prev, odds: calc }));
+  // Fixes Error 2322: Ensures week is never undefined if the interface requires number
+  const currentWeek = useMemo(() => {
+    if (!editedBet?.gameDate) return bet.week; // Fallback to original bet week
+    return getWeekFromDate(editedBet.gameDate) ?? bet.week;
+  }, [editedBet?.gameDate, bet.week]);
+
+  const finalOdds = useMemo(() => {
+    if (useManualOdds && editedBet?.manualOdds) return Math.round(Number(editedBet.manualOdds));
+    return Math.round(Number(editedBet?.odds || 0));
+  }, [useManualOdds, editedBet?.manualOdds, editedBet?.odds]);
+
+  const calculatedDisplayValue = useMemo(() => {
+    if (!editedBet) return 0;
+    
+    if (editedBet.status === 'cashed') {
+      return Number(editedBet.cashedAmount || 0);
     }
-  }, [legs, oddsManual]);
 
-  const set = (fields: any) => setFormData((prev: any) => ({ ...prev, ...fields }));
+    const stake = Number(editedBet.stake) || 0;
+    const decimalOdds = toDecimal(finalOdds);
+    const boostMult = editedBet.boost ? 1 + (Number(editedBet.boost) / 100) : 1;
+    let total = stake * decimalOdds * boostMult;
+    
+    if (editedBet.isBonusBetUsed) total = total - stake;
+    return total;
+  }, [editedBet, finalOdds]);
 
-  const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    const year = parseInt(val.split('-')[0]);
-    if (year < 2000 || year > 2100) return;
-    set({
-      gameDate: val,
-      week: getWeekFromDate(val) ?? formData.week,
-      season: new Date(val).getFullYear(),
-    });
+  if (!isOpen || !editedBet) return null;
+
+  const updateLeg = (index: number, updates: Partial<BetLeg>) => {
+    if (!editedBet) return;
+    const newLegs = [...editedBet.legs];
+    newLegs[index] = { ...newLegs[index], ...updates };
+    setEditedBet({ ...editedBet, legs: newLegs });
   };
 
-  const handleLegChange = (index: number, fields: any) => {
-    setLegs(prev => prev.map((leg, i) => i === index ? { ...leg, ...fields } : leg));
-  };
-
-  const handleDeleteLeg = (index: number) => {
-    setLegs(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const calcPayout = () => {
-    if (formData.status === 'cashed') {
-        return Number(formData.payout) || 0;
-    }
-    const stake = Number(formData.stake) || 0;
-    const odds  = Number(formData.odds)  || 0;
-    const boost = Number(formData.boost  || 0);
-    if (!stake || !odds) return 0;
-    const dec = toDecimal(odds);
-    const raw = stake * dec * (1 + boost / 100);
-    return formData.isBonusBet ? raw - stake : raw;
+  const removeLeg = (index: number) => {
+    if (!editedBet) return;
+    const newLegs = editedBet.legs.filter((_: BetLeg, i: number) => i !== index);
+    setEditedBet({ ...editedBet, legs: newLegs });
   };
 
   const handleSave = async () => {
+    if (!editedBet) return;
     setIsSaving(true);
     try {
-      const payload = {
-        ...formData,
-        userId,
-        legs,
+      // Fixes Error 2345: Explicitly casting the object to 'Bet'
+      const finalBet: Bet = {
+        ...editedBet,
+        odds: finalOdds,
+        manualOdds: useManualOdds ? finalOdds : null, // Interface expects number | null
+        week: currentWeek, // Guaranteed to be a number via useMemo fallback
+        payout: editedBet.status === 'cashed' 
+          ? (editedBet.cashedAmount ?? null) 
+          : calculatedDisplayValue,
       };
-
-      const res = await fetch('/api/betting-log', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(err.error || `HTTP ${res.status}`);
-      }
-      
-      toast.success('Bet saved successfully!');
+      await onSave(finalBet);
       onClose();
-      router.refresh();
-      router.push('/betting-log');
-
-    } catch (err: any) {
-      toast.error('Error saving bet', { description: err.message });
-    } finally {
-      setIsSaving(false);
-    }
+    } catch (err) {
+      toast.error('Failed to update');
+    } finally { setIsSaving(false); }
   };
-  
-  const handleDelete = async () => {
-    if (!bet.id) return;
-    setIsDeleting(true);
-    try {
-      const res = await fetch(`/api/betting-log?id=${bet.id}&userId=${userId}`, {
-        method: 'DELETE',
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(err.error || `HTTP ${res.status}`);
-      }
-      
-      toast.success('Bet deleted!');
-      onClose();
-      router.refresh();
-      router.push('/betting-log');
-
-    } catch (err: any) {
-      toast.error('Error deleting bet', { description: err.message });
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-
-
-  if (!isOpen) return null;
-
-  const payout = calcPayout();
-  const isParlay = legs.length > 1;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
-      <div className="bg-[#0f1115] border border-white/10 w-full max-w-lg rounded-[2.5rem] overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
-
-        {/* Header */}
-        <div className="flex items-center justify-between px-8 py-5 border-b border-white/5 shrink-0">
-          <div>
-            <h2 className="text-white font-black text-xl italic uppercase tracking-tighter">Edit Bet</h2>
-            <p className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest">ID: {bet.id?.slice(-8)}</p>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/95 backdrop-blur-md">
+      <div className="bg-[#0f1115] border border-white/10 w-full max-w-3xl rounded-[2.5rem] overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+        
+        <div className="px-8 py-6 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
+          <div className="flex items-center gap-4">
+            <h2 className="text-xl font-black text-white italic uppercase tracking-tighter">Manage <span className="text-[#FFD700]">Bet</span></h2>
+            <select 
+              value={editedBet.status} 
+              // Fixes "Type string is not assignable to BetStatus"
+              onChange={(e) => setEditedBet(prev => prev ? {...prev, status: e.target.value as BetStatus} : null)}
+              className={`text-[10px] font-black uppercase px-3 py-1 rounded-lg border outline-none cursor-pointer transition-colors
+                ${editedBet.status === 'won' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 
+                  editedBet.status === 'cashed' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' :
+                  editedBet.status === 'lost' ? 'bg-red-500/10 text-red-400 border-red-500/20' : 
+                  'bg-zinc-500/10 text-zinc-400 border-zinc-500/20'}`}
+            >
+              {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-full transition-colors text-zinc-500 hover:text-white">
-            <X className="h-5 w-5" />
-          </button>
+          <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-full text-zinc-500 transition-colors"><X className="h-5 w-5" /></button>
         </div>
 
-        {/* Scrollable body */}
-        <div className="overflow-y-auto flex-1 p-6 space-y-5">
-
-          {/* Odds + Stake */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-zinc-500 uppercase flex items-center gap-1">
-                <TrendingUp className="h-3 w-3" /> Overall Odds
-                {isParlay && !oddsManual && (
-                  <span className="text-[8px] text-[#FFD700]/50 font-mono ml-1">(AUTO)</span>
-                )}
-              </label>
-              <input
-                type="number"
-                value={formData.odds ?? ''}
-                onChange={e => { set({ odds: Number(e.target.value) }); setOddsManual(true); }}
-                onFocus={() => setOddsManual(true)}
-                className="w-full bg-black/40 border border-white/[0.08] rounded-2xl px-4 py-3 text-[#FFD700] font-mono text-sm outline-none focus:ring-1 focus:ring-[#FFD700]/40"
-              />
-              {isParlay && oddsManual && (
-                <button
-                  onClick={() => setOddsManual(false)}
-                  className="text-[9px] text-zinc-600 hover:text-[#FFD700] transition-colors"
-                >
-                  ↺ Use calculated odds
-                </button>
-              )}
+        <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-1">
+              <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest ml-1">Game Date</span>
+              <input type="date" value={editedBet.gameDate?.split('T')[0]} onChange={(e) => setEditedBet(prev => prev ? {...prev, gameDate: e.target.value} : null)}
+                className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-xs text-white outline-none focus:border-[#FFD700]/50 [color-scheme:dark]" />
             </div>
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-zinc-500 uppercase flex items-center gap-1">
-                <DollarSign className="h-3 w-3" /> Stake ($)
-              </label>
-              <input
-                type="number"
-                value={formData.stake ?? ''}
-                onChange={e => set({ stake: Number(e.target.value) })}
-                className="w-full bg-black/40 border border-white/[0.08] rounded-2xl px-4 py-3 text-white font-mono text-sm outline-none focus:ring-1 focus:ring-white/20"
-              />
+            <div className="space-y-1">
+              <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest ml-1">Stake</span>
+              <input type="number" value={editedBet.stake} onChange={(e) => setEditedBet(prev => prev ? {...prev, stake: Number(e.target.value)} : null)}
+                className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-xs text-[#FFD700] font-mono outline-none" />
             </div>
+            
+            {editedBet.status === 'cashed' ? (
+              <div className="space-y-1 animate-in slide-in-from-right-2 duration-300">
+                <span className="text-[9px] font-black text-amber-500 uppercase tracking-widest ml-1 flex items-center gap-1">
+                  <HandCoins className="h-3 w-3" /> Cashed Amount
+                </span>
+                <input 
+                  type="number" 
+                  value={editedBet.cashedAmount || ''} 
+                  placeholder="Enter $ amount"
+                  onChange={(e) => setEditedBet(prev => prev ? {...prev, cashedAmount: Number(e.target.value)} : null)}
+                  className="w-full bg-amber-500/5 border border-amber-500/20 rounded-xl px-4 py-3 text-xs text-amber-400 font-mono outline-none focus:border-amber-500/50" 
+                />
+              </div>
+            ) : (
+              <div className="space-y-1">
+                <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest ml-1">Boost %</span>
+                <select value={editedBet.boost || 0} onChange={(e) => setEditedBet(prev => prev ? {...prev, boost: Number(e.target.value)} : null)}
+                  className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-xs text-white outline-none appearance-none">
+                  {BOOST_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}%</option>)}
+                </select>
+              </div>
+            )}
           </div>
 
-          {/* Boost + Week */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-zinc-500 uppercase flex items-center gap-1">
-                <Zap className="h-3 w-3 text-[#FFD700]" /> Boost %
-              </label>
-              <select
-                value={formData.boost ?? ''}
-                onChange={e => set({ boost: e.target.value })}
-                className="w-full bg-black/40 border border-white/[0.08] rounded-2xl px-4 py-3 text-white text-sm outline-none focus:ring-1 focus:ring-[#FFD700]/30"
-              >
-                <option value="">None</option>
-                {[5,10,15,20,25,30,33,35,40,50,100].map(p => (
-                  <option key={p} value={String(p)}>{p}%</option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-zinc-500 uppercase">NFL Week</label>
-              <input
-                type="number" min={1} max={22}
-                value={formData.week ?? ''}
-                onChange={e => set({ week: e.target.value })}
-                placeholder="1–22"
-                className="w-full bg-black/40 border border-white/[0.08] rounded-2xl px-4 py-3 text-white font-mono text-sm outline-none focus:ring-1 focus:ring-white/20"
-              />
-            </div>
-          </div>
-
-          {/* Game Date + Status */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-zinc-500 uppercase flex items-center gap-1">
-                <Calendar className="h-3 w-3" /> Game Date
-              </label>
-              <input
-                type="date"
-                value={typeof formData.gameDate === 'string' ? formData.gameDate.split('T')[0] : ''}
-                onChange={handleDateChange}
-                className="w-full bg-black/40 border border-white/[0.08] rounded-2xl px-4 py-3 text-white text-sm outline-none [color-scheme:dark]"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-zinc-500 uppercase">Status</label>
-              <select
-                value={formData.status ?? 'pending'}
-                onChange={e => set({ status: e.target.value, payout: e.target.value === 'cashed' ? formData.payout : null })}
-                className="w-full bg-black/40 border border-white/[0.08] rounded-2xl px-4 py-3 text-white text-sm outline-none"
-              >
-                <option value="pending">Pending</option>
-                <option value="won">Won</option>
-                <option value="lost">Lost</option>
-                <option value="void">Void</option>
-                <option value="cashed">Cashed Out</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Cashed Out Amount */}
-          {formData.status === 'cashed' && (
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-zinc-500 uppercase flex items-center gap-1">
-                <DollarSign className="h-3 w-3" /> Cashed Out Amount
-              </label>
-              <input
-                type="number"
-                value={formData.payout ?? ''}
-                onChange={e => set({ payout: Number(e.target.value) })}
-                className="w-full bg-black/40 border border-white/[0.08] rounded-2xl px-4 py-3 text-white font-mono text-sm outline-none focus:ring-1 focus:ring-white/20"
-              />
-            </div>
-          )}
-
-          {/* Bonus Bet + Ghost Parlay */}
-          <div className="grid grid-cols-2 gap-3">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={formData.isBonusBet ?? false}
-                onChange={e => set({ isBonusBet: e.target.checked })}
-                className="h-4 w-4 rounded border-zinc-700 bg-black/40"
-              />
-              <span className="text-sm text-white">Bonus Bet</span>
+          <div className="space-y-4">
+            <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest flex items-center gap-2">
+              Parlay Legs ({editedBet.legs.length})
+              {editedBet.isGhostParlay && <span className="text-purple-400 flex items-center gap-1"><Ghost className="h-3 w-3" /> GHOST ACTIVE</span>}
             </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={formData.isGhostParlay ?? false}
-                onChange={e => set({ isGhostParlay: e.target.checked })}
-                className="h-4 w-4 rounded border-zinc-700 bg-black/40"
-              />
-              <span className="text-sm text-white">Ghost Parlay</span>
-            </label>
-          </div>
+            <div className="grid gap-3">
+              {editedBet.legs.map((leg, idx) => (
+                <div key={idx} className="flex items-center gap-4 p-4 bg-black/40 border border-white/5 rounded-2xl group transition-all hover:border-white/10">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[11px] font-black text-white uppercase italic">{leg.player}</p>
+                    <p className="text-[9px] text-zinc-600 font-bold uppercase">{leg.prop} · {leg.selection}</p>
+                  </div>
+                  
+                  <div className="flex items-center gap-4">
+                    <div className="flex flex-col items-end">
+                      <span className="text-[8px] font-black text-zinc-600 uppercase mb-1">Line</span>
+                      <input type="number" step="0.5" value={leg.line} onChange={(e) => updateLeg(idx, { line: parseFloat(e.target.value) })}
+                        className="w-14 bg-black border border-white/10 rounded px-1.5 py-1 text-center text-[10px] text-white font-mono" />
+                    </div>
 
-          {/* Legs */}
-          {legs.length > 0 && (
-            <div className="space-y-2">
-              <button
-                onClick={() => setLegsExpanded(p => !p)}
-                className="w-full flex items-center justify-between text-[10px] font-black text-zinc-500 uppercase tracking-widest hover:text-zinc-300 transition-colors"
-              >
-                <span>Legs ({legs.length})</span>
-                {legsExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-              </button>
-
-              {legsExpanded && (
-                <div className="space-y-2">
-                  {legs.map((leg, i) => (
-                    <div key={leg.id || i} className="bg-black/30 border border-white/[0.06] rounded-2xl p-4 space-y-3">
-                      <div className="flex items-center gap-2">
-                        <span className="w-5 h-5 rounded-full bg-[#FFD700]/10 border border-[#FFD700]/20 text-[9px] font-black text-[#FFD700] flex items-center justify-center shrink-0">
-                          {i + 1}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-white font-black text-xs uppercase italic truncate">{leg.player || '—'}</p>
-                          <p className="text-zinc-600 text-[10px] font-mono">{leg.prop}</p>
-                        </div>
-                        <button
-                          onClick={() => handleDeleteLeg(i)}
-                          className="p-1.5 text-zinc-600 hover:text-red-500 hover:bg-red-500/10 rounded-full transition-colors"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[9px] text-zinc-600 uppercase font-black">Line</span>
-                          <input
-                            type="number" step="0.5"
-                            value={leg.line ?? ''}
-                            onChange={e => handleLegChange(i, { line: parseFloat(e.target.value) || 0 })}
-                            className="w-16 bg-black/40 border border-white/[0.08] text-white font-mono text-xs rounded-xl px-2 py-1.5 text-center outline-none focus:ring-1 focus:ring-[#FFD700]/30"
-                          />
-                        </div>
-
-                        <div className="flex rounded-xl overflow-hidden border border-white/[0.08]">
-                          {(['Over', 'Under'] as const).map(s => (
-                            <button
-                              key={s}
-                              onClick={() => handleLegChange(i, { selection: s })}
-                              className={`px-3 py-1.5 text-[10px] font-black uppercase transition-colors ${
-                                leg.selection === s
-                                  ? s === 'Over' ? 'bg-blue-600 text-white' : 'bg-orange-600 text-white'
-                                  : 'bg-black/40 text-zinc-600 hover:bg-white/[0.04]'
-                              }`}
-                            >{s}</button>
-                          ))}
-                        </div>
-
-                        <div className="flex items-center gap-1.5 ml-auto">
-                          <span className="text-[9px] text-zinc-600 uppercase font-black">Odds</span>
-                          <input
-                            type="number"
-                            value={leg.odds ?? ''}
-                            onChange={e => handleLegChange(i, { odds: parseInt(e.target.value) || -110 })}
-                            className="w-20 bg-black/40 border border-white/[0.08] text-white font-mono text-xs rounded-xl px-2 py-1.5 text-center outline-none focus:ring-1 focus:ring-[#FFD700]/30"
-                          />
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-[9px] text-zinc-600 uppercase font-black w-10">Result</span>
-                        {LEG_STATUSES.map(r => {
-                          const Icon = r.icon;
-                          const active = (leg.status || 'pending') === r.value;
-                          return (
-                            <button
-                              key={r.value}
-                              onClick={() => handleLegChange(i, { status: r.value })}
-                              className={`flex items-center gap-1 px-2 py-1 rounded-lg border text-[9px] font-black uppercase transition-all ${
-                                active ? r.cls : 'border-white/[0.08] text-zinc-600 hover:border-white/20 hover:text-zinc-400'
-                              }`}
-                            >
-                              <Icon className="h-3 w-3" />{r.label}
-                            </button>
-                          );
-                        })}
+                    <div className="flex flex-col items-center">
+                      <span className="text-[8px] font-black text-zinc-600 uppercase mb-1">Result</span>
+                      <div className="flex gap-1 bg-black/60 p-1 rounded-lg border border-white/5">
+                        {[
+                          { val: 'won', icon: CheckCircle2, color: 'text-emerald-500' },
+                          { val: 'lost', icon: XCircle, color: 'text-red-500' },
+                          { val: 'pending', icon: Clock, color: 'text-zinc-500' }
+                        ].map((btn) => (
+                          <button 
+                            key={btn.val}
+                            onClick={() => updateLeg(idx, { status: btn.val })}
+                            className={`p-1 rounded transition-colors ${leg.status === btn.val ? 'bg-white/10 ' + btn.color : 'text-zinc-700 hover:text-zinc-400'}`}
+                          >
+                            <btn.icon className="h-3.5 w-3.5" />
+                          </button>
+                        ))}
                       </div>
                     </div>
-                  ))}
+                    <button onClick={() => removeLeg(idx)} className="p-2 text-zinc-800 hover:text-red-500 transition-colors"><Trash2 className="h-4 w-4" /></button>
+                  </div>
                 </div>
-              )}
+              ))}
             </div>
-          )}
+          </div>
 
-          {/* Payout Preview */}
-          <div className="bg-[#FFD700]/5 border border-[#FFD700]/10 rounded-2xl p-4 flex justify-between items-center">
-            <span className="text-[10px] text-zinc-500 font-black uppercase italic">Potential Payout</span>
-            <span className="text-xl font-black font-mono text-[#FFD700]">${payout.toFixed(2)}</span>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-black/40 border border-white/5 rounded-2xl p-4 space-y-4">
+               <div className="flex items-center justify-between">
+                  <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest">Odds Priority</span>
+                  <button onClick={() => setUseManualOdds(!useManualOdds)} className="text-[8px] font-black text-[#FFD700] underline">Toggle</button>
+               </div>
+               {useManualOdds ? (
+                 <input type="number" value={editedBet.manualOdds || ''} onChange={(e) => setEditedBet(prev => prev ? {...prev, manualOdds: Math.round(Number(e.target.value)) } : null)}
+                   placeholder="Manual Odds (e.g. +350)" className="w-full bg-black border border-[#FFD700]/30 rounded-xl px-4 py-3 text-xs text-white font-mono outline-none" />
+               ) : (
+                 <div className="px-4 py-3 bg-white/5 rounded-xl text-xs text-zinc-500 font-mono italic opacity-60">Auto: {editedBet.odds > 0 ? '+' : ''}{Math.round(editedBet.odds)}</div>
+               )}
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { label: 'Ghost', state: 'isGhostParlay', icon: Ghost, color: 'text-purple-400', bg: 'bg-purple-500/10' },
+                { label: 'Bonus Used', state: 'isBonusBetUsed', icon: ShieldCheck, color: 'text-cyan-400', bg: 'bg-cyan-500/10' },
+                { label: 'Bonus Recv', state: 'receivesBonusBack', icon: TrendingUp, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
+              ].map((t) => (
+                <button 
+                  key={t.state}
+                  // Fixes dynamic key access
+                  onClick={() => setEditedBet(prev => prev ? {...prev, [t.state]: !prev[t.state as keyof Bet]} as Bet : null)}
+                  className={`flex flex-col items-center justify-center gap-1.5 p-3 rounded-2xl border transition-all 
+                    ${editedBet[t.state as keyof Bet] ? `${t.bg} border-${t.color.split('-')[1]}-500/40` : 'bg-black/20 border-white/5 opacity-40'}`}
+                >
+                  <t.icon className={`h-4 w-4 ${editedBet[t.state as keyof Bet] ? t.color : 'text-zinc-600'}`} />
+                  <span className={`text-[8px] font-black uppercase ${editedBet[t.state as keyof Bet] ? t.color : 'text-zinc-600'}`}>{t.label}</span>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="flex gap-3 px-6 pb-6 pt-2 border-t border-white/5 shrink-0">
-          <button
-            onClick={handleDelete}
-            disabled={isDeleting}
-            className="px-5 py-3.5 rounded-2xl border border-red-500/20 text-red-500 hover:bg-red-500/10 transition-all"
-          >
-            {isDeleting ? <Loader2 className="animate-spin h-4 w-4" /> : <Trash2 className="h-4 w-4" />}
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={isSaving}
-            className="flex-1 bg-[#FFD700] hover:bg-[#e6c200] text-black font-black uppercase py-3.5 rounded-2xl flex items-center justify-center gap-2 transition-all disabled:opacity-50"
-          >
-            {isSaving ? <Loader2 className="animate-spin h-4 w-4" /> : <Save className="h-4 w-4" />}
-            Save Changes
+        <div className="p-8 bg-black border-t border-white/5 flex items-center justify-between">
+          <div className="space-y-1">
+            <p className="text-[9px] text-zinc-600 font-black uppercase tracking-widest italic">
+              {editedBet.status === 'cashed' ? 'Cashed Out Value' : 'Projected Payout'}
+            </p>
+            <div className="flex items-baseline gap-2">
+              <span className={`text-3xl font-black font-mono tracking-tighter italic ${editedBet.status === 'cashed' ? 'text-amber-400' : 'text-[#FFD700]'}`}>
+                ${calculatedDisplayValue.toFixed(2)}
+              </span>
+              <span className="text-[10px] text-zinc-600 font-bold uppercase italic">
+                {editedBet.status === 'cashed' 
+                  ? `Profit: $${(calculatedDisplayValue - editedBet.stake).toFixed(2)}` 
+                  : `@${finalOdds > 0 ? '+' : ''}${finalOdds}`}
+              </span>
+            </div>
+          </div>
+          <button onClick={handleSave} disabled={isSaving} className="px-10 py-4 bg-[#FFD700] hover:bg-white text-black font-black uppercase text-xs rounded-2xl transition-all shadow-xl shadow-[#FFD700]/10">
+            {isSaving ? 'Saving...' : 'Confirm Sync'}
           </button>
         </div>
       </div>

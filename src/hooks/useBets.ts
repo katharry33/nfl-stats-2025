@@ -11,9 +11,9 @@ export function useFirebaseBets(userId: string) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore]         = useState(true);
   const [error, setError]             = useState<string | null>(null);
-  const lastCursor = useRef<string | null>(null);
+  const lastCursor                    = useRef<string | null>(null);
 
-  // ── Fetch via API route (handles all legacy format normalization) ──────────
+  // ── Fetch ─────────────────────────────────────────────────────────────────
   const fetchBets = useCallback(async (
     reset  = false,
     search = '',
@@ -63,35 +63,41 @@ export function useFirebaseBets(userId: string) {
     if (!loadingMore && hasMore) fetchBets(false);
   }, [fetchBets, loadingMore, hasMore]);
 
-  // ── Update via save-bet API (handles status derivation, gameDate, etc.) ───
+  // ── Update ────────────────────────────────────────────────────────────────
   const updateBet = useCallback(async (updates: any) => {
     const id = updates.id;
     if (!id) throw new Error('updateBet: missing id');
-    // Optimistic update
+
+    // Optimistic update — instant, permanent until next full fetch.
+    // No delayed re-fetch: Firestore batch propagation is slower than the re-fetch
+    // window, which causes a blink back to the old value. Trust the optimistic state.
     setBets(prev => prev.map(b => b.id === id ? { ...b, ...updates } : b));
+
     try {
-      const res = await fetch('/api/betting-log', {  // ← change from /api/save-bet
+      const res = await fetch('/api/betting-log', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ ...updates, userId }),  // spread full updates including id
+        body: JSON.stringify({ ...updates, userId }),
       });
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: res.statusText }));
         throw new Error(err.error ?? 'Save failed');
       }
+      // ✅ Success — optimistic state is correct, no re-fetch needed.
+      // Next time the user loads the page they'll get fresh server data.
+
     } catch (err) {
       console.error('[useBets] update error:', err);
-      // Revert optimistic update on failure
+      // Only re-fetch on actual failure to revert the optimistic update
       fetchBets(true);
       throw err;
     }
   }, [userId, fetchBets]);
 
-  // ── Delete via API ─────────────────────────────────────────────────────────
+  // ── Delete ────────────────────────────────────────────────────────────────
   const deleteBet = useCallback(async (id: string) => {
-    // Optimistic remove
     setBets(prev => prev.filter(b => b.id !== id));
 
     try {
@@ -109,7 +115,6 @@ export function useFirebaseBets(userId: string) {
       }
     } catch (err) {
       console.error('[useBets] delete error:', err);
-      // Restore on failure
       fetchBets(true);
       throw err;
     }

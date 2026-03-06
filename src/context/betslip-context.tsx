@@ -1,9 +1,15 @@
 'use client';
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import { Bet } from '@/lib/types';
+import { useAuth } from '@clerk/nextjs';
+// We import from our central types file
+import { Bet, BetLeg, BetStatus } from '@/lib/types';
+
+// Ensure BetLeg is exported so components like add-to-betslip-button can use it
+export type { BetLeg }; 
 
 export interface BetSlipContextType {
+  // --- Historical Log State ---
   bets: Bet[];
   setBets: React.Dispatch<React.SetStateAction<Bet[]>>;
   totalCount: number;
@@ -15,13 +21,19 @@ export interface BetSlipContextType {
   loadMoreBets: (search: string, season: string) => Promise<void>;
   updateBet: (id: string, updates: Partial<Bet>) => Promise<void>;
   deleteBet: (id: string) => void;
-  selections: any[];
-  setSelections: React.Dispatch<React.SetStateAction<any[]>>;
-  addLeg: (leg: any) => void;
-  removeLeg: (legId: string) => void;
+  
+  // --- Active Slip State ---
+  selections: BetLeg[];
+  addLeg: (leg: BetLeg) => void;
+  removeLeg: (id: string) => void;
   clearSlip: () => void;
-  totalParlayOdds: number;
+  totalOdds: number;
   isInitialized: boolean;
+
+  // --- Historical Props Interface ---
+  isSubmitting: boolean;
+  submitHistoricalBets: () => Promise<void>;
+  setBetStatus: (id: string, status: BetStatus) => void;
 }
 
 const BetSlipContext = createContext<BetSlipContextType | undefined>(undefined);
@@ -34,21 +46,36 @@ export const useBetSlip = () => {
 
 const PAGE_SIZE = 50;
 
-function calcOdds(sels: any[]): number {
-  if (!sels.length) return 0;
-  const dec = sels.reduce((acc, leg) => {
+/**
+ * Professional American Odds Calculation
+ */
+function calculateAmericanOdds(selections: BetLeg[]): number {
+  if (!selections.length) return 100;
+  
+  const totalDecimal = selections.reduce((acc, leg) => {
     const o = Number(leg.odds);
     if (!o) return acc;
-    return acc * (o > 0 ? o / 100 + 1 : 100 / Math.abs(o) + 1);
+    const decimal = o > 0 ? (o / 100) + 1 : (100 / Math.abs(o)) + 1;
+    return acc * decimal;
   }, 1);
-  return dec > 1 ? parseFloat(((dec - 1) * 100).toFixed(2)) : 0;
+
+  if (totalDecimal >= 2.0) {
+    return Math.round((totalDecimal - 1) * 100);
+  } else {
+    return Math.round(-100 / (totalDecimal - 1));
+  }
 }
 
 export const BetSlipProvider = ({ children }: { children: React.ReactNode }) => {
-  const [selections, setSelections] = useState<any[]>([]);
-  const [totalParlayOdds, setTotalParlayOdds] = useState(0);
-  const [isInitialized, setIsInitialized] = useState(false);
+  const { userId } = useAuth(); // Get Clerk userId for API requests
 
+  // --- Active Slip State ---
+  const [selections, setSelections] = useState<BetLeg[]>([]);
+  const [totalOdds, setTotalOdds] = useState(100);
+  const [isInitialized, setIsInitialized] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Persistence logic
   useEffect(() => {
     const savedSlip = localStorage.getItem('active_betslip');
     if (savedSlip) {
@@ -64,10 +91,11 @@ export const BetSlipProvider = ({ children }: { children: React.ReactNode }) => 
   useEffect(() => {
     if (isInitialized) {
       localStorage.setItem('active_betslip', JSON.stringify(selections));
-      setTotalParlayOdds(calcOdds(selections));
+      setTotalOdds(calculateAmericanOdds(selections));
     }
   }, [selections, isInitialized]);
 
+  // --- Historical Data Logic ---
   const [bets, setBets] = useState<Bet[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -77,10 +105,12 @@ export const BetSlipProvider = ({ children }: { children: React.ReactNode }) => 
   const [nextCursor, setNextCursor] = useState<string | null>(null);
 
   const fetchBets = useCallback(async (search: string, season: string) => {
+    if (!userId) return;
     setLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams({
+        userId, // Pass auth ID to filter Firestore results
         limit: String(PAGE_SIZE),
         season: season === 'all' ? '' : season,
         player: search,
@@ -97,13 +127,14 @@ export const BetSlipProvider = ({ children }: { children: React.ReactNode }) => 
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [userId]);
 
   const loadMoreBets = useCallback(async (search: string, season: string) => {
-    if (loadingMore || !hasMore || !nextCursor) return;
+    if (loadingMore || !hasMore || !nextCursor || !userId) return;
     setLoadingMore(true);
     try {
       const params = new URLSearchParams({
+        userId,
         limit: String(PAGE_SIZE),
         season: season === 'all' ? '' : season,
         cursor: nextCursor,
@@ -120,7 +151,7 @@ export const BetSlipProvider = ({ children }: { children: React.ReactNode }) => 
     } finally {
       setLoadingMore(false);
     }
-  }, [loadingMore, hasMore, nextCursor]);
+  }, [loadingMore, hasMore, nextCursor, userId]);
 
   const updateBet = async (id: string, updates: Partial<Bet>) => {
     setBets(prev => prev.map(b => (b.id === id ? { ...b, ...updates } : b)));
@@ -130,36 +161,58 @@ export const BetSlipProvider = ({ children }: { children: React.ReactNode }) => 
     setBets(prev => prev.filter(b => b.id !== id));
   };
 
-  const addLeg = useCallback((leg: any) => {
+  // --- Active Slip Handlers ---
+  const clearSlip = useCallback(() => {
+    setSelections([]);
+  }, []);
+
+  const addLeg = useCallback((leg: BetLeg) => {
     setSelections(prev => {
-      // leg.id already encodes propId + selection, so just match on id alone
-      const incomingId = leg.id || leg.propId;
-      const isDupe = prev.some(l => {
-        const existingId = l.id || l.propId;
-        return existingId === incomingId;
-      });
+      const isDupe = prev.some(l => l.id === leg.id);
       if (isDupe) return prev;
       return [...prev, leg];
     });
   }, []);
 
-  const removeLeg = useCallback((legId: string) => {
-    setSelections(prev => {
-      const next = prev.filter(l => (l.propId || l.id) !== legId && l.id !== legId);
-      return next;
-    });
+  const removeLeg = useCallback((id: string) => {
+    setSelections(prev => prev.filter(l => l.id !== id));
   }, []);
 
-  const clearSlip = useCallback(() => {
-    setSelections([]);
-    try { localStorage.removeItem('active_betslip'); } catch {}
+  const setBetStatus = useCallback((id: string, status: BetStatus) => {
+    setSelections(prev => prev.map(leg => 
+      leg.id === id ? { ...leg, status } : leg
+    ));
   }, []);
+
+  // --- Historical Submission Logic ---
+  const submitHistoricalBets = useCallback(async () => {
+    if (selections.length === 0 || !userId) return;
+    setIsSubmitting(true);
+    try {
+      const response = await fetch('/api/betting-log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          legs: selections, 
+          type: 'historical',
+          userId // Send current Clerk user ID to the database
+        }),
+      });
+      if (!response.ok) throw new Error('Failed to submit historical bets');
+      clearSlip(); 
+    } catch (err: any) {
+      console.error('Submission error:', err);
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [selections, clearSlip, userId]);
 
   return (
     <BetSlipContext.Provider value={{
       bets, setBets, totalCount, loading, loadingMore, hasMore, error,
       fetchBets, loadMoreBets, updateBet, deleteBet,
-      selections, setSelections, addLeg, removeLeg, clearSlip, totalParlayOdds, isInitialized,
+      selections, addLeg, removeLeg, clearSlip, totalOdds, isInitialized,
+      isSubmitting, submitHistoricalBets, setBetStatus
     }}>
       {children}
     </BetSlipContext.Provider>

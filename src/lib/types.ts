@@ -1,7 +1,11 @@
-
 // src/lib/types.ts
 
 // ─── Shared Primitives ────────────────────────────────────────────────────────
+/**
+ * Added 'cashed' to fix the "no overlap" comparison errors in EditBetModal.
+ * This ensures that when you check if (status === 'cashed'), TypeScript 
+ * recognizes it as a valid member of the union.
+ */
 export type BetStatus = 'pending' | 'won' | 'lost' | 'void' | 'cashed';
 export type BetType   = 'Single' | 'Parlay';
 export type DefenseMap = Record<string, { rank: number; avg: number }>;
@@ -28,13 +32,15 @@ export interface BetLeg {
   status:     string;
   gameDate:   string | null;
   team:       string;
-  // ADD THESE:
+  // Extended fields for manual entry and deep tracking
   week?:      number | null;
+  season?:    number; // Fixed: Error 2353 in ManualEntryModal
   overUnder?: string;
   propId?:    string;
   betType?:   string;
   isLive?:    boolean;
   stake?:     number;
+  source?: 'manual' | 'api' | 'historical-props'; // Add 'historical-props' here
 }
 
 // ─── Bet ──────────────────────────────────────────────────────────────────────
@@ -44,15 +50,20 @@ export interface Bet {
   type: string;
   stake: number;
   odds: number;
-  status: 'pending' | 'won' | 'lost' | 'void';
+  status: BetStatus; 
   gameDate: string;
   week: number;
   isBonusBet?: boolean;
+  isBonusBetUsed?: boolean; // Fixed: Error 2551 in EditBetModal
   boost?: number;
-  legs: any[]; 
-  betType?:   string;  // ADD if not present
-  createdAt?: any; // Added/Updated
-  updatedAt?: any; // Added/Updated (Fixes Error 2339)
+  legs: BetLeg[]; // Typed specifically to resolve sub-property errors
+  betType?:   string;
+  createdAt?: any;
+  updatedAt?: any;
+  payout?:        number | null;
+  isGhostParlay?: boolean;
+  cashedAmount?:  number | null;
+  manualOdds?:    number | null;
 }
 
 // ─── BetSlipItem ──────────────────────────────────────────────────────────────
@@ -79,30 +90,30 @@ export interface BetResult {
 // camelCase = canonical. PascalCase optionals = raw Firestore field names.
 
 export interface PropData {
-  id:         string;
-  player:     string;
-  prop:       string;
-  line:       number;
-  overOdds?:  number;
-  underOdds?: number;
-  odds?:      number;   // generic fallback odds field
-  team?:      string;
-  matchup?:   string;
-  week?:      number;
-  gameDate?:  string;
-  gameTime?:  string;
+  id:          string;
+  player:      string;
+  prop:        string;
+  line:        number;
+  overOdds?:   number;
+  underOdds?:  number;
+  odds?:       number;   // generic fallback odds field
+  team?:       string;
+  matchup?:    string;
+  week?:       number;
+  gameDate?:   string;
+  gameTime?:   string;
   overUnder?: 'Over' | 'Under' | string;
-  season?:    number | string;
-  // PascalCase aliases — Firestore allProps_2025 raw field names
-  Player?:        string;
-  Prop?:          string;
-  Line?:          number;
-  Matchup?:       string;
-  Team?:          string;
-  Week?:          number;
-  GameDate?:      string;
-  GameTime?:      string;
-  Odds?:          number;
+  season?:     number | string;
+  // PascalCase aliases — Firestore raw field names
+  Player?:         string;
+  Prop?:           string;
+  Line?:           number;
+  Matchup?:        string;
+  Team?:           string;
+  Week?:           number;
+  GameDate?:       string;
+  GameTime?:       string;
+  Odds?:           number;
   'Over/Under?': 'Over' | 'Under' | string;
 }
 
@@ -110,12 +121,9 @@ export interface PropData {
 
 export interface WeeklyProp extends PropData {
   category?: string;
-  // lowercase alias — weekly-props.tsx reads prop.overunder from Firestore
   overunder?: string;
-  // WeeklyProp may come from Firestore with PascalCase Odds
   Odds?:      number;
 }
-
 
 export interface NFLProp {
   id?:          string;
@@ -125,8 +133,8 @@ export interface NFLProp {
   Prop?:        string;   
   line?:        number;
   Line?:        number;   
-  odds?:        number; // Added to fix Error 2339
-  Odds?:        number; // Added to fix Error 2339
+  odds?:        number; 
+  Odds?:        number; 
   team?:        string;
   Team?:        string;   
   matchup?:     string;
@@ -192,7 +200,6 @@ export interface PropRow {
 export type Prop = PropData;
 
 // ─── Wallet ───────────────────────────────────────────────────────────────────
-// firebase/wallet.ts uses `lastUpdated` — both fields optional so either works.
 
 export interface Wallet {
   id:            string;
@@ -210,17 +217,17 @@ export interface Bonus {
   name:   string;
   type:   string;
   active: boolean;
-  status?:         string;
-  boost?:          number;
-  betType?:        BetType | 'any';
-  maxWager?:       number;
-  description?:    string;
+  status?:          string;
+  boost?:           number;
+  betType?:         BetType | 'any';
+  maxWager?:        number;
+  description?:     string;
   expirationDate?: Date | string | { toDate: () => Date };
-  startDate?:      string;
-  endDate?:        string;
-  createdAt?:      string;
-  isExpired?:      boolean;
-  usedAt?:         Date | string | null;
+  startDate?:       string;
+  endDate?:         string;
+  createdAt?:       string;
+  isExpired?:       boolean;
+  usedAt?:          Date | string | null;
 }
 
 // ─── Firestore date helper ────────────────────────────────────────────────────
@@ -230,7 +237,10 @@ export type FirestoreDate = Date | string | { toDate: () => Date } | null | unde
 export function resolveFirestoreDate(val: FirestoreDate): Date | null {
   if (!val) return null;
   if (val instanceof Date) return val;
-  if (typeof val === 'string') { const d = new Date(val); return isNaN(d.getTime()) ? null : d; }
+  if (typeof val === 'string') { 
+    const d = new Date(val); 
+    return isNaN(d.getTime()) ? null : d; 
+  }
   if (typeof (val as any).toDate === 'function') return (val as any).toDate();
   return null;
 }

@@ -1,12 +1,10 @@
 'use client';
 
-// src/components/bets/manual-entry-modal.tsx
-// Saves manually entered props to allProps collection for future searchability.
-
 import React, { useState } from 'react';
-import { X, Plus, Save, Loader2 } from 'lucide-react';
+import { X, Plus, Save, Loader2, Hash } from 'lucide-react';
 import { toast } from 'sonner';
 import { getWeekFromDate } from '@/lib/utils/nfl-week';
+import { BetLeg } from '@/lib/types'; // Import your central type
 
 interface ManualLeg {
   player: string;
@@ -27,14 +25,14 @@ const BLANK_LEG: ManualLeg = {
 };
 
 interface ManualEntryModalProps {
-  isOpen:     boolean;
-  onClose:    () => void;
-  onAddLeg:   (leg: any) => void;
+  isOpen: boolean;
+  onClose: () => void;
+  onAddLeg: (leg: BetLeg) => void; // Typed correctly now
 }
 
 export function ManualEntryModal({ isOpen, onClose, onAddLeg }: ManualEntryModalProps) {
-  const [legs,    setLegs]    = useState<ManualLeg[]>([{ ...BLANK_LEG }]);
-  const [saving,  setSaving]  = useState(false);
+  const [legs, setLegs] = useState<ManualLeg[]>([{ ...BLANK_LEG }]);
+  const [saving, setSaving] = useState(false);
 
   if (!isOpen) return null;
 
@@ -43,8 +41,9 @@ export function ManualEntryModal({ isOpen, onClose, onAddLeg }: ManualEntryModal
       if (idx !== i) return l;
       const newLeg = { ...l, ...up };
       if (up.gameDate) {
+        const dateObj = new Date(up.gameDate);
         const derivedWeek = getWeekFromDate(up.gameDate);
-        const derivedSeason = new Date(up.gameDate).getFullYear();
+        const derivedSeason = dateObj.getFullYear();
         newLeg.week = derivedWeek ? String(derivedWeek) : newLeg.week;
         newLeg.season = derivedSeason ? String(derivedSeason) : newLeg.season;
       }
@@ -52,8 +51,8 @@ export function ManualEntryModal({ isOpen, onClose, onAddLeg }: ManualEntryModal
     }));
   };
 
-  const addBlankLeg  = () => setLegs(prev => [...prev, { ...BLANK_LEG }]);
-  const removeLeg    = (i: number) => setLegs(prev => prev.filter((_, idx) => idx !== i));
+  const addBlankLeg = () => setLegs(prev => [...prev, { ...BLANK_LEG }]);
+  const removeLeg = (i: number) => setLegs(prev => prev.filter((_, idx) => idx !== i));
 
   const handleSave = async () => {
     const valid = legs.filter(l => l.player.trim() && l.prop.trim());
@@ -64,42 +63,46 @@ export function ManualEntryModal({ isOpen, onClose, onAddLeg }: ManualEntryModal
 
     setSaving(true);
     try {
-      // 1. Save to allProps collection for future searchability
+      // 1. Save to allProps collection
       const res = await fetch('/api/all-props/save-manual', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ legs: valid }),
       });
+      
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        console.warn('allProps save warning:', err.error);
-        // Non-blocking — still add to slip
+        console.warn('allProps save warning');
       }
 
-      // 2. Add each leg to the bet slip
+      // 2. Add each leg to the bet slip with sanitized whole number odds
       for (const leg of valid) {
-        const propId = `${leg.player}-${leg.prop}-${leg.line}-manual`.replace(/\s+/g, '-').toLowerCase();
+        const propId = `manual-${leg.player}-${leg.prop}-${Date.now()}`
+          .replace(/\s+/g, '-')
+          .toLowerCase();
+
         onAddLeg({
-          id:        propId,
+          id: propId,
           propId,
-          player:    leg.player.trim(),
-          prop:      leg.prop.trim(),
-          line:      Number(leg.line) || 0,
+          player: leg.player.trim(),
+          prop: leg.prop.trim(),
+          line: Number(leg.line) || 0,
           selection: leg.selection,
-          odds:      Number(leg.odds) || -110,
-          team:      leg.team.trim().toUpperCase(),
-          matchup:   leg.matchup.trim(),
-          week:      Number(leg.week) || undefined,
-          season:    Number(leg.season) || undefined,
-          gameDate:  leg.gameDate || new Date().toISOString(),
-          status:    'pending',
-          source:    'manual',
+          // RULE: Odds must be a whole number
+          odds: Math.round(Number(leg.odds)) || -110,
+          team: leg.team.trim().toUpperCase(),
+          matchup: leg.matchup.trim(),
+          week: Number(leg.week) || undefined,
+          season: Number(leg.season) || undefined,
+          gameDate: leg.gameDate || new Date().toISOString(),
+          status: 'pending',
+          source: 'manual',
         });
       }
 
-      toast.success(`${valid.length} leg${valid.length > 1 ? 's' : ''} added to slip`, {
+      toast.success(`${valid.length} leg${valid.length > 1 ? 's' : ''} added`, {
         style: { background: '#0f1115', border: '1px solid rgba(255,215,0,0.2)', color: '#FFD700' },
       });
+      
       setLegs([{ ...BLANK_LEG }]);
       onClose();
     } catch (err: any) {
@@ -109,65 +112,63 @@ export function ManualEntryModal({ isOpen, onClose, onAddLeg }: ManualEntryModal
     }
   };
 
-  const INPUT = 'w-full bg-black/40 border border-white/[0.08] text-white text-sm rounded-xl px-3 py-2 outline-none focus:ring-1 focus:ring-[#FFD700]/30';
+  const INPUT = 'w-full bg-black/40 border border-white/[0.08] text-white text-sm rounded-xl px-3 py-2 outline-none focus:ring-1 focus:ring-[#FFD700]/30 transition-all placeholder:text-zinc-700';
   const LABEL = 'text-[9px] font-black text-zinc-600 uppercase tracking-[0.2em] mb-1 block';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-      <div className="bg-[#0f1115] border border-white/[0.08] rounded-3xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl">
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
+      <div className="bg-[#0f1115] border border-white/[0.1] rounded-[2.5rem] w-full max-w-2xl max-h-[85vh] flex flex-col shadow-[0_0_50px_-12px_rgba(255,215,0,0.15)] overflow-hidden">
 
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-white/[0.06] shrink-0">
+        <div className="flex items-center justify-between px-8 py-6 border-b border-white/[0.05] bg-white/[0.01]">
           <div>
-            <h2 className="text-white font-black text-lg italic uppercase tracking-tighter">Manual Entry</h2>
-            <p className="text-zinc-600 text-[10px] font-bold uppercase tracking-widest mt-0.5">
-              Props saved to database for future search
-            </p>
+            <h2 className="text-white font-black text-xl italic uppercase tracking-tighter flex items-center gap-2">
+              <Hash className="h-5 w-5 text-[#FFD700]" /> Manual <span className="text-[#FFD700]">Entry</span>
+            </h2>
           </div>
-          <button onClick={onClose} className="text-zinc-600 hover:text-white transition-colors">
+          <button onClick={onClose} className="p-2 bg-white/5 hover:bg-white/10 rounded-full text-zinc-500 transition-colors">
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        {/* Legs */}
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+        {/* Legs Content */}
+        <div className="flex-1 overflow-y-auto px-8 py-6 space-y-6 custom-scrollbar">
           {legs.map((leg, i) => (
-            <div key={i} className="bg-black/30 border border-white/[0.06] rounded-2xl p-4 space-y-3 relative group">
+            <div key={i} className="bg-white/[0.02] border border-white/[0.05] rounded-3xl p-5 space-y-4 relative group hover:border-white/[0.1] transition-colors">
               {legs.length > 1 && (
                 <button onClick={() => removeLeg(i)}
-                  className="absolute -top-2 -right-2 w-6 h-6 bg-red-500/80 hover:bg-red-500 text-white rounded-full
-                    flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity">
-                  <X className="h-3 w-3" />
+                  className="absolute top-4 right-4 text-zinc-700 hover:text-red-500 transition-colors">
+                  <X className="h-4 w-4" />
                 </button>
               )}
 
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-[#FFD700] text-[10px] font-black bg-[#FFD700]/10 border border-[#FFD700]/20 px-2 py-0.5 rounded-lg">
+              <div className="flex items-center gap-2">
+                <span className="text-[#FFD700] text-[9px] font-black bg-[#FFD700]/10 px-2 py-0.5 rounded italic">
                   LEG {i + 1}
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className={LABEL}>Player *</label>
+                  <label className={LABEL}>Player Name</label>
                   <input value={leg.player} onChange={e => updateLeg(i, { player: e.target.value })}
-                    placeholder="e.g. Tyreek Hill" className={INPUT} />
+                    placeholder="e.g. Patrick Mahomes" className={INPUT} />
                 </div>
                 <div>
-                  <label className={LABEL}>Prop *</label>
+                  <label className={LABEL}>Market / Prop</label>
                   <input value={leg.prop} onChange={e => updateLeg(i, { prop: e.target.value })}
-                    placeholder="e.g. Rec Yards" className={INPUT} />
+                    placeholder="e.g. Passing TDs" className={INPUT} />
                 </div>
               </div>
 
               <div className="grid grid-cols-4 gap-3">
                 <div>
                   <label className={LABEL}>Line</label>
-                  <input type="number" value={leg.line} onChange={e => updateLeg(i, { line: e.target.value })}
-                    placeholder="74.5" className={INPUT} />
+                  <input type="number" step="0.5" value={leg.line} onChange={e => updateLeg(i, { line: e.target.value })}
+                    placeholder="1.5" className={INPUT} />
                 </div>
                 <div>
-                  <label className={LABEL}>O/U</label>
+                  <label className={LABEL}>Selection</label>
                   <select value={leg.selection} onChange={e => updateLeg(i, { selection: e.target.value as 'Over' | 'Under' })}
                     className={INPUT}>
                     <option value="Over">Over</option>
@@ -175,28 +176,27 @@ export function ManualEntryModal({ isOpen, onClose, onAddLeg }: ManualEntryModal
                   </select>
                 </div>
                 <div>
-                  <label className={LABEL}>Odds</label>
+                  <label className={LABEL}>Odds (Whole #)</label>
                   <input type="number" value={leg.odds} onChange={e => updateLeg(i, { odds: e.target.value })}
                     placeholder="-110" className={INPUT} />
                 </div>
                 <div>
                   <label className={LABEL}>Week</label>
-                  <input type="number" min={1} max={22} value={leg.week}
-                    onChange={e => updateLeg(i, { week: e.target.value })}
-                    placeholder="1-22" className={INPUT} />
+                  <input type="number" value={leg.week} onChange={e => updateLeg(i, { week: e.target.value })}
+                    className={INPUT} />
                 </div>
               </div>
 
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className={LABEL}>Team</label>
+                  <label className={LABEL}>Team (Code)</label>
                   <input value={leg.team} onChange={e => updateLeg(i, { team: e.target.value })}
-                    placeholder="MIA" className={INPUT} />
+                    placeholder="KC" className={INPUT} />
                 </div>
                 <div>
                   <label className={LABEL}>Matchup</label>
                   <input value={leg.matchup} onChange={e => updateLeg(i, { matchup: e.target.value })}
-                    placeholder="MIA @ BUF" className={INPUT} />
+                    placeholder="KC @ LV" className={INPUT} />
                 </div>
                 <div>
                   <label className={LABEL}>Game Date</label>
@@ -208,26 +208,25 @@ export function ManualEntryModal({ isOpen, onClose, onAddLeg }: ManualEntryModal
           ))}
 
           <button onClick={addBlankLeg}
-            className="w-full flex items-center justify-center gap-2 py-3 border border-dashed border-white/[0.08]
-              hover:border-[#FFD700]/30 text-zinc-600 hover:text-[#FFD700] rounded-2xl text-xs font-black uppercase
-              transition-colors">
-            <Plus className="h-3.5 w-3.5" /> Add Another Leg
+            className="w-full flex items-center justify-center gap-2 py-4 border border-dashed border-white/[0.1]
+              hover:bg-white/[0.02] hover:border-[#FFD700]/30 text-zinc-500 hover:text-[#FFD700] rounded-3xl text-[10px] font-black uppercase tracking-widest
+              transition-all">
+            <Plus className="h-4 w-4" /> Add Another Leg
           </button>
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-white/[0.06] flex gap-3 shrink-0">
+        <div className="px-8 py-6 border-t border-white/[0.05] flex gap-4 bg-white/[0.01]">
           <button onClick={onClose}
-            className="px-5 py-3 border border-white/[0.08] text-zinc-500 hover:text-white rounded-2xl
-              text-xs font-black uppercase transition-colors">
+            className="px-6 py-3 text-zinc-500 hover:text-white text-[10px] font-black uppercase tracking-widest transition-colors">
             Cancel
           </button>
           <button onClick={handleSave} disabled={saving}
-            className="flex-1 flex items-center justify-center gap-2 py-3 bg-[#FFD700] hover:bg-[#e6c200]
-              disabled:opacity-50 text-black font-black italic uppercase text-sm rounded-2xl transition-colors">
+            className="flex-1 flex items-center justify-center gap-2 py-4 bg-[#FFD700] hover:bg-white
+              disabled:opacity-50 text-black font-black italic uppercase text-sm rounded-2xl transition-all shadow-lg shadow-[#FFD700]/10">
             {saving
-              ? <><Loader2 className="h-4 w-4 animate-spin" /> Saving…</>
-              : <><Save className="h-4 w-4" /> Add to Slip &amp; Save</>}
+              ? <><Loader2 className="h-4 w-4 animate-spin" /> Storing Data…</>
+              : <><Save className="h-4 w-4" /> Add to Parlay & Archive</>}
           </button>
         </div>
       </div>

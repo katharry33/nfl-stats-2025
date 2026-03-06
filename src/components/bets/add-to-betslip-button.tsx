@@ -1,44 +1,57 @@
 'use client';
 
-// src/components/bets/add-to-betslip-button.tsx
-
 import { useBetSlip } from '@/context/betslip-context';
 import { toast } from 'sonner';
 import { useMemo } from 'react';
-import { Plus, Check } from 'lucide-react';
-import { BetLeg, PropData } from '@/lib/types';
+import { Plus, Check, AlertCircle } from 'lucide-react';
+import { BetLeg } from '@/context/betslip-context'; // Corrected import path
+import { PropData } from '@/lib/types';
 
 type SelectionType = 'Over' | 'Under';
+
+interface AddToBetslipButtonProps {
+  prop: PropData | any;
+  selection?: SelectionType | ''; 
+}
 
 export function AddToBetslipButton({
   prop,
   selection,
-}: {
-  prop: PropData | any;
-  selection: SelectionType | '';
-}) {
+}: AddToBetslipButtonProps) {
   const { addLeg, selections } = useBetSlip();
 
-  const propId = `${prop.player ?? prop.Player ?? ''}-${prop.prop ?? prop.Prop ?? ''}-${prop.line ?? prop.Line ?? 0}-${prop.week ?? ''}-${prop.matchup ?? ''}`;
-  const legId = `${propId}-${selection}`;
+  const legId = useMemo(() => {
+    const p = prop.player ?? prop.Player ?? 'unknown';
+    const pr = prop.prop ?? prop.Prop ?? 'prop';
+    const l = prop.line ?? prop.Line ?? 0;
+    const w = prop.week ?? prop.Week ?? '0';
+    const s = selection || 'none';
+    return `${p}-${pr}-${l}-${w}-${s}`.toLowerCase().replace(/\s+/g, '-');
+  }, [prop, selection]);
 
   const isInBetSlip = useMemo(() => {
     if (!selection) return false;
     return selections.some((leg: BetLeg) => leg.id === legId);
   }, [selections, legId, selection]);
 
-  const handleAdd = () => {
+  const handleAdd = (e: React.MouseEvent) => {
+    e.stopPropagation();
+
     if (!selection) {
-      toast.error('Please select Over or Under first.');
-      return;
-    }
-    if (isInBetSlip) {
-      toast.info('Already in slip');
+      toast('Selection Required', {
+        description: 'Please pick Over or Under to add this prop.',
+        icon: <AlertCircle className="h-4 w-4 text-[#FFD700]" />,
+        className: 'bg-[#0f1115] border-white/10 text-white font-bold',
+      });
       return;
     }
 
-    const rawOdds =
-      selection === 'Over'
+    if (isInBetSlip) {
+      toast.info('This leg is already in your slip');
+      return;
+    }
+
+    const rawOdds = selection === 'Over'
         ? (prop.overOdds ?? prop.odds ?? -110)
         : (prop.underOdds ?? prop.odds ?? -110);
 
@@ -53,30 +66,47 @@ export function AddToBetslipButton({
       matchup:  prop.matchup  ?? prop.Matchup  ?? '',
       gameDate: prop.gameDate ?? prop.GameDate ?? new Date().toISOString(),
       status:   'pending',
-      source:   'historical-props',
+      source:   'historical-props'
     };
 
     addLeg(legToAdd);
-    toast.success(`${legToAdd.player} ${selection} ${legToAdd.line} added`, {
-      style: { background: '#0f1115', border: '1px solid rgba(255,215,0,0.2)', color: '#FFD700' },
+    
+    toast.success('Leg Added', {
+      description: `${legToAdd.player} ${selection} ${legToAdd.line}`,
+      style: { 
+        background: '#0f1115', 
+        border: '1px solid rgba(255,215,0,0.2)', 
+        color: '#FFD700' 
+      },
     });
   };
 
   return (
     <button
       onClick={handleAdd}
-      disabled={!selection}
-      className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-2xl text-xs font-black
-        uppercase tracking-wider transition-all
+      className={`group relative w-full flex items-center justify-center gap-2 py-3 rounded-2xl text-[10px] font-black
+        uppercase tracking-widest transition-all duration-300
         ${isInBetSlip
-          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 cursor-default'
-          : 'bg-[#FFD700]/10 hover:bg-[#FFD700]/20 text-[#FFD700] border border-[#FFD700]/20 hover:border-[#FFD700]/40'
+          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 cursor-default'
+          : 'bg-[#FFD700] hover:bg-white text-black border border-transparent shadow-lg shadow-[#FFD700]/5 hover:shadow-[#FFD700]/10 active:scale-95'
         }
-        disabled:opacity-40 disabled:cursor-not-allowed`}
+        ${!selection && 'opacity-50 grayscale cursor-not-allowed hover:bg-[#FFD700] hover:text-black'}`}
     >
-      {isInBetSlip
-        ? <><Check className="h-3.5 w-3.5" /> In Slip</>
-        : <><Plus className="h-3.5 w-3.5" /> Add to Slip</>}
+      {isInBetSlip ? (
+        <>
+          <Check className="h-3.5 w-3.5 animate-in zoom-in duration-300" />
+          <span>In Bet Slip</span>
+        </>
+      ) : (
+        <>
+          <Plus className={`h-3.5 w-3.5 transition-transform duration-300 ${!selection ? '' : 'group-hover:rotate-90'}`} />
+          <span>Add to Slip</span>
+        </>
+      )}
+
+      {!isInBetSlip && selection && (
+        <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite]" />
+      )}
     </button>
   );
 }

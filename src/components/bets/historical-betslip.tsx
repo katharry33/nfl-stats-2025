@@ -1,123 +1,114 @@
 'use client';
 
-import React, { useEffect } from 'react';
-import { Trash2, ArrowRight, Layers, X } from 'lucide-react';
+import React from 'react';
 import { useBetSlip } from '@/context/betslip-context';
-import { useRouter } from 'next/navigation';
+import { Trash2, X, Layers, CheckCircle2, AlertCircle } from 'lucide-react';
 
 export function HistoricalBetSlip() {
-  const { selections, removeLeg, clearSlip } = useBetSlip();
-  const router = useRouter();
+  const {
+    selections,
+    removeLeg,
+    clearSlip,
+    isSubmitting,
+    submitHistoricalBets,
+    setBetStatus,
+  } = useBetSlip();
 
-  // Debugging: Monitor context changes to ensure legs are actually landing here
-  useEffect(() => {
-    console.log("Current BetSlip Selections:", selections);
-  }, [selections]);
+  if (selections.length === 0) {
+    return (
+      <div className="bg-[#0f1115] border border-dashed border-white/10 rounded-3xl p-6 text-center">
+        <p className="text-sm font-bold text-zinc-500 italic">No Bets Selected</p>
+        <p className="text-[10px] text-zinc-700 mt-1 uppercase tracking-widest">Add props from the main list</p>
+      </div>
+    );
+  }
+
+  const handleSubmit = async () => {
+    if (isSubmitting) return; 
+    try {
+      await submitHistoricalBets();
+    } catch (err: any) {
+      console.error("Submission failed:", err);
+    }
+  };
 
   return (
-    <div className="bg-[#0f1115] border border-white/5 rounded-3xl overflow-hidden shadow-2xl">
-
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
-        <div className="flex items-center gap-2">
-          <Layers className="h-4 w-4 text-[#FFD700]" />
-          <span className="text-sm font-black uppercase tracking-widest text-white">Bet Slip</span>
-          {selections.length > 0 && (
-            <span className="text-[10px] font-black bg-[#FFD700] text-black px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
-              {selections.length}
-            </span>
-          )}
-        </div>
-        {selections.length > 0 && (
-          <button onClick={clearSlip}
-            className="text-[10px] font-black text-zinc-600 hover:text-red-400 uppercase tracking-wider transition-colors">
-            Clear all
-          </button>
-        )}
+    <div className="bg-[#0f1115] border border-white/10 rounded-3xl shadow-2xl overflow-hidden">
+      <div className="flex items-center justify-between p-4 border-b border-white/10">
+        <h3 className="text-lg font-black text-white italic uppercase tracking-tighter flex items-center gap-2">
+          <Layers className="h-5 w-5 text-[#FFD700]/60" />
+          Bet Slip
+        </h3>
+        <button 
+          onClick={clearSlip} 
+          className="text-zinc-600 hover:text-red-400 transition-colors p-1.5 rounded-lg hover:bg-white/5"
+          title="Clear all selections"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
       </div>
 
-      {/* Body */}
-      <div className="p-4">
-        {selections.length === 0 ? (
-          <div className="py-10 flex flex-col items-center gap-3">
-            <div className="h-12 w-12 bg-white/[0.03] border border-white/5 rounded-2xl flex items-center justify-center">
-              <Layers className="h-5 w-5 text-zinc-700" />
-            </div>
-            <p className="text-xs text-zinc-600 text-center max-w-[160px]">
-              Add props to build your parlay
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-2 max-h-[420px] overflow-y-auto pr-0.5">
-            {selections.map((leg: any) => {
-              // FIX: Ensure we have a reliable ID for both the Key and the Remove action
-              const uniqueId = leg.id || leg.propId || `${leg.player}-${leg.prop}-${leg.line}`;
-              const odds = Number(leg.odds);
-
-              return (
-                <div key={uniqueId}
-                  className="group flex items-start gap-2 p-3 bg-black/40 border border-white/[0.06]
-                    rounded-2xl hover:border-[#FFD700]/20 transition-colors">
-
-                  {/* Gold accent bar for historical props */}
-                  {leg.source === 'historical-props' && (
-                    <div className="w-0.5 h-full bg-[#FFD700]/40 rounded-full shrink-0 self-stretch" />
+      <div className="divide-y divide-white/10 max-h-[400px] overflow-y-auto">
+        {selections.map((bet, i) => (
+          <div key={`${bet.id}-${i}`} className="p-4 relative group hover:bg-white/[0.02] transition-colors">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-white leading-tight truncate">{bet.player}</p>
+                <p className="text-[11px] text-zinc-500 mt-0.5">
+                  <span className="text-zinc-400 font-medium">{bet.prop}</span>
+                  <span className="mx-1">•</span>
+                  <span className={bet.selection === 'Over' ? 'text-blue-400' : 'text-orange-400'}>
+                    {bet.selection} {bet.line}
+                  </span>
+                </p>
+              </div>
+              
+              <div className="flex items-center gap-2 shrink-0">
+                <button 
+                  onClick={() => setBetStatus(bet.id, bet.status === 'won' ? 'lost' : 'won')}
+                  className={`px-2.5 py-1 text-[10px] font-black rounded-lg transition-all active:scale-95 flex items-center gap-1 ${
+                    bet.status === 'won' 
+                      ? 'bg-green-500/20 text-green-500 border border-green-500/20' 
+                      : 'bg-red-500/20 text-red-500 border border-red-500/20'
+                  }`}
+                >
+                  {bet.status === 'won' ? (
+                    <><CheckCircle2 className="h-3 w-3" /> WIN</>
+                  ) : (
+                    <><AlertCircle className="h-3 w-3" /> LOSS</>
                   )}
-
-                  <div className="flex-1 min-w-0">
-                    <p className="font-black text-sm text-white uppercase italic tracking-tight truncate">
-                      {leg.player}
-                    </p>
-                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                      {leg.selection && (
-                        <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase
-                          ${leg.selection.toLowerCase() === 'over'
-                            ? 'bg-blue-500/10 text-blue-400'
-                            : 'bg-orange-500/10 text-orange-400'}`}>
-                          {leg.selection}
-                        </span>
-                      )}
-                      <p className="text-[10px] text-zinc-500 font-mono">
-                        {leg.prop} · {leg.line}
-                      </p>
-                    </div>
-                    <p className="text-[10px] font-mono text-[#FFD700]/60 mt-1">
-                      {odds > 0 ? '+' : ''}{odds || '—'}
-                    </p>
-                  </div>
-
-                  <button
-                    onClick={() => removeLeg(uniqueId)}
-                    className="shrink-0 p-1.5 text-zinc-700 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all rounded-lg hover:bg-red-500/10"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              );
-            })}
+                </button>
+                
+                <button 
+                  onClick={() => removeLeg(bet.id)} 
+                  className="text-zinc-700 hover:text-white transition-colors lg:opacity-0 group-hover:opacity-100"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
           </div>
-        )}
+        ))}
       </div>
 
-      {/* Footer */}
-      {selections.length > 0 && (
-        <div className="px-4 pb-4 pt-2 border-t border-white/5 space-y-3">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-zinc-600 font-bold uppercase tracking-wider">Total Legs</span>
-            <span className="font-black text-[#FFD700] bg-[#FFD700]/10 px-2 py-0.5 rounded-lg font-mono">
-              {selections.length}
-            </span>
-          </div>
-          <button
-            onClick={() => router.push('/parlay-studio')}
-            className="w-full flex items-center justify-center gap-2 py-3 bg-[#FFD700] hover:bg-[#e6c200]
-              text-black font-black italic uppercase text-sm rounded-2xl transition-colors shadow-lg shadow-[#FFD700]/10"
-          >
-            Parlay Studio
-            <ArrowRight className="h-4 w-4" />
-          </button>
-        </div>
-      )}
+      <div className="p-4 border-t border-white/10 bg-white/[0.01]">
+        <button 
+          onClick={handleSubmit} 
+          disabled={isSubmitting || selections.length === 0}
+          className="w-full bg-[#FFD700] text-black font-black italic uppercase text-sm py-3.5 rounded-xl
+            flex items-center justify-center gap-2 transition-all hover:bg-[#e6c200] active:scale-[0.98]
+            disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
+        >
+          {isSubmitting ? (
+            <>
+              <div className="h-4 w-4 border-2 border-black/20 border-t-black rounded-full animate-spin" />
+              Processing...
+            </>
+          ) : (
+            'Submit Historical Parley'
+          )}
+        </button>
+      </div>
     </div>
   );
 }

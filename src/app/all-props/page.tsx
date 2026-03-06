@@ -12,11 +12,7 @@ function titleCase(s: string): string {
 }
 
 // ─── PropCard ─────────────────────────────────────────────────────────────────
-// Single card — shows player, matchup, week badge, prop type, line value
-// One "Add to Slip" button (no over/under — just adds the prop)
 function PropCard({ prop }: { prop: any }) {
-  const [selection, setSelection] = useState<'Over' | 'Under'>('Over');
-
   const player  = prop.player  ?? prop.Player  ?? '—';
   const team    = prop.team    ?? prop.Team    ?? '';
   const propLbl = prop.prop    ?? prop.Prop    ?? '—';
@@ -44,7 +40,6 @@ function PropCard({ prop }: { prop: any }) {
         )}
       </div>
 
-      {/* Line display */}
       <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl px-4 py-3 flex flex-col items-center">
         <span className="text-[9px] font-black uppercase text-zinc-600 tracking-[0.3em] mb-1">Line</span>
         <div className="text-3xl font-black text-white tabular-nums tracking-tighter">
@@ -52,23 +47,11 @@ function PropCard({ prop }: { prop: any }) {
         </div>
       </div>
 
-      {/* Over / Under toggle */}
-      <div className="flex rounded-xl overflow-hidden border border-white/[0.08]">
-        {(['Over', 'Under'] as const).map(s => (
-          <button key={s} onClick={() => setSelection(s)}
-            className={`flex-1 py-2 text-[11px] font-black uppercase transition-colors ${
-              selection === s
-                ? s === 'Over' ? 'bg-blue-600 text-white' : 'bg-orange-600 text-white'
-                : 'bg-black/40 text-zinc-600 hover:bg-white/[0.04]'
-            }`}>{s}</button>
-        ))}
-      </div>
-
       <p className="text-[10px] text-center text-zinc-600 font-bold uppercase tracking-widest truncate">
         {[team, titleCase(propLbl)].filter(Boolean).join(' • ')}
       </p>
 
-      <AddToBetslipButton prop={prop} selection={selection} />
+      <AddToBetslipButton prop={prop} />
     </div>
   );
 }
@@ -90,8 +73,14 @@ export default function AllPropsPage() {
   const [seasonInput,   setSeasonInput]   = useState('2025');
   const [query, setQuery] = useState({ player: '', propType: 'all', week: 'all', season: '2025' });
   const playerRef = useRef<HTMLInputElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const fetchProps = useCallback(async (q: typeof query) => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+    
     setLoading(true);
     setError(null);
     try {
@@ -101,8 +90,10 @@ export default function AllPropsPage() {
       if (q.propType !== 'all') params.set('prop',     q.propType);
       if (q.player)             params.set('player',   q.player);
 
-      const res  = await fetch(`/api/all-props?${params}`);
-      // Guard against HTML error pages (e.g. Next.js 500 returning <!DOCTYPE>)
+      const res  = await fetch(`/api/all-props?${params}`, {
+        signal: abortControllerRef.current.signal,
+      });
+
       const contentType = res.headers.get('content-type') ?? '';
       if (!contentType.includes('application/json')) {
         throw new Error(`Server error (${res.status}) — check console for details`);
@@ -113,13 +104,18 @@ export default function AllPropsPage() {
       setTotal(data.total ?? 0);
       if (data.propTypes?.length) setPropTypes(data.propTypes);
     } catch (err: any) {
+      if (err.name === 'AbortError') {
+        return; // Ignore cancellations
+      }
       setError(err.message ?? 'Failed to load props');
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { fetchProps(query); }, []); // eslint-disable-line
+  useEffect(() => {
+    fetchProps(query);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSearch = useCallback(() => {
     const q = {
@@ -133,7 +129,10 @@ export default function AllPropsPage() {
   }, [playerInput, propTypeInput, weekInput, seasonInput, fetchProps]);
 
   const handleClear = useCallback(() => {
-    setPlayerInput(''); setPropTypeInput('all'); setWeekInput('all'); setSeasonInput('2025');
+    setPlayerInput('');
+    setPropTypeInput('all');
+    setWeekInput('all');
+    setSeasonInput('2025');
     const q = { player: '', propType: 'all', week: 'all', season: '2025' };
     setQuery(q);
     fetchProps(q);
@@ -253,7 +252,8 @@ export default function AllPropsPage() {
           <p className="text-xs text-zinc-600 font-mono">
             <span className="text-[#FFD700] font-black">{allLegs.length.toLocaleString()}</span>
             {total !== allLegs.length && <> of <span className="text-zinc-400">{total.toLocaleString()}</span></>}
-            {' '}props
+            {' '}
+            props
           </p>
           {query.week !== 'all' && (
             <span className="text-[10px] uppercase tracking-widest bg-[#FFD700]/10 text-[#FFD700] px-2.5 py-1 rounded-lg font-black">
@@ -265,7 +265,8 @@ export default function AllPropsPage() {
         {/* Grid */}
         {loading ? (
           <div className="flex flex-col items-center py-20 gap-3">
-            <Loader2 className="h-8 w-8 animate-spin text-[#FFD700]" />
+            {/* FIX: Changed className.h-8.w-8 to className="h-8 w-8..." */}
+            <Loader2 className="h-8 w-8 animate-spin text-yellow-400" />
             <p className="text-zinc-600 text-xs uppercase font-mono tracking-wider">Loading props…</p>
           </div>
         ) : allLegs.length === 0 ? (
@@ -293,7 +294,7 @@ export default function AllPropsPage() {
       <ManualEntryModal
         isOpen={isManualModalOpen}
         onClose={() => setIsManualModalOpen(false)}
-        onAddLeg={leg => addLeg(leg)}
+        onAddLeg={(leg: any) => addLeg(leg)}
       />
     </div>
   );

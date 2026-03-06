@@ -75,8 +75,8 @@ export function PropCard({ prop }: PropCardProps) {
       odds,
       matchup:   displayProp.matchup || 'TBD',
       status:    'pending',
-      team:      displayProp.team,
-      gameDate:  displayProp.gameDate,
+      team:      displayProp.team ?? "",
+      gameDate:  displayProp.gameDate ?? null,
       overUnder: (displayProp as any).overUnder,
       week:      displayProp.week ? Number(displayProp.week) : undefined,
     };

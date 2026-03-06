@@ -22,7 +22,6 @@ export function WeeklyProps({ props, loading }: WeeklyPropsProps) {
     } else {
       const newLeg: BetLeg = {
         id: `${prop.id}-${prop.overunder}`,
-        prop: prop.id,
         player: prop.Player ?? "Unknown Player",
         prop: prop.Prop ?? "Unknown Prop",
         line: prop.Line ?? 0,
@@ -32,7 +31,6 @@ export function WeeklyProps({ props, loading }: WeeklyPropsProps) {
         team: prop.Team ?? "TBD",
         matchup: prop.Matchup ?? '',
         gameDate: prop.GameDate ?? '',
-        source: 'weekly',
         status: 'pending'
       };
       addLeg(newLeg);

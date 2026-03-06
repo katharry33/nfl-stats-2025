@@ -6,9 +6,7 @@ import {
   ChevronDown, ChevronRight, ChevronUp, 
   Pencil, Trash2, X, Zap 
 } from 'lucide-react';
-import { Bet } from '@/lib/types';
-
-// ─── Updated Helpers ──────────────────────────────────────────────────────────
+import { Bet, BetLeg } from '@/lib/types';
 
 function fmtOdds(odds: number | null | undefined): string {
   if (odds == null) return '—';
@@ -29,9 +27,6 @@ function fmtDate(raw: string | null | undefined): string {
   } catch { return '—'; }
 }
 
-
-// ─── Visual Boost & Payout Components ────────────────────────────────────────
-
 function PayoutCell({ payout, status, stake, odds, boost }: {
   payout: number | null; status: string; stake: number | null; odds?: number; boost?: number;
 }) {
@@ -41,15 +36,12 @@ function PayoutCell({ payout, status, stake, odds, boost }: {
   
   return (
     <div className="flex flex-col items-end gap-0.5">
-      {/* Primary Value: The Outcome or the POT */}
       <div className="flex flex-col items-end">
         <span className={`text-sm font-mono font-black tracking-tight ${
           isWon ? 'text-emerald-400' : isLost ? 'text-zinc-500' : 'text-[#FFD700]'
         }`}>
           {isWon ? fmtMoney(payout) : isLost ? '—' : fmtMoney(payout)}
         </span>
-        
-        {/* POT Label - Highlighted for visibility */}
         {!isWon && payout && (
           <div className="flex items-center gap-1 mt-0.5">
              <span className="text-[9px] px-1 bg-zinc-800 text-zinc-400 font-bold rounded">POT</span>
@@ -59,8 +51,6 @@ function PayoutCell({ payout, status, stake, odds, boost }: {
           </div>
         )}
       </div>
-
-      {/* Sub-details: Odds and Boost */}
       <div className="flex items-center gap-2 mt-1 opacity-80">
         <span className="text-[10px] font-mono text-zinc-500 font-bold">{fmtOdds(odds)}</span>
         {boost && boost > 0 ? (
@@ -106,13 +96,19 @@ function CheckCell({ id, selected, onToggle }: {
   );
 }
 
-// ─── Updated ParlayRow ────────────────────────────────────────────────────────
+interface RowProps {
+  bet: Bet;
+  selected: boolean;
+  onToggle: (id: string) => void;
+  onEdit: (bet: Bet) => void;
+  onDelete: (ids: string[]) => void;
+}
 
-function ParlayRow({ bet, selected, onToggle, onEdit, onDelete }: any) {
+function ParlayRow({ bet, selected, onToggle, onEdit, onDelete }: RowProps) {
   const [open, setOpen] = useState(false);
   const legsEmpty = !bet.legs || bet.legs.length === 0;
   const displayDate = bet.legs?.[0]?.gameDate ?? bet.gameDate ?? bet.createdAt;
-  const matchups = [...new Set((bet.legs ?? []).map((l: any) => l.matchup).filter(Boolean))].slice(0, 2).join(', ');
+  const matchups = [...new Set((bet.legs ?? []).map((l: BetLeg) => l.matchup).filter(Boolean))].slice(0, 2).join(', ');
 
   return (
     <>
@@ -131,7 +127,7 @@ function ParlayRow({ bet, selected, onToggle, onEdit, onDelete }: any) {
                 {legsEmpty ? 'Parlay' : `${bet.legs.length}-Leg Parlay`}
               </div>
               <div className="text-[10px] text-zinc-500 truncate max-w-[180px]">
-                 {bet.legs.map((l: any) => l.player).filter(Boolean).join(' · ')}
+                 {bet.legs.map((l: BetLeg) => l.player).filter(Boolean).join(' · ')}
               </div>
             </div>
           </div>
@@ -142,7 +138,6 @@ function ParlayRow({ bet, selected, onToggle, onEdit, onDelete }: any) {
         <td className="px-4 py-3 text-xs text-zinc-400">{fmtDate(displayDate)}</td>
         <td className="px-4 py-3"><StatusBadge status={bet.status} /></td>
 
-        {/* Updated Stake Display */}
         <td className="px-4 py-3">
           <div className="flex flex-col">
             <span className="text-sm font-mono font-black text-zinc-300">{fmtMoney(bet.stake)}</span>
@@ -153,12 +148,12 @@ function ParlayRow({ bet, selected, onToggle, onEdit, onDelete }: any) {
           </div>
         </td>
 
-        {/* Updated Payout with Boost/Odds */}
         <td className="px-4 py-3 text-right">
+          {/* FIX: TS2322 - Payout and Stake ensured to be number | null */}
           <PayoutCell 
-            payout={bet.payout} 
+            payout={bet.payout ?? null} 
             status={bet.status} 
-            stake={bet.stake} 
+            stake={bet.stake ?? null} 
             odds={bet.odds} 
             boost={bet.boost} 
           />
@@ -182,11 +177,10 @@ function ParlayRow({ bet, selected, onToggle, onEdit, onDelete }: any) {
           </div>
         </td>
       </tr>
-      {open && bet.legs.map((leg: any, i: number) => (
+      {open && bet.legs.map((leg: BetLeg, i: number) => (
         <tr key={`${bet.id}-${leg.id ?? i}`} className="bg-black/40 border-b border-white/[0.03]">
           <td colSpan={2} />
 
-          {/* Leg player/prop */}
           <td className="px-4 py-2 pl-10">
             <div className="flex items-center gap-2">
               <span className="text-[9px] bg-[#FFD700]/10 text-[#FFD700] border border-[#FFD700]/20 px-1.5 py-0.5 rounded font-black shrink-0">
@@ -199,21 +193,16 @@ function ParlayRow({ bet, selected, onToggle, onEdit, onDelete }: any) {
             </div>
           </td>
 
-          {/* Week */}
           <td className="px-4 py-2 text-xs font-mono text-zinc-600">
             {leg.week ? `WK ${leg.week}` : '—'}
           </td>
 
-          {/* Matchup */}
           <td className="px-4 py-2 text-xs text-zinc-600 font-mono">{leg.matchup || '—'}</td>
 
-          {/* Date */}
           <td className="px-4 py-2 text-xs text-zinc-600">{fmtDate(leg.gameDate)}</td>
 
-          {/* Leg status */}
           <td className="px-4 py-2"><StatusBadge status={leg.status} /></td>
 
-          {/* Selection / line */}
           <td className="px-4 py-2 text-xs" colSpan={2}>
             <span className={leg.selection?.toLowerCase() === 'over' ? 'text-blue-400 font-bold' : 'text-orange-400 font-bold'}>
               {leg.selection || '—'}
@@ -229,11 +218,9 @@ function ParlayRow({ bet, selected, onToggle, onEdit, onDelete }: any) {
   );
 }
 
-// ─── Updated SingleRow ────────────────────────────────────────────────────────
-
-function SingleRow({ bet, selected, onToggle, onEdit, onDelete }: any) {
+function SingleRow({ bet, selected, onToggle, onEdit, onDelete }: RowProps) {
   const leg = bet.legs?.[0] ?? {};
-  const displayDate = (bet as any).gameDate ?? leg.gameDate ?? bet.createdAt;
+  const displayDate = bet.gameDate ?? leg.gameDate ?? bet.createdAt;
 
   return (
     <tr className={`border-b border-white/5 transition-all group ${selected ? 'bg-[#FFD700]/[0.06]' : 'hover:bg-white/[0.02]'}`}>
@@ -259,10 +246,11 @@ function SingleRow({ bet, selected, onToggle, onEdit, onDelete }: any) {
       </td>
 
       <td className="px-4 py-3 text-right">
+        {/* FIX: TS2322 - Payout and Stake ensured to be number | null */}
         <PayoutCell 
-          payout={bet.payout} 
+          payout={bet.payout ?? null} 
           status={bet.status} 
-          stake={bet.stake} 
+          stake={bet.stake ?? null} 
           odds={bet.odds} 
           boost={bet.boost} 
         />
@@ -330,13 +318,13 @@ export function BetsTable({ bets, loading, onDelete, onEdit }: BetsTableProps) {
     const seen = new Set<string>();
     const unique = bets.filter(b => { if (seen.has(b.id)) return false; seen.add(b.id); return true; });
     const dir = sortDir === 'asc' ? 1 : -1;
-    return [...unique].sort((a: any, b: any) => {
+    return [...unique].sort((a: Bet, b: Bet) => {
       switch (sortCol) {
         case 'player': return (a.legs?.[0]?.player ?? '').localeCompare(b.legs?.[0]?.player ?? '') * dir;
         case 'week':   return ((a.week ?? 0) - (b.week ?? 0)) * dir;
         case 'date': {
-          const ad = new Date(a.legs?.[0]?.gameDate ?? a.gameDate ?? a.createdAt ?? 0).getTime();
-          const bd = new Date(b.legs?.[0]?.gameDate ?? b.gameDate ?? b.createdAt ?? 0).getTime();
+          const ad = new Date((a as any).gameDate ?? a.legs?.[0]?.gameDate ?? a.createdAt ?? 0).getTime();
+          const bd = new Date((b as any).gameDate ?? b.legs?.[0]?.gameDate ?? b.createdAt ?? 0).getTime();
           return (ad - bd) * dir;
         }
         case 'status': return (a.status ?? '').localeCompare(b.status ?? '') * dir;
@@ -403,16 +391,13 @@ export function BetsTable({ bets, loading, onDelete, onEdit }: BetsTableProps) {
         <table className="w-full min-w-[980px]">
           <thead className="border-b border-white/[0.06]">
             <tr>
-              {/* Checkbox */}
               <th className="w-10 px-3 py-4 text-center">
                 <button onClick={() => setSelectedIds(allSelected ? new Set() : new Set(allVisibleIds))}
                   className="text-zinc-600 hover:text-[#FFD700] transition-colors">
                   <Square className="h-4 w-4 mx-auto" />
                 </button>
               </th>
-              {/* Expand */}
               <th className="w-8 px-2 py-4" />
-              {/* Columns in requested order */}
               <Th col="player"  label="Player / Parlay" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
               <Th col="week"    label="Week"            sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
               <th className="px-4 py-4 text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em] text-left">Matchup</th>
@@ -427,9 +412,9 @@ export function BetsTable({ bets, loading, onDelete, onEdit }: BetsTableProps) {
             {sorted.map(bet => {
               const isParlay = Array.isArray(bet.legs) && bet.legs.length > 1;
               return isParlay
-                ? <ParlayRow key={bet.id} bet={bet} selected={selectedIds.has(bet.id)}
+                ? <ParlayRow key={`${bet.id}-${bet.status}`} bet={bet} selected={selectedIds.has(bet.id)}
                     onToggle={toggleSelect} onEdit={onEdit} onDelete={onDelete} />
-                : <SingleRow key={bet.id} bet={bet} selected={selectedIds.has(bet.id)}
+                : <SingleRow key={`${bet.id}-${bet.status}`} bet={bet} selected={selectedIds.has(bet.id)}
                     onToggle={toggleSelect} onEdit={onEdit} onDelete={onDelete} />
             })}
           </tbody>

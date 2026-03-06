@@ -1,12 +1,11 @@
-import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
-const isPublicRoute = createRouteMatcher([
-  '/',
-]);
+const isPublicRoute = createRouteMatcher(['/api/all-props']);
 
 export default clerkMiddleware(async (auth, request) => {
   if (!isPublicRoute(request)) {
-    await auth.protect();
+    // We must await auth() before calling .protect()
+    await auth.protect(); 
   }
 });
 
