@@ -15,14 +15,14 @@ export function WeeklyProps({ props, loading }: WeeklyPropsProps) {
   const { selections, addLeg, removeLeg } = useBetSlip();
 
   const handleToggleBet = (prop: WeeklyProp) => {
-    const existingLeg = selections.find((leg: BetLeg) => leg.propId === prop.id);
+    const existingLeg = selections.find((leg: BetLeg) => leg.prop === prop.id);
 
     if (existingLeg) {
       removeLeg(existingLeg.id);
     } else {
       const newLeg: BetLeg = {
         id: `${prop.id}-${prop.overunder}`,
-        propId: prop.id,
+        prop: prop.id,
         player: prop.Player ?? "Unknown Player",
         prop: prop.Prop ?? "Unknown Prop",
         line: prop.Line ?? 0,
@@ -58,7 +58,7 @@ export function WeeklyProps({ props, loading }: WeeklyPropsProps) {
   return (
     <div className="space-y-4">
       {props.map(prop => {
-        const isInBetSlip = selections.some((leg: BetLeg) => leg.propId === prop.id);
+        const isInBetSlip = selections.some((leg: BetLeg) => leg.prop === prop.id);
         return (
           <Card key={prop.id} className="bg-[#161b22] border-[#30363d] text-white">
             <CardContent className="p-4 flex justify-between items-center">

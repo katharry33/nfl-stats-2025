@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
-import { getAdminDb } from '@/lib/firebase/admin';
+import { adminDb } from '@/lib/firebase/admin';
 
 export async function POST(request: Request) {
   try {
     const { id, totalOdds } = await request.json();
-    const db = getAdminDb();
+    const db = adminDb;
     
     // Specifically target the document by ID in the bettingLog collection
     await db.collection('bettingLog').doc(id).update({

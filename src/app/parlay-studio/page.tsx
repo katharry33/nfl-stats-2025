@@ -303,7 +303,6 @@ export default function ParlayStudioPage() {
   
     setSaving(true);
     try {
-      // Create the object WITHOUT an ID key
       const betDoc: any = {
         userId: user?.uid,
         type: selectedType,
@@ -326,13 +325,10 @@ export default function ParlayStudioPage() {
         })),
       };
   
-      console.log("Sending to API:", betDoc); // Check your console to ensure 'id' isn't here
-  
       const response = await fetch('/api/betting-log', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(betDoc),
-        credentials: 'include',
       });
   
       const result = await response.json();
@@ -343,6 +339,7 @@ export default function ParlayStudioPage() {
   
       toast.success('Saved successfully!');
       clearSlip();
+      router.refresh();
       router.push('/betting-log');
     } catch (err: any) {
       console.error("Save error:", err);

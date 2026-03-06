@@ -1,5 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { X, Save, Trash2, TrendingUp, DollarSign, Calendar, Loader2, ChevronDown, ChevronUp, CheckCircle2, XCircle, Clock, Zap } from 'lucide-react';
 import { Bet } from '@/lib/types';
 import { toDecimal, toAmerican } from '@/lib/utils/odds';
@@ -11,8 +12,6 @@ interface EditBetModalProps {
   isOpen: boolean;
   userId?: string;
   onClose: () => void;
-  onSave: (updated: Bet) => void;
-  onDelete: (id: string) => void;
 }
 
 const LEG_STATUSES = [
@@ -31,10 +30,12 @@ function calcParlayOdds(legs: any[]): number {
   return dec > 1 ? Math.round(toAmerican(dec)) : 0;
 }
 
-export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }: EditBetModalProps) {
+export function EditBetModal({ bet, isOpen, userId, onClose }: EditBetModalProps) {
+  const router = useRouter();
   const [formData, setFormData] = useState<any>(bet);
   const [legs, setLegs] = useState<any[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [legsExpanded, setLegsExpanded] = useState(true);
   const [oddsManual, setOddsManual] = useState(false);
 
@@ -46,7 +47,6 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
     setLegsExpanded(true);
   }, [bet]);
 
-  // Auto-calc parlay odds from legs UNLESS user manually edited overall odds
   useEffect(() => {
     if (legs.length > 1 && !oddsManual) {
       const calc = calcParlayOdds(legs);
@@ -76,6 +76,9 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
   };
 
   const calcPayout = () => {
+    if (formData.status === 'cashed') {
+        return Number(formData.payout) || 0;
+    }
     const stake = Number(formData.stake) || 0;
     const odds  = Number(formData.odds)  || 0;
     const boost = Number(formData.boost  || 0);
@@ -89,25 +92,14 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
     setIsSaving(true);
     try {
       const payload = {
-        id:            formData.id,
+        ...formData,
         userId,
-        odds:          parseInt(String(formData.odds), 10) || 0,
-        stake:         Number(formData.stake),
-        status:        formData.status,
-        week:          Number(formData.week),
-        season:        Number(formData.season),
-        gameDate:      formData.gameDate,
-        boost:         formData.boost,
-        isBonusBet:    formData.isBonusBet    ?? false,
-        isGhostParlay: formData.isGhostParlay ?? false,
-        type:          formData.type,
         legs,
       };
 
       const res = await fetch('/api/betting-log', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify(payload),
       });
 
@@ -115,18 +107,44 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
         const err = await res.json().catch(() => ({ error: res.statusText }));
         throw new Error(err.error || `HTTP ${res.status}`);
       }
-
-      onSave({ ...formData, legs, odds: payload.odds, stake: payload.stake, status: payload.status } as Bet);
-      toast.success('Bet updated', {
-        style: { background: '#0f1115', border: '1px solid rgba(255,215,0,0.2)', color: '#FFD700' },
-      });
+      
+      toast.success('Bet saved successfully!');
       onClose();
+      router.refresh();
+      router.push('/betting-log');
+
     } catch (err: any) {
       toast.error('Error saving bet', { description: err.message });
     } finally {
       setIsSaving(false);
     }
   };
+  
+  const handleDelete = async () => {
+    if (!bet.id) return;
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/betting-log?id=${bet.id}&userId=${userId}`, {
+        method: 'DELETE',
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
+      
+      toast.success('Bet deleted!');
+      onClose();
+      router.refresh();
+      router.push('/betting-log');
+
+    } catch (err: any) {
+      toast.error('Error deleting bet', { description: err.message });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
 
   if (!isOpen) return null;
 
@@ -235,16 +253,32 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
               <label className="text-[10px] font-black text-zinc-500 uppercase">Status</label>
               <select
                 value={formData.status ?? 'pending'}
-                onChange={e => set({ status: e.target.value })}
+                onChange={e => set({ status: e.target.value, payout: e.target.value === 'cashed' ? formData.payout : null })}
                 className="w-full bg-black/40 border border-white/[0.08] rounded-2xl px-4 py-3 text-white text-sm outline-none"
               >
                 <option value="pending">Pending</option>
                 <option value="won">Won</option>
                 <option value="lost">Lost</option>
                 <option value="void">Void</option>
+                <option value="cashed">Cashed Out</option>
               </select>
             </div>
           </div>
+
+          {/* Cashed Out Amount */}
+          {formData.status === 'cashed' && (
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-black text-zinc-500 uppercase flex items-center gap-1">
+                <DollarSign className="h-3 w-3" /> Cashed Out Amount
+              </label>
+              <input
+                type="number"
+                value={formData.payout ?? ''}
+                onChange={e => set({ payout: Number(e.target.value) })}
+                className="w-full bg-black/40 border border-white/[0.08] rounded-2xl px-4 py-3 text-white font-mono text-sm outline-none focus:ring-1 focus:ring-white/20"
+              />
+            </div>
+          )}
 
           {/* Bonus Bet + Ghost Parlay */}
           <div className="grid grid-cols-2 gap-3">
@@ -370,10 +404,11 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
         {/* Footer */}
         <div className="flex gap-3 px-6 pb-6 pt-2 border-t border-white/5 shrink-0">
           <button
-            onClick={() => { if (confirm('Delete this bet?')) onDelete(bet.id); }}
+            onClick={handleDelete}
+            disabled={isDeleting}
             className="px-5 py-3.5 rounded-2xl border border-red-500/20 text-red-500 hover:bg-red-500/10 transition-all"
           >
-            <Trash2 className="h-4 w-4" />
+            {isDeleting ? <Loader2 className="animate-spin h-4 w-4" /> : <Trash2 className="h-4 w-4" />}
           </button>
           <button
             onClick={handleSave}

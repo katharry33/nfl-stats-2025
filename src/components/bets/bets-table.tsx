@@ -233,7 +233,7 @@ function ParlayRow({ bet, selected, onToggle, onEdit, onDelete }: any) {
 
 function SingleRow({ bet, selected, onToggle, onEdit, onDelete }: any) {
   const leg = bet.legs?.[0] ?? {};
-  const displayDate = leg.gameDate ?? bet.gameDate ?? bet.createdAt;
+  const displayDate = (bet as any).gameDate ?? leg.gameDate ?? bet.createdAt;
 
   return (
     <tr className={`border-b border-white/5 transition-all group ${selected ? 'bg-[#FFD700]/[0.06]' : 'hover:bg-white/[0.02]'}`}>

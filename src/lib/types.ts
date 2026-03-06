@@ -17,20 +17,24 @@ export type SortKey =
   | 'bestEV' | 'bestEdgePct' | 'confidenceScore';
 
 // ─── BetLeg ───────────────────────────────────────────────────────────────────
-
 export interface BetLeg {
-  id: string;
-  player: string;
-  prop: string;
-  line: number;
-  selection: 'Over' | 'Under';
-  odds: number;
-  status: 'pending' | 'won' | 'lost' | 'void';
-  team: string;
-  matchup: string;
-  gameDate: string;
-  source?: string;
-  isLive?: boolean;
+  id:         string;
+  player:     string;
+  prop:       string;
+  line:       number;
+  selection:  string;
+  odds:       number;
+  matchup:    string;
+  status:     string;
+  gameDate:   string | null;
+  team:       string;
+  // ADD THESE:
+  week?:      number | null;
+  overUnder?: string;
+  propId?:    string;
+  betType?:   string;
+  isLive?:    boolean;
+  stake?:     number;
 }
 
 // ─── Bet ──────────────────────────────────────────────────────────────────────
@@ -46,6 +50,7 @@ export interface Bet {
   isBonusBet?: boolean;
   boost?: number;
   legs: any[]; 
+  betType?:   string;  // ADD if not present
   createdAt?: any; // Added/Updated
   updatedAt?: any; // Added/Updated (Fixes Error 2339)
 }

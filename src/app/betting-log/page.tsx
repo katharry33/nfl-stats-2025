@@ -26,6 +26,7 @@ export default function BettingLogPage() {
     hasMore,
     error,
     fetchBets,
+    loadMore, // Added missing loadMore
     updateBet,
     deleteBet
   } = useFirebaseBets(user?.uid ?? '');
@@ -44,10 +45,7 @@ export default function BettingLogPage() {
 
   const handleDelete = useCallback(async (ids: string[]) => {
     try {
-      // Call the single delete function for every ID in the array
       await Promise.all(ids.map(id => deleteBet(id)));
-      
-      // Refresh local state or re-fetch
       router.refresh(); 
     } catch (error) {
       console.error("Failed to delete bets", error);
@@ -125,7 +123,7 @@ export default function BettingLogPage() {
           <div className="flex justify-center pt-2">
             <Button
               variant="outline"
-              onClick={() => fetchBets(false, search, 'all')}
+              onClick={() => loadMore()}
               disabled={loadingMore}
               className="border-zinc-800 text-zinc-400 hover:text-white"
             >

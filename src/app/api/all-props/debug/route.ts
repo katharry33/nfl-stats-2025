@@ -1,12 +1,12 @@
 // src/app/api/all-props/debug/route.ts - NEW FILE
 import { NextResponse } from 'next/server';
-import { getAdminDb } from '@/lib/firebase/admin';
+import { adminDb } from '@/lib/firebase/admin';
 
 export const runtime = 'nodejs';
 
 export async function GET() {
   try {
-    const db = getAdminDb();
+    const db = adminDb;
     
     console.log('\n🔍 DEBUG: Checking allProps_2025 collection...\n');
     
@@ -15,7 +15,7 @@ export async function GET() {
       .limit(10)
       .get();
     
-    const docs = snapshot.docs.map(doc => {
+    const docs = snapshot.docs.map((doc: any) => {
       const data = doc.data();
       return {
         id: doc.id,

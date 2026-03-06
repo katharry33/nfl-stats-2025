@@ -11,45 +11,45 @@ interface BetSubmissionResult {
   error?: string;
 }
 
-export async function addBet(userId: string, betData: Partial<Bet>): Promise<BetSubmissionResult> {
+export async function saveBet(userId: string, betData: Partial<Bet>): Promise<BetSubmissionResult> {
   try {
     const db = adminDb;
     
-    let createdAt;
-    const betDate = betData.gameDate || betData.createdAt; // Use correct properties
+    const dataToSave: { [key: string]: any } = { ...betData };
 
-    if (betDate) {
-      // new Date() is robust and can parse ISO strings, date strings, and Date objects
-      const d = new Date(betDate as any); 
+    dataToSave.userId = userId;
+    dataToSave.uid = userId;
+    dataToSave.status = dataToSave.status || 'pending';
+    dataToSave.createdAt = FieldValue.serverTimestamp();
+    dataToSave.updatedAt = FieldValue.serverTimestamp();
+
+    if (dataToSave.gameDate) {
+      const d = new Date(dataToSave.gameDate as any);
       if (!isNaN(d.getTime())) {
-        // Preserve original logic of setting time to midday to avoid timezone issues
         d.setHours(12, 0, 0, 0);
-        createdAt = Timestamp.fromDate(d);
+        dataToSave.gameDate = Timestamp.fromDate(d);
       } else {
-        createdAt = FieldValue.serverTimestamp();
+        delete dataToSave.gameDate;
       }
-    } else {
-      createdAt = FieldValue.serverTimestamp();
     }
     
-    const betRef = await db.collection('bettingLog').add({
-      ...betData,
-      userId,
-      uid: userId,
-      createdAt,
-      status: betData.status || 'pending',
-    });
+    if ('id' in dataToSave) {
+        delete dataToSave.id;
+    }
+
+    const betRef = await db.collection('bettingLog').add(dataToSave);
     
     return { success: true, betId: betRef.id };
   } catch (error) {
-    console.error('Error adding bet:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Failed to add bet';
+    console.error('Error saving bet:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to save bet';
     return { success: false, error: errorMessage };
   }
 }
 
-export async function submitBet(userId: string, betData: Partial<Bet>): Promise<BetSubmissionResult> {
-  return addBet(userId, betData);
+
+export async function addBet(userId: string, betData: Partial<Bet>): Promise<BetSubmissionResult> {
+  return saveBet(userId, betData);
 }
 
 export async function updateBetStatus(
@@ -72,7 +72,6 @@ export async function deleteBet(betId: string): Promise<BetSubmissionResult> {
   try {
     const db = adminDb;
     
-    // Try to delete from all collections
     const collections = ['bettingLog', '2025_bets', 'bets'];
     
     for (const collection of collections) {
