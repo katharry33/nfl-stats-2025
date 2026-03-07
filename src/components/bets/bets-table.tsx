@@ -74,23 +74,31 @@ function PayoutCell({ payout, status, stake, odds, boost }: {
   );
 }
 
-function StatusBadge({ status }: { status?: string }) {
-  const s = (status ?? '').toLowerCase();
+function StatusBadge({ bet }: { bet: Bet }) {
+  const status = (bet.status ?? '').toLowerCase();
   const cls =
-    s === 'won'  || s === 'win'  ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25' :
-    s === 'lost' || s === 'loss' ? 'bg-red-500/15 text-red-400 border-red-500/25' :
-    s === 'void' || s === 'push' ? 'bg-zinc-700/20 text-zinc-500 border-zinc-700/20' :
-    s === 'cashed'               ? 'bg-blue-500/15 text-blue-400 border-blue-500/25' :
+    status === 'won'  || status === 'win'  ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25' :
+    status === 'lost' || status === 'loss' ? 'bg-red-500/15 text-red-400 border-red-500/25' :
+    status === 'void' || status === 'push' ? 'bg-zinc-700/20 text-zinc-500 border-zinc-700/20' :
+    status === 'cashed'               ? 'bg-orange-500/15 text-orange-400 border-orange-500/25' :
                                    'bg-amber-500/10 text-amber-400 border-amber-500/20';
-  const label = s === 'won' || s === 'win' ? 'WON'
-    : s === 'lost' || s === 'loss' ? 'LOST'
-    : s === 'void' || s === 'push' ? 'VOID'
-    : s === 'cashed' ? 'CASHED'
+  const label = status === 'won' || status === 'win' ? 'WON'
+    : status === 'lost' || status === 'loss' ? 'LOST'
+    : status === 'void' || status === 'push' ? 'VOID'
+    : status === 'cashed' ? 'CASHED'
     : 'PENDING';
+    
   return (
-    <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-black uppercase border ${cls}`}>
-      {label}
-    </span>
+    <div className="flex flex-col items-center">
+      <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-black uppercase border ${cls}`}>
+        {label}
+      </span>
+      {status === 'cashed' && bet.cashOutAmount && (
+        <span className="text-[10px] text-zinc-500 font-mono mt-1">
+          ${Number(bet.cashOutAmount).toFixed(2)}
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -140,7 +148,7 @@ function ParlayRow({ bet, selected, onToggle, onEdit, onDelete }: any) {
         <td className="px-4 py-3 text-xs font-mono font-black text-[#FFD700]/80">WK {bet.week || '—'}</td>
         <td className="px-4 py-3 text-xs text-zinc-500 font-mono truncate max-w-[100px]">{matchups || '—'}</td>
         <td className="px-4 py-3 text-xs text-zinc-400">{fmtDate(displayDate)}</td>
-        <td className="px-4 py-3"><StatusBadge status={bet.status} /></td>
+        <td className="px-4 py-3"><StatusBadge bet={bet} /></td>
 
         {/* Updated Stake Display */}
         <td className="px-4 py-3">
@@ -211,7 +219,7 @@ function ParlayRow({ bet, selected, onToggle, onEdit, onDelete }: any) {
           <td className="px-4 py-2 text-xs text-zinc-600">{fmtDate(leg.gameDate)}</td>
 
           {/* Leg status */}
-          <td className="px-4 py-2"><StatusBadge status={leg.status} /></td>
+          <td className="px-4 py-2"><StatusBadge bet={{ status: leg.status }} /></td>
 
           {/* Selection / line */}
           <td className="px-4 py-2 text-xs" colSpan={2}>
@@ -246,7 +254,7 @@ function SingleRow({ bet, selected, onToggle, onEdit, onDelete }: any) {
       <td className="px-4 py-3 text-xs font-mono font-black text-[#FFD700]/80">WK {bet.week || '—'}</td>
       <td className="px-4 py-3 text-xs text-zinc-500 font-mono">{leg.matchup || '—'}</td>
       <td className="px-4 py-3 text-xs text-zinc-400">{fmtDate(displayDate)}</td>
-      <td className="px-4 py-3"><StatusBadge status={bet.status} /></td>
+      <td className="px-4 py-3"><StatusBadge bet={bet} /></td>
       
       <td className="px-4 py-3">
         <div className="flex flex-col">

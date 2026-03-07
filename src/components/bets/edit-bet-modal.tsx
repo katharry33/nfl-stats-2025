@@ -33,10 +33,7 @@ function calcParlayOdds(legs: any[]): number {
 }
 
 export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }: EditBetModalProps) {
-  const [formData, setFormData] = useState<any>({
-    ...bet,
-    cashOutAmount: bet.cashOutAmount || ''
-  });
+  const [formData, setFormData] = useState<any>({});
   const [legs, setLegs] = useState<any[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [legsExpanded, setLegsExpanded] = useState(true);
@@ -49,9 +46,12 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
       cashOutAmount: bet.cashOutAmount || ''
     });
     setLegs(initialLegs);
-    setOddsManual(false);
+    const parlayOdds = calcParlayOdds(initialLegs);
+    if (parlayOdds !== bet.odds) {
+        setOddsManual(true);
+    }
     setLegsExpanded(true);
-  }, [bet]);
+}, [bet]);
 
   useEffect(() => {
     if (legs.length > 1 && !oddsManual) {
@@ -78,7 +78,9 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
   };
 
   const handleDeleteLeg = (index: number) => {
-    setLegs(prev => prev.filter((_, i) => i !== index));
+    const updatedLegs = legs.filter((_, i) => i !== index);
+    setLegs(updatedLegs);
+    setFormData((prev: any) => ({ ...prev, legs: updatedLegs }));
   };
 
   const calcPayout = () => {

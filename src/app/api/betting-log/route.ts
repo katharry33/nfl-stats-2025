@@ -244,22 +244,41 @@ export async function GET(request: Request) {
     const col     = adminDb.collection('bettingLog');
     const weekNum = week && week !== 'all' ? parseInt(week, 10) : null;
 
-    // ── 1. New-format bets (userId scoped) ────────────────────────────────────
+    // ── 1. New-format bets ────────────────────────────────────────────────────
+    // Two passes:
+    //   a) userId-scoped docs (current format)
+    //   b) All docs with no parlayid at all (orphaned/migrated single bets that
+    //      may have a stale or mismatched userId from a previous auth system)
     // No orderBy('createdAt') — Firestore silently drops docs missing that field.
-    // Sort in-memory instead, falling back to gameDate/date.
     let newBets: any[] = [];
+    const newBetIds = new Set<string>();
+
+    // Pass A: userId-scoped
     if (userId) {
       let q: any = col.where('userId', '==', userId);
       if (weekNum !== null && !isNaN(weekNum)) {
         q = q.where('week', '==', weekNum);
       }
       const snap = await q.limit(500).get();
-
       for (const doc of snap.docs) {
         const raw = doc.data();
-        if (raw?.parlayId ?? raw?.parlayid) continue; // skip legacy leg docs
+        if (raw?.parlayId || raw?.parlayid) continue; // skip legacy leg docs
+        if (newBetIds.has(doc.id)) continue;
+        newBetIds.add(doc.id);
         newBets.push(buildBetFromDoc(doc, raw));
       }
+    }
+
+    // Pass B: all single-bet docs regardless of userId (catches orphans with
+    // stale Clerk UIDs or mismatched userId from migrations)
+    // We identify these as: has a userId field but no parlayid
+    const orphanSnap = await col.where('userId', '>', '').limit(500).get();
+    for (const doc of orphanSnap.docs) {
+      const raw = doc.data();
+      if (raw?.parlayId || raw?.parlayid) continue; // skip leg docs
+      if (newBetIds.has(doc.id)) continue;          // skip already added
+      newBetIds.add(doc.id);
+      newBets.push(buildBetFromDoc(doc, raw));
     }
 
     // ── 2. Legacy parlay bets (cached) ────────────────────────────────────────
@@ -299,7 +318,6 @@ export async function GET(request: Request) {
 
     // Week filter on legacy (new bets already filtered by Firestore)
     if (weekNum !== null && !isNaN(weekNum)) {
-      const newBetIds = new Set(newBets.map(b => b.id));
       allBets = allBets.filter(b => newBetIds.has(b.id) || b.week === weekNum);
     }
 
@@ -416,6 +434,7 @@ export async function POST(req: Request) {
               odds:      editedLeg.odds,
               selection: editedLeg.selection,
               player:    editedLeg.player,
+              gameDate:  fixedGameDate, // keep leg-level gameDate in sync
             });
           });
 
