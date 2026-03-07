@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/firebase/provider';
 import { useFirebaseBets } from '@/hooks/useBets';
 import { BetsTable } from '@/components/bets/bets-table';
@@ -11,62 +10,65 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useDebounce } from '@/hooks/use-debounce';
 import type { Bet } from '@/lib/types';
-import { Search, Loader2 } from 'lucide-react';
+import { Search, Loader2, RefreshCw } from 'lucide-react';
 
 export default function BettingLogPage() {
-  const router = useRouter();
-  const auth = useAuth();
-  const user = auth?.user;
+  const auth        = useAuth();
+  const user        = auth?.user;
   const authLoading = auth?.loading;
-  
-  const { 
-    bets, 
+
+  const {
+    bets,
     loading,
     loadingMore,
     hasMore,
     error,
     fetchBets,
+    loadMore,
     updateBet,
-    deleteBet
+    deleteBet,
   } = useFirebaseBets(user?.uid ?? '');
 
-  const [search, setSearch] = useState('');
+  const [search,  setSearch]  = useState('');
   const [editBet, setEditBet] = useState<Bet | null>(null);
   const debouncedSearch = useDebounce(search, 400);
 
+  // Stable ref prevents stale closure in the effect
   const fetchBetsRef = useRef(fetchBets);
   useEffect(() => { fetchBetsRef.current = fetchBets; }, [fetchBets]);
 
-  // Fetch on mount + whenever search changes
+  // Initial load + re-fetch when search changes
   useEffect(() => {
-    if (user) fetchBetsRef.current(true, debouncedSearch, 'all');
-  }, [debouncedSearch, user]);
+    if (user?.uid) fetchBetsRef.current(true, debouncedSearch, 'all');
+  }, [debouncedSearch, user?.uid]);
+
+  // ── Handlers ─────────────────────────────────────────────────────────────
 
   const handleDelete = useCallback(async (ids: string[]) => {
+    // deleteBet already does optimistic remove — no router.refresh needed
     try {
-      // Call the single delete function for every ID in the array
       await Promise.all(ids.map(id => deleteBet(id)));
-      
-      // Refresh local state or re-fetch
-      router.refresh(); 
-    } catch (error) {
-      console.error("Failed to delete bets", error);
+    } catch (err) {
+      console.error('handleDelete failed:', err);
     }
-  }, [deleteBet, router]);
+  }, [deleteBet]);
 
   const handleSave = useCallback(async (updated: Bet) => {
+    // updateBet does optimistic state update — no re-fetch, no router.refresh
     try {
       await updateBet(updated);
       setEditBet(null);
-    } catch (e) {
-      console.error('handleSave failed:', e);
+    } catch (err) {
+      console.error('handleSave failed:', err);
     }
   }, [updateBet]);
+
+  // ── Auth gates ───────────────────────────────────────────────────────────
 
   if (authLoading) {
     return (
       <div className="min-h-screen bg-[#060606] flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#FFD700]"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#FFD700]" />
       </div>
     );
   }
@@ -79,16 +81,31 @@ export default function BettingLogPage() {
     );
   }
 
+  // ── Render ───────────────────────────────────────────────────────────────
+
   return (
-    <main className="min-h-screen bg-zinc-950 text-white p-4 md:p-8">
+    <main className="min-h-screen bg-[#060606] text-white p-4 md:p-8">
       <div className="max-w-7xl mx-auto space-y-6">
 
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-black tracking-tight text-white">Betting Log</h1>
-            <p className="text-zinc-500 text-sm mt-0.5">Your complete bet history</p>
+            <h1 className="text-2xl font-black tracking-tight text-white italic uppercase">
+              Betting Log
+            </h1>
+            <p className="text-zinc-500 text-sm mt-0.5">
+              {loading ? 'Loading…' : `${bets.length} bets`}
+            </p>
           </div>
+          <button
+            onClick={() => fetchBets(true, debouncedSearch, 'all')}
+            disabled={loading}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl border border-white/[0.08]
+              text-zinc-500 hover:text-white text-xs font-black uppercase transition-colors disabled:opacity-40"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
         </div>
 
         {/* Stats */}
@@ -101,14 +118,29 @@ export default function BettingLogPage() {
             placeholder="Search by player..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="pl-9 bg-zinc-900 border-zinc-800 text-white placeholder:text-zinc-600"
+            className="pl-9 bg-zinc-900 border-zinc-800 text-white placeholder:text-zinc-600
+              focus:border-[#FFD700]/40 focus:ring-[#FFD700]/20"
           />
+          {search && (
+            <button
+              onClick={() => setSearch('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-white transition-colors text-xs font-black"
+            >
+              ✕
+            </button>
+          )}
         </div>
 
         {/* Error */}
         {error && (
-          <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
-            {error}
+          <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400 flex items-center justify-between">
+            <span>{error}</span>
+            <button
+              onClick={() => fetchBets(true, debouncedSearch, 'all')}
+              className="text-red-400 hover:text-red-300 font-black text-xs ml-4"
+            >
+              Retry
+            </button>
           </div>
         )}
 
@@ -125,28 +157,36 @@ export default function BettingLogPage() {
           <div className="flex justify-center pt-2">
             <Button
               variant="outline"
-              onClick={() => fetchBets(false, search, 'all')}
+              onClick={() => loadMore()}
               disabled={loadingMore}
-              className="border-zinc-800 text-zinc-400 hover:text-white"
+              className="border-zinc-800 text-zinc-400 hover:text-white hover:border-zinc-600"
             >
               {loadingMore
-                ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Loading...</>
+                ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Loading…</>
                 : 'Load More'}
             </Button>
           </div>
         )}
 
+        {/* End of list */}
+        {!hasMore && !loading && bets.length > 0 && (
+          <p className="text-center text-zinc-700 text-xs font-mono py-4">
+            — {bets.length} bets total —
+          </p>
+        )}
+
       </div>
 
+      {/* Edit modal — key forces full remount when switching between bets */}
       {editBet && (
         <EditBetModal
-          key={editBet?.id}
+          key={editBet.id}
           bet={editBet}
           isOpen={!!editBet}
           userId={user?.uid}
           onClose={() => setEditBet(null)}
           onSave={handleSave}
-          onDelete={(id) => handleDelete([id])}
+          onDelete={id => handleDelete([id])}
         />
       )}
     </main>

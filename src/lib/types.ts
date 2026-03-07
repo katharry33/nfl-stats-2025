@@ -48,6 +48,7 @@ export interface Bet {
   legs: any[]; 
   createdAt?: any; // Added/Updated
   updatedAt?: any; // Added/Updated (Fixes Error 2339)
+  cashOutAmount?: number | null; // Add this line
 }
 
 // ─── BetSlipItem ──────────────────────────────────────────────────────────────

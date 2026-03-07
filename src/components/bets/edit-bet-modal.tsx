@@ -18,6 +18,7 @@ interface EditBetModalProps {
 const LEG_STATUSES = [
   { value: 'won',     label: 'Win',     icon: CheckCircle2, cls: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' },
   { value: 'lost',    label: 'Loss',    icon: XCircle,      cls: 'bg-red-500/20 text-red-400 border-red-500/40' },
+  { value: 'cashed',  label: 'Cashed',  icon: DollarSign,   cls: 'bg-orange-500/20 text-orange-400 border-orange-500/40' },
   { value: 'pending', label: 'Pending', icon: Clock,        cls: 'bg-[#FFD700]/10 text-[#FFD700] border-[#FFD700]/30' },
   { value: 'void',    label: 'Void',    icon: XCircle,      cls: 'bg-white/[0.06] text-zinc-400 border-white/20' },
 ];
@@ -32,7 +33,10 @@ function calcParlayOdds(legs: any[]): number {
 }
 
 export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }: EditBetModalProps) {
-  const [formData, setFormData] = useState<any>(bet);
+  const [formData, setFormData] = useState<any>({
+    ...bet,
+    cashOutAmount: bet.cashOutAmount || ''
+  });
   const [legs, setLegs] = useState<any[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [legsExpanded, setLegsExpanded] = useState(true);
@@ -40,13 +44,15 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
 
   useEffect(() => {
     const initialLegs = Array.isArray((bet as any).legs) ? (bet as any).legs : [];
-    setFormData(bet);
+    setFormData({
+      ...bet,
+      cashOutAmount: bet.cashOutAmount || ''
+    });
     setLegs(initialLegs);
     setOddsManual(false);
     setLegsExpanded(true);
   }, [bet]);
 
-  // Auto-calc parlay odds from legs UNLESS user manually edited overall odds
   useEffect(() => {
     if (legs.length > 1 && !oddsManual) {
       const calc = calcParlayOdds(legs);
@@ -94,6 +100,7 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
         odds:          parseInt(String(formData.odds), 10) || 0,
         stake:         Number(formData.stake),
         status:        formData.status,
+        cashOutAmount: formData.status === 'cashed' ? Number(formData.cashOutAmount) : null,
         week:          Number(formData.week),
         season:        Number(formData.season),
         gameDate:      formData.gameDate,
@@ -107,19 +114,13 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
       const res = await fetch('/api/betting-log', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify(payload),
       });
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(err.error || `HTTP ${res.status}`);
-      }
+      if (!res.ok) throw new Error('Failed to update');
 
-      onSave({ ...formData, legs, odds: payload.odds, stake: payload.stake, status: payload.status } as Bet);
-      toast.success('Bet updated', {
-        style: { background: '#0f1115', border: '1px solid rgba(255,215,0,0.2)', color: '#FFD700' },
-      });
+      onSave({ ...formData, ...payload } as Bet);
+      toast.success('Bet updated');
       onClose();
     } catch (err: any) {
       toast.error('Error saving bet', { description: err.message });
@@ -151,8 +152,44 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
         {/* Scrollable body */}
         <div className="overflow-y-auto flex-1 p-6 space-y-5">
 
-          {/* Odds + Stake */}
+          {/* Row 1: Game Date + Week */}
           <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-black text-zinc-500 uppercase flex items-center gap-1">
+                <Calendar className="h-3 w-3" /> Game Date
+              </label>
+              <input
+                type="date"
+                value={typeof formData.gameDate === 'string' ? formData.gameDate.split('T')[0] : ''}
+                onChange={handleDateChange}
+                className="w-full bg-black/40 border border-white/[0.08] rounded-2xl px-4 py-3 text-white text-sm outline-none [color-scheme:dark]"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-black text-zinc-500 uppercase">NFL Week</label>
+              <input
+                type="number" min={1} max={22}
+                value={formData.week ?? ''}
+                onChange={e => set({ week: e.target.value })}
+                placeholder="1–22"
+                className="w-full bg-black/40 border border-white/[0.08] rounded-2xl px-4 py-3 text-white font-mono text-sm outline-none"
+              />
+            </div>
+          </div>
+
+          {/* Row 2: Stake + Odds */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-black text-zinc-500 uppercase flex items-center gap-1">
+                <DollarSign className="h-3 w-3" /> Stake ($)
+              </label>
+              <input
+                type="number"
+                value={formData.stake ?? ''}
+                onChange={e => set({ stake: Number(e.target.value) })}
+                className="w-full bg-black/40 border border-white/[0.08] rounded-2xl px-4 py-3 text-white font-mono text-sm outline-none"
+              />
+            </div>
             <div className="space-y-1.5">
               <label className="text-[10px] font-black text-zinc-500 uppercase flex items-center gap-1">
                 <TrendingUp className="h-3 w-3" /> Overall Odds
@@ -167,29 +204,10 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
                 onFocus={() => setOddsManual(true)}
                 className="w-full bg-black/40 border border-white/[0.08] rounded-2xl px-4 py-3 text-[#FFD700] font-mono text-sm outline-none focus:ring-1 focus:ring-[#FFD700]/40"
               />
-              {isParlay && oddsManual && (
-                <button
-                  onClick={() => setOddsManual(false)}
-                  className="text-[9px] text-zinc-600 hover:text-[#FFD700] transition-colors"
-                >
-                  ↺ Use calculated odds
-                </button>
-              )}
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-zinc-500 uppercase flex items-center gap-1">
-                <DollarSign className="h-3 w-3" /> Stake ($)
-              </label>
-              <input
-                type="number"
-                value={formData.stake ?? ''}
-                onChange={e => set({ stake: Number(e.target.value) })}
-                className="w-full bg-black/40 border border-white/[0.08] rounded-2xl px-4 py-3 text-white font-mono text-sm outline-none focus:ring-1 focus:ring-white/20"
-              />
             </div>
           </div>
 
-          {/* Boost + Week */}
+          {/* Row 3: Boost + Result */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label className="text-[10px] font-black text-zinc-500 uppercase flex items-center gap-1">
@@ -198,7 +216,7 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
               <select
                 value={formData.boost ?? ''}
                 onChange={e => set({ boost: e.target.value })}
-                className="w-full bg-black/40 border border-white/[0.08] rounded-2xl px-4 py-3 text-white text-sm outline-none focus:ring-1 focus:ring-[#FFD700]/30"
+                className="w-full bg-black/40 border border-white/[0.08] rounded-2xl px-4 py-3 text-white text-sm outline-none"
               >
                 <option value="">None</option>
                 {[5,10,15,20,25,30,33,35,40,50,100].map(p => (
@@ -207,32 +225,7 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
               </select>
             </div>
             <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-zinc-500 uppercase">NFL Week</label>
-              <input
-                type="number" min={1} max={22}
-                value={formData.week ?? ''}
-                onChange={e => set({ week: e.target.value })}
-                placeholder="1–22"
-                className="w-full bg-black/40 border border-white/[0.08] rounded-2xl px-4 py-3 text-white font-mono text-sm outline-none focus:ring-1 focus:ring-white/20"
-              />
-            </div>
-          </div>
-
-          {/* Game Date + Status */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-zinc-500 uppercase flex items-center gap-1">
-                <Calendar className="h-3 w-3" /> Game Date
-              </label>
-              <input
-                type="date"
-                value={typeof formData.gameDate === 'string' ? formData.gameDate.split('T')[0] : ''}
-                onChange={handleDateChange}
-                className="w-full bg-black/40 border border-white/[0.08] rounded-2xl px-4 py-3 text-white text-sm outline-none [color-scheme:dark]"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-zinc-500 uppercase">Status</label>
+              <label className="text-[10px] font-black text-zinc-500 uppercase">Result</label>
               <select
                 value={formData.status ?? 'pending'}
                 onChange={e => set({ status: e.target.value })}
@@ -241,34 +234,52 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
                 <option value="pending">Pending</option>
                 <option value="won">Won</option>
                 <option value="lost">Lost</option>
+                <option value="cashed">Cashed</option>
                 <option value="void">Void</option>
               </select>
             </div>
           </div>
 
+          {/* Conditional Cash Out Amount */}
+          {formData.status === 'cashed' && (
+            <div className="space-y-1.5 pt-1">
+              <label className="text-[10px] font-black text-orange-400 uppercase flex items-center gap-1">
+                <DollarSign className="h-3 w-3" /> Cash Out Amount ($)
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                placeholder="0.00"
+                value={formData.cashOutAmount ?? ''}
+                onChange={e => set({ cashOutAmount: e.target.value })}
+                className="w-full bg-orange-500/10 border border-orange-500/30 rounded-2xl px-4 py-3 text-orange-400 font-mono text-lg outline-none focus:ring-1 focus:ring-orange-500/50"
+              />
+            </div>
+          )}
+
           {/* Bonus Bet + Ghost Parlay */}
-          <div className="grid grid-cols-2 gap-3">
-            <label className="flex items-center gap-2 cursor-pointer">
+          <div className="grid grid-cols-2 gap-3 pt-2">
+            <label className="flex items-center gap-2 cursor-pointer bg-black/20 p-3 rounded-2xl border border-white/[0.04]">
               <input
                 type="checkbox"
                 checked={formData.isBonusBet ?? false}
                 onChange={e => set({ isBonusBet: e.target.checked })}
                 className="h-4 w-4 rounded border-zinc-700 bg-black/40"
               />
-              <span className="text-sm text-white">Bonus Bet</span>
+              <span className="text-xs text-white">Bonus Bet</span>
             </label>
-            <label className="flex items-center gap-2 cursor-pointer">
+            <label className="flex items-center gap-2 cursor-pointer bg-black/20 p-3 rounded-2xl border border-white/[0.04]">
               <input
                 type="checkbox"
                 checked={formData.isGhostParlay ?? false}
                 onChange={e => set({ isGhostParlay: e.target.checked })}
                 className="h-4 w-4 rounded border-zinc-700 bg-black/40"
               />
-              <span className="text-sm text-white">Ghost Parlay</span>
+              <span className="text-xs text-white">Ghost Parlay</span>
             </label>
           </div>
 
-          {/* Legs */}
+          {/* Legs Section */}
           {legs.length > 0 && (
             <div className="space-y-2">
               <button
@@ -306,7 +317,7 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
                             type="number" step="0.5"
                             value={leg.line ?? ''}
                             onChange={e => handleLegChange(i, { line: parseFloat(e.target.value) || 0 })}
-                            className="w-16 bg-black/40 border border-white/[0.08] text-white font-mono text-xs rounded-xl px-2 py-1.5 text-center outline-none focus:ring-1 focus:ring-[#FFD700]/30"
+                            className="w-16 bg-black/40 border border-white/[0.08] text-white font-mono text-xs rounded-xl px-2 py-1.5 text-center outline-none"
                           />
                         </div>
 
@@ -330,7 +341,7 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
                             type="number"
                             value={leg.odds ?? ''}
                             onChange={e => handleLegChange(i, { odds: parseInt(e.target.value) || -110 })}
-                            className="w-20 bg-black/40 border border-white/[0.08] text-white font-mono text-xs rounded-xl px-2 py-1.5 text-center outline-none focus:ring-1 focus:ring-[#FFD700]/30"
+                            className="w-20 bg-black/40 border border-white/[0.08] text-white font-mono text-xs rounded-xl px-2 py-1.5 text-center outline-none"
                           />
                         </div>
                       </div>
@@ -360,7 +371,7 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
             </div>
           )}
 
-          {/* Payout Preview */}
+          {/* Payout Preview (Still visible even when cashed) */}
           <div className="bg-[#FFD700]/5 border border-[#FFD700]/10 rounded-2xl p-4 flex justify-between items-center">
             <span className="text-[10px] text-zinc-500 font-black uppercase italic">Potential Payout</span>
             <span className="text-xl font-black font-mono text-[#FFD700]">${payout.toFixed(2)}</span>
