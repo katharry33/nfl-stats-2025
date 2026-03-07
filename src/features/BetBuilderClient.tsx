@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { useProps } from '@/hooks/useProps';
+import { useProps } from '@/hooks/useAllProps';
 import { useBetSlip } from '@/hooks/useBetSlip';
 import PropsTable from './PropsTable';
 import { BetSlipPanel } from './BetSlipPanel';

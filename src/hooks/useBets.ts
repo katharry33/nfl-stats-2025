@@ -1,75 +1,54 @@
 // src/hooks/useBets.ts
 'use client';
-
 import { useState, useCallback, useRef } from 'react';
 
-const PAGE_SIZE = 50;
-
 export function useFirebaseBets(userId: string) {
-  const [bets, setBets]               = useState<any[]>([]);
-  const [loading, setLoading]         = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore, setHasMore]         = useState(true);
-  const [error, setError]             = useState<string | null>(null);
-  const lastCursor                    = useRef<string | null>(null);
+  const [bets, setBets]       = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState<string | null>(null);
+  const isFetching            = useRef(false);
 
-  // ── Fetch ─────────────────────────────────────────────────────────────────
+  // Fetch ALL bets at once (limit 500 — well within the ~128 count).
+  // Client-side sorting/filtering/pagination lives in BetsTable.
   const fetchBets = useCallback(async (
-    reset  = false,
+    _reset = true,        // kept for API compatibility, always resets
     search = '',
     week   = 'all',
   ) => {
-    if (reset) {
-      setLoading(true);
-      setError(null);
-      lastCursor.current = null;
-    } else {
-      setLoadingMore(true);
-    }
+    if (isFetching.current) return;
+    isFetching.current = true;
+    setLoading(true);
+    setError(null);
 
     try {
-      const params = new URLSearchParams({ limit: String(PAGE_SIZE) });
+      const params = new URLSearchParams({ limit: '500' });
       if (search) params.set('player', search.trim().toLowerCase());
       if (week && week !== 'all') params.set('week', week);
       if (userId) params.set('userId', userId);
-      if (!reset && lastCursor.current) params.set('cursor', lastCursor.current);
 
       const res = await fetch(`/api/betting-log?${params.toString()}`, {
         credentials: 'include',
       });
-
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`HTTP ${res.status}: ${text.slice(0, 100)}`);
-      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 100)}`);
 
       const data = await res.json();
-      const incoming: any[] = data.bets ?? [];
-
-      lastCursor.current = data.nextCursor ?? null;
-      setHasMore(data.hasMore ?? false);
-      setBets(prev => reset ? incoming : [...prev, ...incoming]);
+      setBets(data.bets ?? []);
     } catch (err: any) {
       console.error('[useBets] fetch error:', err);
       setError(err?.message ?? 'Failed to load bets');
-      if (reset) setBets([]);
+      setBets([]);
     } finally {
       setLoading(false);
-      setLoadingMore(false);
+      isFetching.current = false;
     }
   }, [userId]);
 
-  const loadMore = useCallback(() => {
-    if (!loadingMore && hasMore) fetchBets(false);
-  }, [fetchBets, loadingMore, hasMore]);
-
-  // ── Update ────────────────────────────────────────────────────────────────
+  // Optimistic update — syncs gameDate into every leg so table reads stay fresh.
+  // Parent calls this; no need for modal to do its own fetch.
   const updateBet = useCallback(async (updates: any) => {
     const id = updates.id;
     if (!id) throw new Error('updateBet: missing id');
 
-    // Optimistic update — sync gameDate into every leg so any display that
-    // reads legs[0].gameDate also reflects the change immediately.
     setBets(prev => prev.map(b => {
       if (b.id !== id) return b;
       const mergedLegs = (updates.legs ?? b.legs ?? []).map((leg: any) => ({
@@ -86,34 +65,26 @@ export function useFirebaseBets(userId: string) {
         credentials: 'include',
         body: JSON.stringify({ ...updates, userId }),
       });
-
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: res.statusText }));
         throw new Error(err.error ?? 'Save failed');
       }
-      // Success — optimistic state is correct, no re-fetch needed.
-
     } catch (err) {
       console.error('[useBets] update error:', err);
-      // Re-fetch only on failure to revert the optimistic update
-      fetchBets(true);
+      fetchBets(true); // revert on failure
       throw err;
     }
   }, [userId, fetchBets]);
 
-  // ── Delete ────────────────────────────────────────────────────────────────
   const deleteBet = useCallback(async (id: string) => {
     setBets(prev => prev.filter(b => b.id !== id));
-
     try {
       const params = new URLSearchParams({ id });
       if (userId) params.set('userId', userId);
-
       const res = await fetch(`/api/betting-log?${params.toString()}`, {
         method: 'DELETE',
         credentials: 'include',
       });
-
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: res.statusText }));
         throw new Error(err.error ?? 'Delete failed');
@@ -125,17 +96,6 @@ export function useFirebaseBets(userId: string) {
     }
   }, [userId, fetchBets]);
 
-  return {
-    bets,
-    setBets,
-    loading,
-    loadingMore,
-    hasMore,
-    error,
-    fetchBets,
-    loadMore,
-    updateBet,
-    deleteBet,
-    refresh: () => fetchBets(true),
-  };
+  return { bets, setBets, loading, error, fetchBets, updateBet, deleteBet,
+           refresh: () => fetchBets(true) };
 }

@@ -38,17 +38,19 @@ export interface Bet {
   id: string;
   userId: string;
   type: string;
+  status: 'pending' | 'won' | 'lost' | 'void' | 'cashed';
   stake: number;
   odds: number;
-  status: 'pending' | 'won' | 'lost' | 'void';
+  payout: number;          // Add this
+  cashOutAmount?: number;  // Add this while we're at it
   gameDate: string;
   week: number;
+  isParlay: boolean;
+  legs: BetLeg[];
   isBonusBet?: boolean;
   boost?: number;
-  legs: any[]; 
   createdAt?: any; // Added/Updated
   updatedAt?: any; // Added/Updated (Fixes Error 2339)
-  cashOutAmount?: number | null; // Add this line
 }
 
 // ─── BetSlipItem ──────────────────────────────────────────────────────────────
