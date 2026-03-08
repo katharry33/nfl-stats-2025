@@ -10,18 +10,21 @@ import {
   ChevronDown, ChevronRight, Users, List, Server,
 } from 'lucide-react';
 
+// STABLE LOGO IMPORT: Fixes the "received null" build error in Cloud Workstations
+import logoImg from '@/../public/logo.png';
+
 interface NavItem {
   label: string;
   href?: string;
   icon: React.ElementType;
-  badge?: string | number;
+  badge?: number;
   children?: { label: string; href: string; icon: React.ElementType }[];
 }
 
 const NAV: NavItem[] = [
   { label: 'My Performance',   href: '/my-performance',  icon: Trophy },
   { label: 'Wallet',           href: '/wallet',          icon: Home },
-  { label: 'Bet Builder',      href: '/bet-builder',     icon: Zap,    badge: 0 },
+  { label: 'Bet Builder',      href: '/bet-builder',     icon: Zap },
   { label: 'Parlay Studio',    href: '/parlay-studio',   icon: BookOpen },
   { label: 'Bonuses',          href: '/bonuses',         icon: Gift },
   { label: 'Market Insights',  href: '/market-insights', icon: LineChart },
@@ -40,7 +43,7 @@ const NAV: NavItem[] = [
 
 function NavLink({ href, icon: Icon, label, badge, active }: {
   href: string; icon: React.ElementType; label: string;
-  badge?: string | number; active: boolean;
+  badge?: number; active: boolean;
 }) {
   return (
     <Link href={href} className={`
@@ -51,11 +54,13 @@ function NavLink({ href, icon: Icon, label, badge, active }: {
     `}>
       <Icon className={`h-4 w-4 shrink-0 ${active ? 'text-[#FFD700]' : ''}`} />
       <span className="flex-1 tracking-tight">{label}</span>
-      {badge !== undefined && (
+      {badge !== undefined && badge > 0 && (
         <span className={`
           text-[10px] font-black px-1.5 py-0.5 rounded-full min-w-[20px] text-center
-          ${active ? 'bg-[#FFD700] text-black' : 'bg-white/[0.06] text-zinc-600'}
-        `}>{badge}</span>
+          ${active ? 'bg-[#FFD700] text-black' : 'bg-[#FFD700]/20 text-[#FFD700]'}
+        `}>
+          {badge}
+        </span>
       )}
     </Link>
   );
@@ -99,16 +104,9 @@ function NavGroup({ item, pathname }: { item: NavItem; pathname: string }) {
   );
 }
 
-const SECTIONS = [
-  { label: 'Core',     items: NAV.slice(0, 2) },
-  { label: 'Studio',   items: NAV.slice(2, 5) },
-  { label: 'Insights', items: NAV.slice(5)    },
-];
-
 export function SidebarNav({
-  bankroll,
-  bonusBalance,
-  selectedBetsCount,
+  bankroll = 0,
+  selectedBetsCount = 0,
 }: {
   bankroll?: number;
   bonusBalance?: number;
@@ -116,14 +114,15 @@ export function SidebarNav({
 }) {
   const pathname = usePathname();
 
+  // Dynamically attach the badge to the Bet Builder item
   const navWithBadge = NAV.map(item =>
-    item.href === '/bet-builder' ? { ...item, badge: selectedBetsCount ?? 0 } : item
+    item.href === '/bet-builder' ? { ...item, badge: selectedBetsCount } : item
   );
 
   const sections = [
     { label: 'Core',     items: navWithBadge.slice(0, 2) },
-    { label: 'Studio',   items: navWithBadge.slice(2, 5) },
-    { label: 'Insights', items: navWithBadge.slice(5)    },
+    { label: 'Studio',   items: navWithBadge.slice(2, 4) }, // Adjusted slices for Parlay Studio
+    { label: 'Insights', items: navWithBadge.slice(4)    },
   ];
 
   return (
@@ -131,9 +130,15 @@ export function SidebarNav({
 
       {/* Brand */}
       <div className="px-5 pt-6 pb-5 border-b border-white/[0.06]">
-        <Link href="/" className="flex items-center gap-3">
-          <div className="relative h-9 w-9 shrink-0">
-            <Image src="/logo.png" alt="SweetSpot" fill className="object-contain" priority />
+        <Link href="/" className="flex items-center gap-3 group">
+          <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-xl">
+            <Image 
+              src={logoImg} 
+              alt="SweetSpot" 
+              fill 
+              className="object-contain transition-transform group-hover:scale-110" 
+              priority 
+            />
           </div>
           <div className="flex flex-col">
             <span className="font-black text-xl tracking-tighter text-white leading-none italic">
@@ -144,7 +149,7 @@ export function SidebarNav({
       </div>
 
       {/* Nav sections */}
-      <nav className="flex-1 px-3 py-4 space-y-4 overflow-y-auto">
+      <nav className="flex-1 px-3 py-4 space-y-4 overflow-y-auto scrollbar-hide">
         {sections.map(({ label, items }) => (
           <div key={label}>
             <p className="text-[9px] font-black text-zinc-700 uppercase tracking-[0.25em] px-3 mb-1.5">
@@ -174,13 +179,20 @@ export function SidebarNav({
       </nav>
 
       {/* Bankroll footer */}
-      <div className="px-5 py-5 border-t border-white/[0.06]">
+      <div className="px-5 py-5 border-t border-white/[0.06] bg-black/20">
         <div className="flex items-center gap-1.5 mb-1">
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
           <p className="text-[9px] text-zinc-600 uppercase font-black tracking-[0.25em]">Bankroll</p>
         </div>
-        <p className="text-2xl font-black text-white italic">${(bankroll ?? 0).toFixed(2)}</p>
-        <p className="text-[9px] text-zinc-700 font-black uppercase tracking-wider mt-0.5">Tier: Pro</p>
+        <p className="text-2xl font-black text-white italic tracking-tighter">
+          ${bankroll.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </p>
+        <div className="flex justify-between items-center mt-0.5">
+          <p className="text-[9px] text-zinc-700 font-black uppercase tracking-wider">Tier: Pro</p>
+          <div className="h-1 w-12 bg-white/5 rounded-full overflow-hidden">
+             <div className="h-full bg-[#FFD700] w-2/3" />
+          </div>
+        </div>
       </div>
     </aside>
   );

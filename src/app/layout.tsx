@@ -16,13 +16,13 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="dark">
-      <body className="bg-[#060606] text-slate-50 antialiased">
+    <html lang="en" className="dark" suppressHydrationWarning>
+      <body className="bg-[#060606] text-slate-50 antialiased selection:bg-[#FFD700]/30">
         <AuthProvider> {/* Wrap with AuthProvider */}
           <BetSlipProvider>
             <div className="flex min-h-screen">
               {/* Ensure SidebarNav is inside the flex container */}
-              <SidebarNav />
+              <SidebarNav bankroll={1250.50}/>
               <main className="flex-1 lg:pl-64">
                 {children}
               </main>

@@ -15,6 +15,12 @@ function dupKey(p: { player?: string; prop?: string; matchup?: string; week?: nu
   return `${p.player ?? ''}||${p.prop ?? ''}||${p.matchup ?? ''}||${p.week ?? ''}`.toLowerCase();
 }
 
+// Strip `id` from Firestore doc data so d.id (the real doc ID) is never overwritten by spread
+function docWithId(d: FirebaseFirestore.QueryDocumentSnapshot): NFLProp & { id: string } {
+  const { id: _ignored, ...rest } = d.data() as NFLProp & { id?: string };
+  return { id: d.id, ...rest };
+}
+
 export async function saveProps(props: NFLProp[]): Promise<number> {
   if (!props.length) return 0;
   const season = Number(props[0].season);
@@ -34,7 +40,9 @@ export async function saveProps(props: NFLProp[]): Promise<number> {
     chunk.forEach(prop => {
       const key = dupKey(prop);
       if (existingKeys.has(key)) return;
-      batch.set(ref.doc(), { ...prop, createdAt: Timestamp.now(), updatedAt: Timestamp.now() });
+      // Omit id from stored doc — Firestore auto-generates it
+      const { id: _id, ...propData } = prop;
+      batch.set(ref.doc(), { ...propData, createdAt: Timestamp.now(), updatedAt: Timestamp.now() });
       existingKeys.add(key);
       batchCount++;
     });
@@ -66,7 +74,7 @@ export async function getPropsForWeek(
   season: number, week: number
 ): Promise<Array<NFLProp & { id: string }>> {
   const snapshot = await weeklyPropsRef(season, week).orderBy('confidenceScore', 'desc').get();
-  return snapshot.docs.map(d => ({ id: d.id, ...(d.data() as NFLProp) }));
+  return snapshot.docs.map(docWithId);
 }
 
 export async function getTopValueBets(
@@ -74,7 +82,7 @@ export async function getTopValueBets(
 ): Promise<Array<NFLProp & { id: string }>> {
   const snapshot = await weeklyPropsRef(season, week)
     .where('bestEdgePct', '>', minEdge).orderBy('bestEdgePct', 'desc').limit(limit).get();
-  return snapshot.docs.map(d => ({ id: d.id, ...(d.data() as NFLProp) }));
+  return snapshot.docs.map(docWithId);
 }
 
 export async function movePropsToAllProps(
@@ -101,8 +109,8 @@ export async function movePropsToAllProps(
     let chunkMoved = 0;
 
     chunk.forEach(doc => {
-      const data = doc.data() as NFLProp;
-      const key  = dupKey({ ...data, week });
+      const { id: _id, ...data } = doc.data() as NFLProp & { id?: string };
+      const key = dupKey({ ...data, week });
       deleteBatch.delete(doc.ref);
       if (existingKeys.has(key)) { skipped++; return; }
       writeBatch.set(destRef.doc(), { ...data, week, season, finalizedAt: Timestamp.now(), updatedAt: Timestamp.now() });
@@ -128,7 +136,7 @@ export async function getAllProps(
   if (filters.minEdge) query = query.where('bestEdgePct', '>', filters.minEdge);
   if (filters.limit)   query = query.limit(filters.limit);
   const snapshot = await query.get();
-  let docs = snapshot.docs.map(d => ({ id: d.id, ...(d.data() as NFLProp) }));
+  let docs = snapshot.docs.map(docWithId);
   if (filters.prop)      docs = docs.filter(p => p.prop === filters.prop);
   if (filters.team)      docs = docs.filter(p => p.team === filters.team);
   if (filters.valueOnly) docs = docs.filter(p => ['🔥', '⚠️'].includes(p.valueIcon ?? ''));

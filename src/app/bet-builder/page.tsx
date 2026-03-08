@@ -1,11 +1,14 @@
+// src/app/bet-builder/page.tsx
 import { BetBuilderClient } from '@/features/bet-builder-client';
+import { getCurrentNFLWeek } from '@/lib/nfl/getCurrentWeek';
+
+const SEASON = 2025;
 
 export default function BetBuilderPage() {
-  // We pass the initial config; the client-side hook will 
-  // handle the fetch to /api/all-props automatically.
+  const week = getCurrentNFLWeek(SEASON);
   return (
     <div className="min-h-screen bg-[#060606]">
-      <BetBuilderClient initialWeek={1} season={2025} />
+      <BetBuilderClient initialWeek={week} season={SEASON} />
     </div>
   );
 }
