@@ -1,11 +1,10 @@
-
 // src/lib/types.ts
 
 // ─── Shared Primitives ────────────────────────────────────────────────────────
 export type BetStatus = 'pending' | 'won' | 'lost' | 'void' | 'cashed';
 export type BetType   = 'Single' | 'Parlay';
 export type DefenseMap = Record<string, { rank: number; avg: number }>;
-export type SortDir = 'asc' | 'desc'; 
+export type SortDir = 'asc' | 'desc';
 export type SortKey =
   | 'player' | 'Player'
   | 'prop'   | 'Prop'
@@ -41,16 +40,16 @@ export interface Bet {
   status: 'pending' | 'won' | 'lost' | 'void' | 'cashed';
   stake: number;
   odds: number;
-  payout: number;          // Add this
-  cashOutAmount?: number;  // Add this while we're at it
+  payout: number;
+  cashOutAmount?: number;
   gameDate: string;
   week: number;
   isParlay: boolean;
   legs: BetLeg[];
   isBonusBet?: boolean;
   boost?: number;
-  createdAt?: any; // Added/Updated
-  updatedAt?: any; // Added/Updated (Fixes Error 2339)
+  createdAt?: any;
+  updatedAt?: any;
 }
 
 // ─── BetSlipItem ──────────────────────────────────────────────────────────────
@@ -74,7 +73,6 @@ export interface BetResult {
 }
 
 // ─── PropData ─────────────────────────────────────────────────────────────────
-// camelCase = canonical. PascalCase optionals = raw Firestore field names.
 
 export interface PropData {
   id:         string;
@@ -83,7 +81,7 @@ export interface PropData {
   line:       number;
   overOdds?:  number;
   underOdds?: number;
-  odds?:      number;   // generic fallback odds field
+  odds?:      number;
   team?:      string;
   matchup?:   string;
   week?:      number;
@@ -91,7 +89,7 @@ export interface PropData {
   gameTime?:  string;
   overUnder?: 'Over' | 'Under' | string;
   season?:    number | string;
-  // PascalCase aliases — Firestore allProps_2025 raw field names
+  // PascalCase aliases
   Player?:        string;
   Prop?:          string;
   Line?:          number;
@@ -101,36 +99,39 @@ export interface PropData {
   GameDate?:      string;
   GameTime?:      string;
   Odds?:          number;
-  'Over/Under?': 'Over' | 'Under' | string;
+  'Over/Under?':  'Over' | 'Under' | string;
 }
 
 // ─── WeeklyProp ───────────────────────────────────────────────────────────────
 
 export interface WeeklyProp extends PropData {
   category?: string;
-  // lowercase alias — weekly-props.tsx reads prop.overunder from Firestore
   overunder?: string;
-  // WeeklyProp may come from Firestore with PascalCase Odds
   Odds?:      number;
 }
 
+// ─── NFLProp ──────────────────────────────────────────────────────────────────
+
+/** Canonical result values — lowercase to match Firestore convention */
+export type PropResult = 'won' | 'lost' | 'push' | 'pending';
 
 export interface NFLProp {
   id?:          string;
   player?:      string;
-  Player?:      string; 
+  Player?:      string;
   prop?:        string;
-  Prop?:        string;   
+  Prop?:        string;
   line?:        number;
-  Line?:        number;   
-  odds?:        number; // Added to fix Error 2339
-  Odds?:        number; // Added to fix Error 2339
+  Line?:        number;
+  odds?:        number;
+  Odds?:        number;
   team?:        string;
-  Team?:        string;   
+  Team?:        string;
   matchup?:     string;
-  Matchup?:     string; 
+  Matchup?:     string;
   week?:        number;
-  season?:      string;
+  // season accepts both number (scripts) and string (legacy Firestore docs)
+  season?:      number | string;
   gameDate?:    string;
   gameTime?:    string;
   overUnder?:   string;
@@ -153,13 +154,19 @@ export interface NFLProp {
   projWinPct?:        number;
   avgWinProb?:        number;
   gameStat?:          number;
-  actualResult?:      'won' | 'lost' | 'push' | 'pending';
-  expertPick?:      string | null;
-  expertStars?:     number;
-  updatedAt?:       string;
+  /** Lowercase result — set by postGame.ts after game completes */
+  actualResult?:  PropResult;
+  expertPick?:    string;
+  expertStars?:   number;
+  /** Set by loadProps.ts / useBetSlip */
+  betAmount?:     number;
+  /** Set by postGame.ts */
+  profitLoss?:    number;
+  updatedAt?:     string;
 }
 
-// ─── PFRGame ──────────────────────────────────────────────────────────────────
+// ─── PFRGame (Firestore flat doc shape) ──────────────────────────────────────
+// For the enrichment-specific game log shape, see lib/enrichment/types.ts
 
 export interface PFRGame {
   player:    string;
@@ -190,7 +197,6 @@ export interface PropRow {
 export type Prop = PropData;
 
 // ─── Wallet ───────────────────────────────────────────────────────────────────
-// firebase/wallet.ts uses `lastUpdated` — both fields optional so either works.
 
 export interface Wallet {
   id:            string;
