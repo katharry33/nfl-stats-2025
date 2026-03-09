@@ -84,3 +84,34 @@ export interface BetSlipItem {
 
 // ─── Sort key (for table column sorting) ─────────────────────────────────────
 export type SortKey = keyof NFLProp | 'default';
+
+// ─── Defense map (used by enrichment scripts) ─────────────────────────────────
+export interface DefenseMap {
+  [team: string]: {
+    [propType: string]: {
+      rank: number;
+      avg:  number;
+    };
+  };
+}
+
+// ─── PropRow (raw Firestore row before normalization) ─────────────────────────
+export interface PropRow extends NFLProp {
+  id: string;
+  [key: string]: any; // allow PascalCase Firestore fields
+}
+
+export interface PFRGame {
+  week:       number;
+  date:       string;
+  passAtt:    number;
+  passYds:    number;
+  passTds:    number;
+  passCmp:    number;
+  rushAtt:    number;
+  rushYds:    number;
+  rushTds:    number;
+  receptions: number;
+  recYds:     number;
+  recTds:     number;
+}
