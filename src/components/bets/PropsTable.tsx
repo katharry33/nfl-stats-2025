@@ -1,181 +1,140 @@
-'use client';
-// src/components/bets/PropsTable.tsx
-
-import { useState, useMemo } from 'react';
-import { ChevronUp, ChevronDown, Plus, Minus, Trash2 } from 'lucide-react';
+import React from 'react';
 import type { NormalizedProp } from '@/hooks/useAllProps';
-
-type SortDir = 'asc' | 'desc';
-
-interface Col {
-  key: string;
-  label: string;
-  sortable?: boolean;
-  fmt?: (v: any) => string;
-  align?: 'left' | 'right' | 'center';
-}
-
-const COLS: Col[] = [
-    { key: 'week',              label: 'Wk',          sortable: true,  align: 'center' },
-    { key: 'gameDate',          label: 'Date',         sortable: true  },
-    { key: 'matchup',           label: 'Matchup',      sortable: true  },
-    { key: 'player',            label: 'Player',       sortable: true  },
-    { key: 'prop',              label: 'Prop',         sortable: true  },
-    { key: 'line',              label: 'Line',         sortable: true,  align: 'right', fmt: v => v?.toFixed(1) ?? '—' },
-    { key: 'overUnder',         label: 'O/U',          sortable: true,  align: 'center' },
-    { key: 'odds',              label: 'Odds',         sortable: true,  align: 'right', fmt: v => v != null ? (v > 0 ? `+${v}` : `${v}`) : '—' },
-    { key: 'confidenceScore',   label: 'Conf',         sortable: true,  align: 'right', fmt: v => v?.toFixed(2) ?? '—' },
-    { key: 'actualResult',      label: 'Result',       sortable: true,  align: 'center' },
-    { key: 'actions',           label: '',             sortable: false, align: 'center' },
-  ];
-  
-
-function resultColor(result: string) {
-  if (result === 'won')  return 'text-emerald-400';
-  if (result === 'lost') return 'text-red-400';
-  if (result === 'push') return 'text-zinc-400';
-  return 'text-zinc-600';
-}
+import { Loader2, Trash2, Plus } from 'lucide-react';
 
 interface PropsTableProps {
   props: NormalizedProp[];
   isLoading: boolean;
-  slipIds?: Set<string>;
   onAddToBetSlip: (prop: NormalizedProp) => void;
-  onDelete: (id: string) => void;
+  slipIds?: Set<string>;
+  onDelete?: (id: string) => Promise<void>;
+  visibleColumns?: string[];
 }
 
-export function PropsTable({
-  props = [],
-  isLoading,
+export function PropsTable({ 
+  props = [], 
+  isLoading, 
+  onAddToBetSlip, 
   slipIds = new Set(),
-  onAddToBetSlip,
   onDelete,
+  visibleColumns = [],
 }: PropsTableProps) {
-  const [sortKey, setSortKey] = useState<string>('confidenceScore');
-  const [sortDir, setSortDir] = useState<SortDir>('desc');
 
-  const sorted = useMemo(() => {
-    return [...props].sort((a, b) => {
-      const av = (a as any)[sortKey];
-      const bv = (b as any)[sortKey];
-      if (av == null && bv == null) return 0;
-      if (av == null) return 1;
-      if (bv == null) return -1;
-      const cmp = typeof av === 'string' ? av.localeCompare(bv) : av - bv;
-      return sortDir === 'asc' ? cmp : -cmp;
-    });
-  }, [props, sortKey, sortDir]);
+  const isVisible = (id: string) => visibleColumns.length === 0 || visibleColumns.includes(id);
 
-  const handleSort = (key: string) => {
-    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    else { setSortKey(key); setSortDir('desc'); }
-  };
-  
-  const pendingCount = props.filter((p) => p.status === 'pending').length;
-
-  if (isLoading) {
+  if (isLoading && props.length === 0) {
     return (
-      <div className="space-y-2">
-        {[...Array(8)].map((_, i) => (
-          <div key={i} className="h-10 bg-white/5 rounded-lg animate-pulse" />
-        ))}
+      <div className="flex flex-col items-center justify-center py-20 text-zinc-600">
+        <Loader2 className="h-8 w-8 animate-spin mb-4" />
+        <p className="text-sm font-black uppercase italic">Loading data table...</p>
       </div>
     );
   }
 
   return (
-    <div className="overflow-x-auto rounded-2xl border border-white/5 bg-[#0a0a0e]">
-      <table className="w-full text-xs text-zinc-300 border-collapse">
+    <div className="w-full overflow-x-auto rounded-2xl border border-white/[0.06] bg-[#0f1115]">
+      <table className="w-full text-left border-collapse">
         <thead>
-          <tr className="border-b border-white/5">
-            {COLS.map(col => (
-              <th
-                key={col.key}
-                onClick={() => col.sortable && handleSort(col.key)}
-                className={`
-                  px-3 py-3 font-black uppercase tracking-widest text-[9px] whitespace-nowrap select-none
-                  ${col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left'}
-                  ${col.sortable ? 'cursor-pointer hover:text-[#FFD700] transition-colors' : ''}
-                  ${sortKey === col.key ? 'text-[#FFD700]' : 'text-zinc-600'}
-                `}
-              >
-                <span className="inline-flex items-center gap-1">
-                  {col.label}
-                  {col.sortable && sortKey === col.key && (
-                    sortDir === 'asc'
-                      ? <ChevronUp className="w-2.5 h-2.5" />
-                      : <ChevronDown className="w-2.5 h-2.5" />
-                  )}
-                </span>
-              </th>
-            ))}
+          <tr className="border-b border-white/[0.06] bg-white/[0.02]">
+            {isVisible('week') && <th className="px-3 py-3 text-[9px] font-black uppercase text-zinc-500">Wk/Date</th>}
+            {isVisible('player') && <th className="px-3 py-3 text-[9px] font-black uppercase text-zinc-500">Player</th>}
+            {isVisible('matchup') && <th className="px-3 py-3 text-[9px] font-black uppercase text-zinc-500">Matchup</th>}
+            <th className="px-3 py-3 text-[9px] font-black uppercase text-zinc-500 text-center">Prop/Line</th>
+            {isVisible('avg') && <th className="px-3 py-3 text-[9px] font-black uppercase text-zinc-500 text-center">Avg</th>}
+            {isVisible('oppRank') && <th className="px-3 py-3 text-[9px] font-black uppercase text-zinc-500 text-center">Opp Rank</th>}
+            {isVisible('hitPct') && <th className="px-3 py-3 text-[9px] font-black uppercase text-zinc-500 text-center">Hit %</th>}
+            {isVisible('edge') && <th className="px-3 py-3 text-[9px] font-black uppercase text-zinc-500 text-center">Edge/EV</th>}
+            {isVisible('conf') && <th className="px-3 py-3 text-[9px] font-black uppercase text-zinc-500 text-center">Conf</th>}
+            <th className="px-3 py-3 text-[9px] font-black uppercase text-zinc-500 text-right">Action</th>
           </tr>
         </thead>
-        <tbody>
-          {sorted.map((prop, i) => {
-            const inSlip = slipIds.has(String(prop.id));
+        <tbody className="divide-y divide-white/[0.04]">
+          {props.map((prop, i) => {
+            const propId = prop.id ? String(prop.id) : `idx-${i}`;
+            const inSlip = slipIds.has(propId);
+
             return (
-              <tr
-                key={prop.id || i}
-                className={`
-                  border-b border-white/[0.03] transition-colors
-                  ${inSlip ? 'bg-[#FFD700]/5' : 'hover:bg-white/[0.02]'}
-                `}
-              >
-                {COLS.map(col => {
-                  const raw = (prop as any)[col.key];
-                  const display = col.fmt ? col.fmt(raw) : (raw ?? '—');
+              <tr key={propId} className="group hover:bg-white/[0.02] transition-colors border-b border-white/[0.02]">
+                  {isVisible('week') && (
+                    <td className="px-3 py-3 font-mono text-[10px] text-zinc-500">
+                      W{prop.week} <br/> {prop.gameDate ? new Date(prop.gameDate).toLocaleDateString([], {month:'short', day:'numeric'}) : ''}
+                    </td>
+                  )}
+                  {isVisible('player') && (
+                    <td className="px-3 py-3 text-xs font-bold text-white uppercase italic">
+                      {prop.player}
+                    </td>
+                  )}
+                  {isVisible('matchup') && (
+                    <td className="px-3 py-3 text-xs text-zinc-400">
+                      {prop.team} @ {prop.matchup}
+                    </td>
+                  )}
 
-                  if (col.key === 'actions') {
-                    return (
-                      <td key="actions" className="px-3 py-2 text-center">
-                         <div className="flex items-center justify-center gap-1">
-                           <button
-                            onClick={() => onAddToBetSlip(prop)}
-                            disabled={inSlip}
-                            className={`w-6 h-6 rounded-lg flex items-center justify-center transition-all disabled:opacity-30 disabled:cursor-not-allowed ${inSlip ? 'bg-[#FFD700]/50 text-black' : 'bg-zinc-800 text-[#FFD700] hover:bg-[#FFD700] hover:text-black'}`}>
-                            <Plus className="w-3 h-3" />
-                           </button>
-                           <button
-                            onClick={() => onDelete(String(prop.id))}
-                            className="w-6 h-6 rounded-lg flex items-center justify-center bg-red-500/10 text-red-400 hover:bg-red-500/20">
-                             <Trash2 className="w-3 h-3" />
-                           </button>
-                         </div>
-                      </td>
-                    );
-                  }
+                  <td className="px-3 py-3 text-center">
+                    <p className="text-[10px] text-zinc-400 uppercase font-medium">{prop.prop}</p>
+                    <div>
+                      <span className="font-mono text-xs font-bold text-white">{prop.line}</span>
+                      <span className={`ml-1 text-[9px] font-black uppercase ${prop.overUnder?.toLowerCase()==='over'?'text-blue-400':'text-orange-400'}`}>
+                          {prop.overUnder?.charAt(0)}
+                      </span>
+                    </div>
+                  </td>
 
-                  let cellClass = `px-3 py-2 whitespace-nowrap ${
-                    col.align === 'right' ? 'text-right' : 
-                    col.align === 'center' ? 'text-center' : 'text-left'
-                  }`;
+                  {isVisible('avg') && <td className="px-3 py-3 text-center font-mono text-xs text-zinc-300">
+                      {prop.playerAvg ? Number(prop.playerAvg).toFixed(1) : '—'}
+                  </td>}
 
-                  if (col.key === 'actualResult') {
-                    return <td key={col.key} className={`${cellClass} ${resultColor(raw)} uppercase font-bold tracking-wider`}>{raw || '—'}</td>;
-                  }
-                  if (col.key === 'player') {
-                    return <td key={col.key} className={`${cellClass} font-bold text-white`}>{display}</td>;
-                  }
-                  if (col.key === 'overUnder') {
-                    return (
-                      <td key={col.key} className={`${cellClass} font-bold ${raw === 'Over' ? 'text-emerald-400' : raw === 'Under' ? 'text-red-400' : 'text-zinc-500'}`}>
-                        {raw || '—'}
-                      </td>
-                    );
-                  }
+                  {isVisible('oppRank') && <td className="px-3 py-3 text-center">
+                      <span className={`text-xs font-bold ${Number(prop.opponentRank) <= 10 ? 'text-emerald-400' : 'text-zinc-500'}`}>
+                          {prop.opponentRank ?? '—'}
+                      </span>
+                  </td>}
 
-                  return <td key={col.key} className={cellClass}>{String(display)}</td>;
-                })}
+                  {isVisible('hitPct') && <td className="px-3 py-3 text-center">
+                      <span className="font-mono text-xs font-bold text-[#FFD700]">
+                          {prop.seasonHitPct ? (Number(prop.seasonHitPct)*100).toFixed(0)+'%' : '—'}
+                      </span>
+                  </td>}
+
+                  {isVisible('edge') && <td className="px-3 py-3 text-center">
+                      <p className="text-[10px] font-bold text-emerald-400 leading-none">{prop.bestEdgePct ? `+${(prop.bestEdgePct*100).toFixed(1)}%` : '—'}</p>
+                      <p className="text-[9px] text-zinc-600 font-mono mt-0.5">{prop.expectedValue ? `EV: ${prop.expectedValue.toFixed(2)}` : ''}</p>
+                  </td>}
+
+                  {isVisible('conf') && <td className="px-3 py-3 text-center">
+                      <div className="inline-block px-2 py-0.5 rounded bg-white/5 border border-white/10 text-[10px] font-bold text-zinc-300">
+                          {prop.confidenceScore?.toFixed(1) ?? '—'}
+                      </div>
+                  </td>}
+
+                  <td className="px-3 py-3 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        {onDelete && (
+                          <button 
+                            onClick={() => prop.id && onDelete(String(prop.id))}
+                            className="p-1.5 text-zinc-700 hover:text-red-400 transition-colors"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => !inSlip && onAddToBetSlip(prop)}
+                          disabled={inSlip}
+                          className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${
+                              inSlip 
+                              ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed' 
+                              : 'bg-[#FFD700] text-black hover:bg-[#e6c200]'
+                          }`}>
+                          {inSlip ? 'Added' : <><Plus className="h-3 w-3" /> Add</>}
+                      </button>
+                      </div>
+                  </td>
               </tr>
             );
           })}
         </tbody>
       </table>
-      <div className="px-3 py-2 text-right text-[10px] text-zinc-600 font-mono">
-        {props.length.toLocaleString()} props ({pendingCount.toLocaleString()} pending)
-      </div>
     </div>
   );
 }

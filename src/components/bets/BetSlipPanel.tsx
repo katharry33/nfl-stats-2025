@@ -3,12 +3,13 @@
 
 import { useRouter } from 'next/navigation';
 import { X, Trash2, ArrowRight, Zap } from 'lucide-react';
-import type { NormalizedProp } from '@/hooks/useAllProps';
+import type { BetSlipSelection } from '@/hooks/useBetSlip';
 
 interface BetSlipPanelProps {
-  legs: NormalizedProp[];
+  selections: BetSlipSelection[];
   onRemove: (id: string) => void;
   onClear: () => void;
+  week: number;
 }
 
 function impliedProbFromOdds(odds: number | null | undefined): number | null {
@@ -17,27 +18,16 @@ function impliedProbFromOdds(odds: number | null | undefined): number | null {
   return 100 / (odds + 100);
 }
 
-function confidenceBadge(score: number | null | undefined) {
-  if (score == null) return null;
-  if (score >= 80) return { label: 'ELITE', cls: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' };
-  if (score >= 60) return { label: 'STRONG', cls: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30' };
-  if (score >= 40) return { label: 'MOD', cls: 'bg-zinc-700 text-zinc-300 border-zinc-600' };
-  return { label: 'WEAK', cls: 'bg-red-500/10 text-red-400 border-red-500/20' };
-}
-
-export function BetSlipPanel({ legs, onRemove, onClear }: BetSlipPanelProps) {
+export function BetSlipPanel({ selections = [], onRemove, onClear, week }: BetSlipPanelProps) {
   const router = useRouter();
-  const isEmpty = legs.length === 0;
+  const isEmpty = selections.length === 0;
 
-  // Approximate combined implied prob (multiply individual probs)
-  const combinedImplied = legs.reduce((acc, leg) => {
-    const p = impliedProbFromOdds(leg.bestOdds ?? leg.odds ?? null);
+  const combinedImplied = selections.reduce((acc, leg) => {
+    const p = impliedProbFromOdds(leg.odds ?? null);
     return p != null ? acc * p : acc;
   }, 1);
 
-  const avgEdge = legs.length > 0
-    ? legs.reduce((s, l) => s + (l.bestEdgePct ?? 0), 0) / legs.length
-    : 0;
+  const avgEdge = 0;
 
   return (
     <div className="flex flex-col h-full bg-[#0a0a0e] border-l border-white/5">
@@ -48,7 +38,7 @@ export function BetSlipPanel({ legs, onRemove, onClear }: BetSlipPanelProps) {
             Bet Slip
           </h2>
           <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest mt-0.5">
-            {legs.length} {legs.length === 1 ? 'leg' : 'legs'} selected
+            {selections.length} {selections.length === 1 ? 'leg' : 'legs'} selected
           </p>
         </div>
         {!isEmpty && (
@@ -75,9 +65,8 @@ export function BetSlipPanel({ legs, onRemove, onClear }: BetSlipPanelProps) {
           </div>
         ) : (
           <div className="divide-y divide-white/[0.03]">
-            {legs.map(leg => {
-              const badge = confidenceBadge(leg.confidenceScore);
-              const isOver = (leg.overUnder ?? '').toLowerCase() === 'over';
+            {selections.map(leg => {
+              const isOver = (leg.selection ?? '').toLowerCase() === 'over';
               return (
                 <div key={leg.id} className="px-4 py-3.5 group hover:bg-white/[0.02] transition-colors">
                   <div className="flex items-start justify-between gap-2">
@@ -87,13 +76,8 @@ export function BetSlipPanel({ legs, onRemove, onClear }: BetSlipPanelProps) {
                           isOver ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
                                  : 'bg-red-500/10 text-red-400 border-red-500/20'
                         }`}>
-                          {leg.overUnder || 'OVER'}
+                          {leg.selection || 'OVER'}
                         </span>
-                        {badge && (
-                          <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md border ${badge.cls}`}>
-                            {badge.label}
-                          </span>
-                        )}
                       </div>
                       <p className="text-sm font-bold text-white truncate leading-none mb-0.5">
                         {leg.player}
@@ -102,17 +86,9 @@ export function BetSlipPanel({ legs, onRemove, onClear }: BetSlipPanelProps) {
                         {leg.prop} <span className="text-zinc-700 mx-1">·</span> {leg.line}
                       </p>
                       <div className="flex items-center gap-3 mt-2">
-                        {leg.bestOdds != null && (
+                        {leg.odds != null && (
                           <span className="text-[10px] font-bold text-zinc-400">
-                            {leg.bestOdds > 0 ? `+${leg.bestOdds}` : leg.bestOdds}
-                          </span>
-                        )}
-                        {leg.bestEdgePct != null && (
-                          <span className={`text-[10px] font-bold ${
-                            leg.bestEdgePct > 0.1 ? 'text-emerald-400' :
-                            leg.bestEdgePct > 0.05 ? 'text-yellow-400' : 'text-zinc-500'
-                          }`}>
-                            {(leg.bestEdgePct * 100).toFixed(1)}% edge
+                            {leg.odds > 0 ? `+${leg.odds}` : leg.odds}
                           </span>
                         )}
                         {leg.team && (
@@ -163,7 +139,7 @@ export function BetSlipPanel({ legs, onRemove, onClear }: BetSlipPanelProps) {
           </button>
 
           <p className="text-center text-[9px] text-zinc-700 uppercase tracking-widest">
-            {legs.length}-leg parlay builder
+            {selections.length}-leg parlay builder
           </p>
         </div>
       )}
