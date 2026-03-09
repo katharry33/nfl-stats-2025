@@ -6,6 +6,7 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
+    // 1. Fetch from 'bettingLog'
     const snap = await adminDb
       .collection('bettingLog')
       .orderBy('createdAt', 'desc')
@@ -13,10 +14,32 @@ export async function GET() {
 
     const bets = snap.docs.map(d => {
       const data = d.data();
+      
+      // 2. Convert Firestore Timestamps to ISO Strings for the client
       if (data.createdAt?.toDate) {
         data.createdAt = data.createdAt.toDate().toISOString();
       }
-      return { id: d.id, ...data };
+
+      // 3. Normalization: Ensure every bet has a 'legs' structure
+      // If it's a single bet, we wrap its info into a one-item array
+      // so the Accuracy logic in the UI can loop through it consistently.
+      const normalizedLegs = data.legs || [
+        {
+          player: data.player || 'Unknown Player',
+          prop: data.prop || 'Other',
+          line: data.line,
+          actualResult: data.actualResult || data.status,
+        },
+      ];
+
+      return {
+        id: d.id,
+        ...data,
+        // Ensure numbers are actually numbers
+        stake: Number(data.stake || data.wager || 0),
+        odds: Number(data.odds || 0),
+        legs: normalizedLegs,
+      };
     });
 
     return NextResponse.json(bets);

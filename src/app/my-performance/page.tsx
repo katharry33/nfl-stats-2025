@@ -1,78 +1,56 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import {
-  TrendingUp, TrendingDown, DollarSign, Percent,
-  Trophy, Target, Users, BarChart2, Loader2, Zap
+import { 
+  TrendingUp, TrendingDown, DollarSign, Percent, 
+  Trophy, Target, Zap, Loader2, Calendar, ChevronRight 
 } from 'lucide-react';
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, LineChart, Line, Cell
+import { 
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, 
+  ResponsiveContainer, LineChart, Line, Cell 
 } from 'recharts';
+import { toDecimal } from '@/lib/utils/odds';
 
-// ─── helpers ────────────────────────────────────────────────────────────────
+// ─── Types & Helpers ─────────────────────────────────────────────────────────
 
-function netProfit(bet: any): number {
-  const stake = Number(bet.stake) || 0;
+type Timeframe = 'day' | 'week' | 'month';
+
+function calcProfit(bet: any): number {
+  if (bet.isBonusBet) return 0; // Exclude from ROI calculation
+  const stake = Number(bet.stake || bet.wager) || 0;
   const status = (bet.status || '').toLowerCase();
-  if (status === 'won') {
+  
+  if (['won', 'win'].includes(status)) {
     const odds = Number(bet.odds) || 0;
-    if (odds > 0) return stake * (odds / 100);
-    if (odds < 0) return stake * (100 / Math.abs(odds));
-    return 0;
+    const boost = parseFloat(String(bet.boost || '0').replace('%', '')) / 100;
+    return (stake * toDecimal(odds) * (1 + boost)) - stake;
   }
-  if (status === 'lost') return -stake;
-  if (status === 'cashed') return (Number(bet.cashedAmount) || stake) - stake;
+  if (['lost', 'loss'].includes(status)) return -stake;
+  if (status === 'cashed') return (Number(bet.cashOutAmount || bet.payout) || 0) - stake;
   return 0;
 }
 
-// ─── sub-components ─────────────────────────────────────────────────────────
+// ─── Sub-Components ─────────────────────────────────────────────────────────
 
-function KpiCard({ title, value, color = 'text-white', icon: Icon, sub }: {
-  title: string; value: string; color?: string; icon?: any; sub?: string;
-}) {
+function KpiCard({ title, value, color, icon: Icon, sub }: any) {
   return (
-    <div className="bg-[#0f1115] border border-white/[0.06] p-5 rounded-2xl flex items-start gap-4 hover:border-white/10 transition-colors">
-      {Icon && (
-        <div className={`p-2.5 bg-white/[0.04] border border-white/[0.06] rounded-xl shrink-0 ${color}`}>
-          <Icon className="h-5 w-5" />
-        </div>
-      )}
-      <div className="min-w-0">
-        <p className="text-[10px] uppercase font-black text-zinc-600 tracking-[0.2em]">{title}</p>
-        <p className={`text-2xl font-black font-mono tracking-tight mt-0.5 ${color}`}>{value}</p>
-        {sub && <p className="text-[10px] text-zinc-600 mt-0.5 font-mono truncate">{sub}</p>}
+    <div className="bg-[#0f1115] border border-white/[0.06] p-4 rounded-2xl">
+      <div className="flex items-center gap-2 mb-2">
+        <Icon className={`h-3 w-3 ${color}`} />
+        <span className="text-[9px] uppercase font-black text-zinc-600 tracking-widest">{title}</span>
       </div>
+      <p className={`text-xl font-black font-mono tracking-tight ${color}`}>{value}</p>
+      {sub && <p className="text-[9px] text-zinc-600 mt-1 font-mono truncate">{sub}</p>}
     </div>
   );
 }
 
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return (
-    <h2 className="text-[10px] uppercase font-black text-zinc-600 tracking-[0.2em] mb-3">
-      {children}
-    </h2>
-  );
-}
-
-const CustomTooltip = ({ active, payload, label }: any) => {
-  if (!active || !payload?.length) return null;
-  const val = payload[0].value;
-  return (
-    <div className="bg-[#0f1115] border border-white/[0.08] rounded-xl px-3 py-2 text-xs font-mono shadow-xl">
-      <p className="text-zinc-500 mb-1">{label}</p>
-      <p className={val >= 0 ? 'text-emerald-400' : 'text-red-400'}>
-        {val >= 0 ? '+' : ''}${val.toFixed(2)}
-      </p>
-    </div>
-  );
-};
-
-// ─── main page ───────────────────────────────────────────────────────────────
+// ─── Main Component ─────────────────────────────────────────────────────────
 
 export default function PerformancePage() {
   const [bets, setBets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [timeframe, setTimeframe] = useState<Timeframe>('week');
 
   useEffect(() => {
     fetch('/api/performance')
@@ -81,349 +59,215 @@ export default function PerformancePage() {
       .catch(() => setLoading(false));
   }, []);
 
-  // ── computed stats ──────────────────────────────────────────────────────
   const stats = useMemo(() => {
-    const settled = bets.filter(b => !['pending', 'void'].includes((b.status || '').toLowerCase()));
-    const won     = settled.filter(b => b.status?.toLowerCase() === 'won');
-    const lost    = settled.filter(b => b.status?.toLowerCase() === 'lost');
-
-    const totalStaked  = bets.reduce((a, b) => a + (Number(b.stake) || 0), 0);
-    const totalProfit  = bets.reduce((a, b) => a + netProfit(b), 0);
-    const winRate      = settled.length > 0 ? (won.length / settled.length) * 100 : 0;
-    const roi          = totalStaked > 0 ? (totalProfit / totalStaked) * 100 : 0;
-
-    // biggest payout (won bets, gross payout = stake + profit)
-    const biggestPayout = won.reduce((best: any, b) => {
-      const payout = (Number(b.stake) || 0) + netProfit(b);
-      return (!best || payout > best.payout) ? { bet: b, payout } : best;
-    }, null);
-
-    // biggest parlay hit
-    const parlays       = won.filter(b => (b.betType || '').toLowerCase() === 'parlay');
-    const biggestParlay = parlays.reduce((best: any, b) => {
-      const payout = (Number(b.stake) || 0) + netProfit(b);
-      return (!best || payout > best.payout) ? { bet: b, payout } : best;
-    }, null);
-
-    // bet type breakdown
-    const typeMap: Record<string, { total: number; won: number }> = {};
-    settled.forEach(b => {
-      const t = (b.betType || 'Unknown').toLowerCase();
-      if (!typeMap[t]) typeMap[t] = { total: 0, won: 0 };
-      typeMap[t].total++;
-      if (b.status?.toLowerCase() === 'won') typeMap[t].won++;
-    });
-    const betTypes = Object.entries(typeMap)
-      .map(([type, d]) => ({
-        type: type.charAt(0).toUpperCase() + type.slice(1),
-        total: d.total,
-        winPct: d.total > 0 ? (d.won / d.total) * 100 : 0,
-      }))
-      .sort((a, b) => b.total - a.total);
-
-    // most reliable players
-    const playerMap: Record<string, { total: number; won: number }> = {};
-    settled.forEach(b => {
-      const players: string[] = [];
-      if (b.player) players.push(b.player);
-      if (Array.isArray(b.players)) players.push(...b.players);
-      if (Array.isArray(b.legs)) b.legs.forEach((l: any) => l.player && players.push(l.player));
-      players.forEach(p => {
-        if (!playerMap[p]) playerMap[p] = { total: 0, won: 0 };
-        playerMap[p].total++;
-        if (b.status?.toLowerCase() === 'won') playerMap[p].won++;
+    const settled = bets.filter(b => !['pending', 'void', 'push'].includes((b.status || '').toLowerCase()));
+    
+    // 1. Leg-Level Accuracy (The "Truth" Stats)
+    const allLegs: any[] = [];
+    settled.forEach(bet => {
+      const legs = bet.legs || [{ player: bet.player, prop: bet.prop, actualResult: bet.status }];
+      legs.forEach((l: any) => {
+        if (!l.prop) return;
+        allLegs.push({
+          ...l,
+          isWin: ['won', 'win'].includes((l.actualResult || bet.status || '').toLowerCase())
+        });
       });
     });
-    const reliablePlayers = Object.entries(playerMap)
-      .filter(([, d]) => d.total >= 3)
-      .map(([name, d]) => ({ name, total: d.total, winPct: (d.won / d.total) * 100 }))
-      .sort((a, b) => b.winPct - a.winPct)
-      .slice(0, 8);
 
-    // monthly P&L
-    const monthMap: Record<string, number> = {};
-    const monthOrder: string[] = [];
-    bets.forEach(b => {
-      if (!b.createdAt) return;
-      const d    = new Date(b.createdAt);
-      const key  = d.toLocaleString('default', { month: 'short', year: 'numeric' });
-      if (!(key in monthMap)) { monthMap[key] = 0; monthOrder.push(key); }
-      monthMap[key] += netProfit(b);
-    });
-    const monthlyPnl = monthOrder.map(m => ({
-      month: m,
-      profit: parseFloat(monthMap[m].toFixed(2)),
-    }));
+    const propAccuracy = Object.entries(
+      allLegs.reduce((acc, l) => {
+        if (!acc[l.prop]) acc[l.prop] = { total: 0, won: 0 };
+        acc[l.prop].total++;
+        if (l.isWin) acc[l.prop].won++;
+        return acc;
+      }, {} as any)
+    ).map(([type, d]: any) => ({
+      type,
+      winPct: (d.won / d.total) * 100,
+      total: d.total
+    })).sort((a, b) => b.total - a.total);
 
-    // cumulative P&L over bets (sorted oldest first)
-    const sorted = [...bets].reverse();
-    let running = 0;
-    const cumulativePnl = sorted.map((b, i) => {
-      running += netProfit(b);
-      return { bet: i + 1, profit: parseFloat(running.toFixed(2)) };
-    });
+    // 2. Player Reliability (Min 3 Legs)
+    const playerReliability = Object.entries(
+      allLegs.reduce((acc, l) => {
+        if (!l.player) return acc;
+        if (!acc[l.player]) acc[l.player] = { total: 0, won: 0 };
+        acc[l.player].total++;
+        if (l.isWin) acc[l.player].won++;
+        return acc;
+      }, {} as any)
+    )
+      .filter(([, d]: any) => d.total >= 3)
+      .map(([name, d]: any) => ({ name, winPct: (d.won / d.total) * 100, total: d.total }))
+      .sort((a, b) => b.winPct - a.winPct || b.total - a.total)
+      .slice(0, 6);
 
-    return {
-      totalStaked, totalProfit, winRate, roi,
-      won: won.length, lost: lost.length, settled: settled.length,
-      biggestPayout, biggestParlay,
-      betTypes, reliablePlayers, monthlyPnl, cumulativePnl,
+    // 3. Hall of Fame (Biggest Wins & Longest Parlays)
+    const wins = settled.filter(b => ['won', 'win'].includes(b.status?.toLowerCase()));
+    const topPayouts = [...wins].sort((a, b) => calcProfit(b) - calcProfit(a)).slice(0, 4);
+    const longestParlays = [...wins]
+      .filter(b => b.legs?.length > 1)
+      .sort((a, b) => b.legs.length - a.legs.length)
+      .slice(0, 4);
+
+    // 4. Financials
+    const totalProfit = settled.reduce((a, b) => a + calcProfit(b), 0);
+    const totalWagered = settled.reduce((a, b) => a + (Number(b.stake || b.wager) || 0), 0);
+
+    return { 
+      totalProfit, totalWagered, 
+      propAccuracy, playerReliability, 
+      topPayouts, longestParlays,
+      winRate: settled.length ? (wins.length / settled.length) * 100 : 0,
+      roi: totalWagered ? (totalProfit / totalWagered) * 100 : 0
     };
   }, [bets]);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#060606] flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-[#FFD700]" />
-      </div>
-    );
-  }
+  // 5. Chart Data (Sortable by timeframe)
+  const chartData = useMemo(() => {
+    const groups: Record<string, number> = {};
+    const sorted = [...bets].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
-  const profitColor = stats.totalProfit >= 0 ? 'text-emerald-400' : 'text-red-400';
-  const roiColor    = stats.roi >= 0 ? 'text-emerald-400' : 'text-red-400';
+    sorted.forEach(b => {
+      const d = new Date(b.createdAt);
+      let key = '';
+      if (timeframe === 'day') key = d.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
+      else if (timeframe === 'month') key = d.toLocaleString('default', { month: 'short' });
+      else {
+        const start = new Date(d.getFullYear(), 0, 1);
+        const week = Math.ceil((((d.getTime() - start.getTime()) / 86400000) + start.getDay() + 1) / 7);
+        key = `W${week}`;
+      }
+      groups[key] = (groups[key] || 0) + calcProfit(b);
+    });
+
+    return Object.entries(groups).map(([name, profit]) => ({ name, profit }));
+  }, [bets, timeframe]);
+
+  if (loading) return <div className="min-h-screen bg-[#060606] flex items-center justify-center"><Loader2 className="animate-spin text-[#FFD700]" /></div>;
 
   return (
-    <div className="min-h-screen bg-[#060606] p-6 space-y-8">
-
+    <div className="min-h-screen bg-[#060606] text-white p-6 max-w-7xl mx-auto space-y-8">
+      
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-black text-white italic uppercase tracking-tighter">
-          My Performance
-        </h1>
-        <p className="text-zinc-600 text-[10px] font-black uppercase tracking-widest mt-1">
-          Season overview &amp; stats · {bets.length} bets tracked
-        </p>
-      </div>
-
-      {/* KPI Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <KpiCard
-          title="Total Staked"
-          value={`$${stats.totalStaked.toFixed(2)}`}
-          color="text-[#FFD700]/80"
-          icon={DollarSign}
-          sub={`${stats.settled} settled bets`}
-        />
-        <KpiCard
-          title="Profit / Loss"
-          value={`${stats.totalProfit >= 0 ? '+' : ''}$${stats.totalProfit.toFixed(2)}`}
-          color={profitColor}
-          icon={stats.totalProfit >= 0 ? TrendingUp : TrendingDown}
-          sub={`${stats.won}W – ${stats.lost}L`}
-        />
-        <KpiCard
-          title="Win Rate"
-          value={`${stats.winRate.toFixed(1)}%`}
-          color="text-[#FFD700]"
-          icon={Percent}
-          sub={`${stats.won} of ${stats.settled} settled`}
-        />
-        <KpiCard
-          title="ROI"
-          value={`${stats.roi >= 0 ? '+' : ''}${stats.roi.toFixed(1)}%`}
-          color={roiColor}
-          icon={stats.roi >= 0 ? TrendingUp : TrendingDown}
-          sub="return on investment"
-        />
-      </div>
-
-      {/* Highlight Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {/* Biggest Payout */}
-        <div className="bg-[#0f1115] border border-white/[0.06] rounded-2xl p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <Trophy className="h-4 w-4 text-[#FFD700]" />
-            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-              Biggest Payout
-            </span>
-          </div>
-          {stats.biggestPayout ? (
-            <div>
-              <p className="text-2xl font-black font-mono text-emerald-400">
-                +${stats.biggestPayout.payout.toFixed(2)}
-              </p>
-              <p className="text-xs text-zinc-500 mt-1 font-mono truncate">
-                {stats.biggestPayout.bet.player || stats.biggestPayout.bet.description || 'Single bet'}
-              </p>
-            </div>
-          ) : (
-            <p className="text-zinc-700 text-sm">No wins yet</p>
-          )}
-        </div>
-
-        {/* Biggest Parlay */}
-        <div className="bg-[#0f1115] border border-white/[0.06] rounded-2xl p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <Zap className="h-4 w-4 text-[#FFD700]" />
-            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
-              Biggest Parlay Hit
-            </span>
-          </div>
-          {stats.biggestParlay ? (
-            <div>
-              <p className="text-2xl font-black font-mono text-emerald-400">
-                +${stats.biggestParlay.payout.toFixed(2)}
-              </p>
-              <p className="text-xs text-zinc-500 mt-1 font-mono truncate">
-                {stats.biggestParlay.bet.description || 'Parlay'}
-              </p>
-            </div>
-          ) : (
-            <p className="text-zinc-700 text-sm">No parlay wins yet</p>
-          )}
-        </div>
-      </div>
-
-      {/* Monthly P&L Chart */}
-      {stats.monthlyPnl.length > 0 && (
+      <div className="flex justify-between items-end">
         <div>
-          <SectionTitle>Monthly Profit / Loss</SectionTitle>
-          <div className="bg-[#0f1115] border border-white/[0.06] rounded-2xl p-5">
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={stats.monthlyPnl} barSize={32}>
-                <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.04)" />
-                <XAxis
-                  dataKey="month"
-                  tickLine={false}
-                  axisLine={false}
-                  tick={{ fill: '#52525b', fontSize: 10, fontWeight: 700 }}
-                />
-                <YAxis
-                  tickFormatter={v => `$${v}`}
-                  tickLine={false}
-                  axisLine={false}
-                  tick={{ fill: '#52525b', fontSize: 10, fontFamily: 'monospace' }}
-                  width={60}
-                />
-                <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="profit" radius={[6, 6, 0, 0]}>
-                  {stats.monthlyPnl.map((entry, i) => (
-                    <Cell
-                      key={i}
-                      fill={entry.profit >= 0 ? 'rgba(52,211,153,0.8)' : 'rgba(248,113,113,0.8)'}
-                    />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          <h1 className="text-3xl font-black italic uppercase tracking-tighter">Performance Lab</h1>
+          <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-[0.3em] mt-1">Leg-level accuracy & financial audit</p>
         </div>
-      )}
-
-      {/* Cumulative P&L Line */}
-      {stats.cumulativePnl.length > 1 && (
-        <div>
-          <SectionTitle>Cumulative Profit Over Time</SectionTitle>
-          <div className="bg-[#0f1115] border border-white/[0.06] rounded-2xl p-5">
-            <ResponsiveContainer width="100%" height={200}>
-              <LineChart data={stats.cumulativePnl}>
-                <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.04)" />
-                <XAxis
-                  dataKey="bet"
-                  tickLine={false}
-                  axisLine={false}
-                  tick={{ fill: '#52525b', fontSize: 10 }}
-                  label={{ value: 'Bet #', position: 'insideBottomRight', fill: '#52525b', fontSize: 10 }}
-                />
-                <YAxis
-                  tickFormatter={v => `$${v}`}
-                  tickLine={false}
-                  axisLine={false}
-                  tick={{ fill: '#52525b', fontSize: 10, fontFamily: 'monospace' }}
-                  width={60}
-                />
-                <Tooltip content={<CustomTooltip />} />
-                <Line
-                  type="monotone"
-                  dataKey="profit"
-                  stroke="#FFD700"
-                  strokeWidth={2}
-                  dot={false}
-                  activeDot={{ r: 4, fill: '#FFD700', strokeWidth: 0 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+        <div className="flex bg-[#0f1115] border border-white/5 rounded-lg p-1">
+          {(['day', 'week', 'month'] as Timeframe[]).map(t => (
+            <button 
+              key={t}
+              onClick={() => setTimeframe(t)}
+              className={`px-3 py-1 text-[10px] font-black uppercase rounded ${timeframe === t ? 'bg-[#FFD700] text-black' : 'text-zinc-500'}`}
+            >
+              {t}
+            </button>
+          ))}
         </div>
-      )}
+      </div>
 
-      {/* Two-column: Bet Type Breakdown + Reliable Players */}
+      {/* KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <KpiCard title="Net Profit" value={`$${stats.totalProfit.toFixed(2)}`} color={stats.totalProfit >= 0 ? 'text-emerald-400' : 'text-red-400'} icon={DollarSign} />
+        <KpiCard title="Hit Rate" value={`${stats.winRate.toFixed(1)}%`} color="text-[#FFD700]" icon={Target} />
+        <KpiCard title="ROI" value={`${stats.roi.toFixed(1)}%`} color={stats.roi >= 0 ? 'text-emerald-400' : 'text-red-400'} icon={TrendingUp} />
+        <KpiCard title="Volume" value={`$${stats.totalWagered.toFixed(0)}`} color="text-zinc-400" icon={Zap} sub="Total real-money wager" />
+      </div>
+
+      {/* Main Chart */}
+      <div className="bg-[#0f1115] border border-white/5 rounded-3xl p-6">
+        <div className="flex items-center gap-2 mb-6">
+          <Calendar className="h-4 w-4 text-zinc-500" />
+          <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-500">P&L Trend ({timeframe})</h3>
+        </div>
+        <ResponsiveContainer width="100%" height={250}>
+          <BarChart data={chartData}>
+            <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.03)" />
+            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#52525b', fontSize: 10, fontWeight: 700}} />
+            <YAxis axisLine={false} tickLine={false} tick={{fill: '#52525b', fontSize: 10, fontFamily: 'monospace'}} />
+            <Tooltip cursor={{fill: 'transparent'}} content={({active, payload}) => {
+              if (active && payload?.[0]) {
+                const val = payload[0].value as number;
+                return (
+                  <div className="bg-black border border-white/10 p-2 rounded shadow-xl font-mono text-[10px]">
+                    <span className={val >= 0 ? 'text-emerald-400' : 'text-red-400'}>${val.toFixed(2)}</span>
+                  </div>
+                );
+              }
+              return null;
+            }} />
+            <Bar dataKey="profit" radius={[4, 4, 0, 0]}>
+              {chartData.map((entry, i) => (
+                <Cell key={i} fill={entry.profit >= 0 ? '#10b981' : '#ef4444'} fillOpacity={0.6} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Accuracy & Reliability */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="space-y-4">
+          <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-600">Accuracy by Prop Type</h3>
+          <div className="bg-[#0f1115] border border-white/5 rounded-2xl overflow-hidden">
+            {stats.propAccuracy.map((p: any) => (
+              <div key={p.type} className="flex items-center justify-between p-4 border-b border-white/[0.03] last:border-0">
+                <div>
+                  <p className="text-xs font-bold text-white uppercase">{p.type}</p>
+                  <p className="text-[9px] text-zinc-500 font-mono">{p.total} legs tracked</p>
+                </div>
+                <div className="text-right">
+                  <p className={`text-sm font-black font-mono ${p.winPct >= 60 ? 'text-emerald-400' : 'text-white'}`}>{p.winPct.toFixed(0)}%</p>
+                  <div className="w-24 h-1 bg-white/5 rounded-full mt-1"><div className="h-full bg-[#FFD700] rounded-full" style={{width: `${p.winPct}%`}} /></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
 
-        {/* Bet Type Breakdown */}
-        {stats.betTypes.length > 0 && (
-          <div>
-            <SectionTitle>Bet Types — Win % &amp; Volume</SectionTitle>
-            <div className="bg-[#0f1115] border border-white/[0.06] rounded-2xl overflow-hidden">
-              {stats.betTypes.map((t, i) => (
-                <div
-                  key={t.type}
-                  className="flex items-center gap-3 px-5 py-3 border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02] transition-colors"
-                >
-                  <div className="w-5 text-center">
-                    <span className="text-[10px] font-black text-zinc-700 font-mono">{i + 1}</span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-black text-white uppercase tracking-tight">{t.type}</p>
-                    <div className="mt-1 h-1 bg-white/[0.06] rounded-full overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-[#FFD700]/60"
-                        style={{ width: `${t.winPct}%` }}
-                      />
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="text-sm font-black font-mono text-[#FFD700]">
-                      {t.winPct.toFixed(0)}%
-                    </p>
-                    <p className="text-[10px] text-zinc-600 font-mono">{t.total} bets</p>
+        <div className="space-y-4">
+          <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-600">The Snipers (Most Reliable Players)</h3>
+          <div className="bg-[#0f1115] border border-white/5 rounded-2xl overflow-hidden">
+            {stats.playerReliability.map((p: any) => (
+              <div key={p.name} className="flex items-center justify-between p-4 border-b border-white/[0.03] last:border-0">
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-full bg-zinc-900 border border-white/5 flex items-center justify-center text-[10px] font-black text-[#FFD700]">{p.name[0]}</div>
+                  <div>
+                    <p className="text-xs font-bold text-white uppercase">{p.name}</p>
+                    <p className="text-[9px] text-zinc-500 font-mono">{p.total} legs</p>
                   </div>
                 </div>
-              ))}
-            </div>
+                <p className="text-sm font-black font-mono text-emerald-400">{p.winPct.toFixed(0)}%</p>
+              </div>
+            ))}
           </div>
-        )}
-
-        {/* Most Reliable Players */}
-        {stats.reliablePlayers.length > 0 && (
-          <div>
-            <SectionTitle>Most Reliable Players (min. 3 bets)</SectionTitle>
-            <div className="bg-[#0f1115] border border-white/[0.06] rounded-2xl overflow-hidden">
-              {stats.reliablePlayers.map((p, i) => (
-                <div
-                  key={p.name}
-                  className="flex items-center gap-3 px-5 py-3 border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02] transition-colors"
-                >
-                  <div className="w-5 text-center">
-                    {i === 0
-                      ? <Trophy className="h-3.5 w-3.5 text-[#FFD700]" />
-                      : <span className="text-[10px] font-black text-zinc-700 font-mono">{i + 1}</span>
-                    }
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-white italic uppercase tracking-tight truncate">
-                      {p.name}
-                    </p>
-                    <div className="mt-1 h-1 bg-white/[0.06] rounded-full overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-emerald-400/60"
-                        style={{ width: `${p.winPct}%` }}
-                      />
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="text-sm font-black font-mono text-emerald-400">
-                      {p.winPct.toFixed(0)}%
-                    </p>
-                    <p className="text-[10px] text-zinc-600 font-mono">{p.total} bets</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        </div>
       </div>
 
+      {/* Hall of Fame */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="bg-[#0f1115] border border-white/5 rounded-2xl p-5">
+          <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-600 mb-4 flex items-center gap-2"><Trophy className="h-3 w-3" /> Highest Payouts</h3>
+          {stats.topPayouts.map((b: any, i: number) => (
+            <div key={i} className="flex items-center justify-between py-2 group cursor-default">
+              <span className="text-[10px] font-mono text-zinc-500 group-hover:text-[#FFD700] transition-colors">{b.description || b.player || 'Parlay'}</span>
+              <span className="text-xs font-black text-emerald-400">+${calcProfit(b).toFixed(2)}</span>
+            </div>
+          ))}
+        </div>
+        <div className="bg-[#0f1115] border border-white/5 rounded-2xl p-5">
+          <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-600 mb-4 flex items-center gap-2"><Zap className="h-3 w-3" /> Biggest Parlay Hits</h3>
+          {stats.longestParlays.map((b: any, i: number) => (
+            <div key={i} className="flex items-center justify-between py-2">
+              <span className="text-[10px] font-mono text-zinc-500">{b.legs?.length || 0} Leg Winner</span>
+              <span className="text-xs font-black text-[#FFD700]">{b.odds > 0 ? `+${b.odds}` : b.odds}</span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
