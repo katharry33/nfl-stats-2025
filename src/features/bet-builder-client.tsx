@@ -1,81 +1,198 @@
 'use client';
+// src/features/bet-builder-client.tsx
 
 import { useState, useMemo, useEffect } from 'react';
-import { useAllProps, NormalizedProp } from '@/hooks/useAllProps'; 
+import { useAllProps, NormalizedProp } from '@/hooks/useAllProps';
 import { useBetSlip } from '@/hooks/useBetSlip';
-import BetBuilderTable from '@/components/bets/bet-builder-table'; 
-import { NFLProp } from '@/lib/types';
-import { RefreshCw, Search } from 'lucide-react';
+import BetBuilderTable from '@/components/bets/bet-builder-table';
+import { PropsTable } from '@/components/bets/PropsTable';
+import { BetSlipPanel } from '@/components/bets/BetSlipPanel';
+import { RefreshCw, LayoutGrid, Table2, SlidersHorizontal } from 'lucide-react';
+
+type ViewMode = 'cards' | 'table';
+
+const PROP_TYPE_OPTIONS = [
+  'Passing Yards', 'Rushing Yards', 'Receiving Yards',
+  'Receptions', 'Passing TDs', 'Anytime TD',
+  'Pass Attempts', 'Pass Completions',
+];
 
 export function BetBuilderClient({ initialWeek, season = 2025 }: { initialWeek: number; season?: number }) {
-  const { allProps: rawProps, loading: isLoading, error, fetchProps } = useAllProps();
-  const { isInBetSlip, addToBetSlip, removeFromBetSlip } = useBetSlip(initialWeek, season);
+  const { allProps: rawProps, loading: isLoading, error, propTypes, fetchProps } = useAllProps(initialWeek);
+  const { items, isInBetSlip, addToBetSlip, removeFromBetSlip, clearBetSlip } = useBetSlip(initialWeek, season);
 
+  const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [filters, setFilters] = useState({ search: '', propType: '', team: '' });
+  const [showFilters, setShowFilters] = useState(false);
 
-  // 1. Explicitly type 'p' as NormalizedProp to fix "implicitly has any" errors
   const filteredProps = useMemo(() => {
     let list: NormalizedProp[] = rawProps ?? [];
     const search = filters.search.trim().toLowerCase();
-    
     if (search) {
-      list = list.filter((p: NormalizedProp) =>
-        (p.player || '').toLowerCase().includes(search) ||
-        (p.prop || '').toLowerCase().includes(search)
+      list = list.filter(p =>
+        (p.player ?? '').toLowerCase().includes(search) ||
+        (p.prop ?? '').toLowerCase().includes(search) ||
+        (p.matchup ?? '').toLowerCase().includes(search)
       );
     }
     if (filters.propType) {
-      list = list.filter((p: NormalizedProp) => 
-        (p.prop || '').toLowerCase() === filters.propType.toLowerCase()
-      );
+      list = list.filter(p => (p.prop ?? '').toLowerCase() === filters.propType.toLowerCase());
     }
     if (filters.team) {
-      list = list.filter((p: NormalizedProp) => 
-        (p.team || '').toLowerCase() === filters.team.toLowerCase()
-      );
+      list = list.filter(p => (p.team ?? '').toLowerCase() === filters.team.toLowerCase());
     }
-
-    // 2. Resolve the ID mismatch error (2322)
-    // We use a Type Guard to ensure every prop passed to the table has a string ID.
     return list.filter((p): p is NormalizedProp & { id: string } => !!p.id);
   }, [rawProps, filters]);
 
-  useEffect(() => {
-    fetchProps();
-  }, [fetchProps]);
+  // Unique teams for filter dropdown
+  const teamOptions = useMemo(() => {
+    return Array.from(new Set(rawProps.map(p => p.team).filter(Boolean))).sort() as string[];
+  }, [rawProps]);
+
+  useEffect(() => { fetchProps(); }, [fetchProps]);
+
+  // BetSlipItem has { prop, betAmount, overUnder, odds } — extract prop for the panel
+  const betSlipLegs: NormalizedProp[] = useMemo(() => {
+    return items.map(item => item.prop as unknown as NormalizedProp).filter(Boolean);
+  }, [items]);
 
   return (
-    <div className="space-y-6 p-4 md:p-8 bg-[#060606] text-white">
-      {/* Header & Search UI */}
-      <div className="flex justify-between items-end gap-4">
-        <h1 className="text-4xl font-black italic uppercase tracking-tighter">
-          Market <span className="text-[#FFD700]">Builder</span>
-        </h1>
-        <div className="flex gap-2">
-           <input 
-             className="bg-zinc-900 border border-white/5 rounded-xl px-4 py-2 text-xs"
-             placeholder="Search players..."
-             value={filters.search}
-             onChange={(e) => setFilters(f => ({ ...f, search: e.target.value }))}
-           />
-           <button onClick={() => fetchProps(true)} className="p-2 bg-zinc-900 rounded-xl">
+    <div className="flex h-screen overflow-hidden bg-[#060606] text-white">
+      {/* Main content */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Top bar */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 shrink-0">
+          <div>
+            <h1 className="text-3xl font-black italic uppercase tracking-tighter leading-none">
+              Market <span className="text-[#FFD700]">Builder</span>
+            </h1>
+            <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-[0.2em] mt-1">
+              NFL Week {initialWeek}
+              <span className="text-zinc-800 mx-2">|</span>
+              {isLoading ? 'Loading...' : `${filteredProps.length} props`}
+              {betSlipLegs.length > 0 && (
+                <span className="ml-2 text-[#FFD700]">· {betSlipLegs.length} in slip</span>
+              )}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Search */}
+            <div className="relative">
+              <input
+                className="bg-zinc-900 border border-white/5 rounded-xl px-4 py-2 text-xs w-52 placeholder:text-zinc-700 focus:outline-none focus:border-[#FFD700]/30"
+                placeholder="Search players, props..."
+                value={filters.search}
+                onChange={e => setFilters(f => ({ ...f, search: e.target.value }))}
+              />
+            </div>
+
+            {/* Filter toggle */}
+            <button
+              onClick={() => setShowFilters(v => !v)}
+              className={`p-2 rounded-xl border transition-all ${showFilters ? 'bg-[#FFD700]/10 border-[#FFD700]/30 text-[#FFD700]' : 'bg-zinc-900 border-white/5 text-zinc-500 hover:text-white'}`}
+            >
+              <SlidersHorizontal className="w-4 h-4" />
+            </button>
+
+            {/* View toggle */}
+            <div className="flex bg-zinc-900 border border-white/5 rounded-xl p-1 gap-1">
+              <button
+                onClick={() => setViewMode('table')}
+                className={`p-1.5 rounded-lg transition-all ${viewMode === 'table' ? 'bg-[#FFD700] text-black' : 'text-zinc-500 hover:text-white'}`}
+              >
+                <Table2 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => setViewMode('cards')}
+                className={`p-1.5 rounded-lg transition-all ${viewMode === 'cards' ? 'bg-[#FFD700] text-black' : 'text-zinc-500 hover:text-white'}`}
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Refresh */}
+            <button
+              onClick={() => fetchProps(true)}
+              className="p-2 bg-zinc-900 border border-white/5 rounded-xl text-zinc-500 hover:text-white transition-colors"
+            >
               <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-           </button>
+            </button>
+          </div>
+        </div>
+
+        {/* Filter bar */}
+        {showFilters && (
+          <div className="flex items-center gap-3 px-6 py-3 border-b border-white/5 bg-black/20 shrink-0">
+            <select
+              className="bg-zinc-900 border border-white/5 rounded-xl px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:border-[#FFD700]/30"
+              value={filters.propType}
+              onChange={e => setFilters(f => ({ ...f, propType: e.target.value }))}
+            >
+              <option value="">All Prop Types</option>
+              {(propTypes.length > 0 ? propTypes : PROP_TYPE_OPTIONS).map(pt => (
+                <option key={pt} value={pt}>{pt}</option>
+              ))}
+            </select>
+
+            <select
+              className="bg-zinc-900 border border-white/5 rounded-xl px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:border-[#FFD700]/30"
+              value={filters.team}
+              onChange={e => setFilters(f => ({ ...f, team: e.target.value }))}
+            >
+              <option value="">All Teams</option>
+              {teamOptions.map(t => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+
+            {(filters.propType || filters.team) && (
+              <button
+                onClick={() => setFilters(f => ({ ...f, propType: '', team: '' }))}
+                className="text-[10px] text-zinc-600 hover:text-white uppercase font-bold tracking-widest transition-colors"
+              >
+                Clear filters
+              </button>
+            )}
+          </div>
+        )}
+
+        {error && (
+          <div className="mx-6 mt-4 text-red-500 text-xs uppercase font-bold tracking-widest bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-2">
+            {error}
+          </div>
+        )}
+
+        {/* Props content */}
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          {viewMode === 'table' ? (
+            <PropsTable
+              props={filteredProps}
+              isLoading={isLoading}
+              isInBetSlip={(id: string) => isInBetSlip(id)}
+              onAddToBetSlip={(prop: any) => addToBetSlip(prop)}
+              onRemoveFromBetSlip={(id: string) => removeFromBetSlip(id)}
+            />
+          ) : (
+            <BetBuilderTable
+              props={filteredProps}
+              isLoading={isLoading}
+              isInBetSlip={(id: string) => isInBetSlip(id)}
+              onAddToBetSlip={(prop: any) => addToBetSlip(prop)}
+              onRemoveFromBetSlip={(id: string) => removeFromBetSlip(id)}
+            />
+          )}
         </div>
       </div>
 
-      {error && <div className="text-red-500 text-xs uppercase font-bold">{error}</div>}
-
-      <BetBuilderTable
-        // We cast to any here only because the internal NFLProp 
-        // and NormalizedProp might have slight property mismatches, 
-        // but our Type Guard ensures the 'id' requirement is met.
-        props={filteredProps as any} 
-        isLoading={isLoading}
-        isInBetSlip={isInBetSlip}
-        onAddToBetSlip={(prop) => addToBetSlip(prop as any)}
-        onRemoveFromBetSlip={removeFromBetSlip}
-      />
+      {/* Bet Slip sidebar */}
+      <div className="w-72 shrink-0 border-l border-white/5 overflow-hidden">
+        <BetSlipPanel
+          legs={betSlipLegs}
+          onRemove={removeFromBetSlip}
+          onClear={clearBetSlip}
+        />
+      </div>
     </div>
   );
 }

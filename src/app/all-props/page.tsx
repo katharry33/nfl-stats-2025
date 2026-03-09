@@ -4,32 +4,33 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useBetSlip } from '@/context/betslip-context';
 import { useAllProps } from '@/hooks/useAllProps';
 import type { NormalizedProp } from '@/hooks/useAllProps';
-import { PropsTable } from '@/components/props/props-table';
+import { PropsTable } from '@/components/bets/PropsTable';
 import { ManualEntryModal } from '@/components/bets/manual-entry-modal';
 import { useDebounce } from '@/hooks/use-debounce';
 import {
   Search, RefreshCw, Loader2, Plus, LayoutGrid, TableIcon,
-  ChevronLeft, ChevronRight, X, Filter,
+  ChevronLeft, ChevronRight, X, Filter, Zap
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-// ─── PropCard (existing card view) ───────────────────────────────────────────
+// ─── PropCard (Individual View) ───────────────────────────────────────────
 function PropCard({ prop, onAdd, inSlip }: {
   prop: NormalizedProp; onAdd: (p: NormalizedProp) => void; inSlip: boolean;
 }) {
-  const hasResult = prop.actualResult !== null && prop.actualResult !== '';
+  const hasResult = prop.actualResult !== null && prop.actualResult !== undefined && !p.result;
   const resultNum = hasResult ? parseFloat(String(prop.actualResult)) : null;
+  const lineVal = prop.line ?? 0;
+  
   const hit = resultNum != null && !isNaN(resultNum)
-    ? prop.overUnder?.toLowerCase() === 'over' ? resultNum > prop.line : resultNum < prop.line
+    ? prop.overUnder?.toLowerCase() === 'over' ? resultNum > lineVal : resultNum < lineVal
     : null;
 
   return (
     <div className={`bg-[#0f1115] border rounded-2xl p-4 flex flex-col gap-3 transition-colors hover:border-white/10
       ${inSlip ? 'border-[#FFD700]/30' : 'border-white/[0.06]'}`}>
-      {/* Header */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-white font-black text-sm italic uppercase truncate">{prop.player}</p>
+          <p className="text-white font-black text-sm italic uppercase truncate">{prop.player ?? 'Unknown'}</p>
           <p className="text-zinc-500 text-[10px] font-mono">{prop.matchup || '—'}</p>
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
@@ -44,16 +45,14 @@ function PropCard({ prop, onAdd, inSlip }: {
         </div>
       </div>
 
-      {/* Prop + line */}
       <div className="flex items-center gap-2">
-        <span className="text-zinc-500 text-xs">{prop.prop}</span>
-        <span className="text-white font-mono font-bold text-sm">{prop.line}</span>
+        <span className="text-zinc-500 text-xs">{prop.prop ?? '—'}</span>
+        <span className="text-white font-mono font-bold text-sm">{lineVal}</span>
         <span className={`text-xs font-black uppercase ${
           prop.overUnder?.toLowerCase() === 'over' ? 'text-blue-400' : 'text-orange-400'
         }`}>{prop.overUnder || '—'}</span>
       </div>
 
-      {/* Stats row */}
       <div className="grid grid-cols-3 gap-2">
         {prop.playerAvg != null && (
           <div className="bg-black/30 rounded-xl p-2 text-center">
@@ -65,9 +64,9 @@ function PropCard({ prop, onAdd, inSlip }: {
           <div className="bg-black/30 rounded-xl p-2 text-center">
             <p className="text-[8px] text-zinc-700 uppercase font-black">Hit%</p>
             <p className={`font-mono text-xs font-bold ${
-              Number(prop.seasonHitPct) >= 60 ? 'text-emerald-400' :
-              Number(prop.seasonHitPct) >= 50 ? 'text-[#FFD700]' : 'text-red-400'
-            }`}>{Number(prop.seasonHitPct).toFixed(0)}%</p>
+              Number(prop.seasonHitPct) >= 0.60 ? 'text-emerald-400' :
+              Number(prop.seasonHitPct) >= 0.50 ? 'text-[#FFD700]' : 'text-red-400'
+            }`}>{Number(prop.seasonHitPct * 100).toFixed(0)}%</p>
           </div>
         )}
         {prop.confidenceScore != null && (
@@ -78,7 +77,6 @@ function PropCard({ prop, onAdd, inSlip }: {
         )}
       </div>
 
-      {/* Result */}
       {hasResult && (
         <div className={`flex items-center justify-between px-3 py-2 rounded-xl border text-xs font-bold ${
           hit === true  ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' :
@@ -90,7 +88,6 @@ function PropCard({ prop, onAdd, inSlip }: {
         </div>
       )}
 
-      {/* Add to slip */}
       <button
         onClick={() => onAdd(prop)}
         disabled={inSlip}
@@ -106,7 +103,7 @@ function PropCard({ prop, onAdd, inSlip }: {
   );
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+// ─── Page Component ──────────────────────────────────────────────────────────
 
 type ViewMode = 'cards' | 'table';
 
@@ -126,15 +123,14 @@ export default function AllPropsPage() {
   const [weekFilter,    setWeekFilter]    = useState('');
   const [seasonFilter,  setSeasonFilter]  = useState('all');
   const [showManual,    setShowManual]    = useState(false);
+  const [isEnriching,   setIsEnriching]   = useState(false);
 
-  // Cards pagination
   const [cardPage, setCardPage] = useState(0);
   const CARDS_PER_PAGE = 48;
 
   const debouncedPlayer = useDebounce(playerSearch, 300);
-
-  // Initial load — uses module-level cache if fresh
   const hasLoaded = useRef(false);
+
   useEffect(() => {
     if (!hasLoaded.current) {
       hasLoaded.current = true;
@@ -142,18 +138,16 @@ export default function AllPropsPage() {
     }
   }, [fetchProps]);
 
-  // Reset card page when filters change
   useEffect(() => { setCardPage(0); }, [debouncedPlayer, propFilter, weekFilter, seasonFilter]);
 
-  // Client-side filtering on top of the server-returned set
   const filtered = useMemo(() => {
     let list = allProps;
     if (debouncedPlayer) {
       const lp = debouncedPlayer.toLowerCase();
-      list = list.filter(p => p.player.toLowerCase().includes(lp));
+      list = list.filter(p => (p.player ?? '').toLowerCase().includes(lp));
     }
     if (propFilter) {
-      list = list.filter(p => p.prop.toLowerCase().includes(propFilter.toLowerCase()));
+      list = list.filter(p => (p.prop ?? '').toLowerCase().includes(propFilter.toLowerCase()));
     }
     if (weekFilter) {
       const wn = parseInt(weekFilter);
@@ -171,22 +165,49 @@ export default function AllPropsPage() {
 
   const slipIds = useMemo(() => new Set(selections.map((s: any) => s.propId ?? s.id)), [selections]);
 
+  const handleBulkEnrich = async () => {
+    const currentWeek = weekFilter ? parseInt(weekFilter) : null;
+    if (!currentWeek) {
+      toast.error("Please filter by a specific week to enrich.");
+      return;
+    }
+    
+    setIsEnriching(true);
+    const toastId = toast.loading(`Enriching Week ${currentWeek}...`);
+
+    try {
+      const res = await fetch('/api/enrich', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ week: currentWeek, season: parseInt(seasonFilter === 'all' ? '2025' : seasonFilter) })
+      });
+      
+      const data = await res.json();
+      toast.success(`Successfully enriched ${data.count} props`, { id: toastId });
+      fetchProps(true);
+    } catch (err) {
+      toast.error("Enrichment failed", { id: toastId });
+    } finally {
+      setIsEnriching(false);
+    }
+  };
+
   const handleAddToSlip = useCallback((prop: NormalizedProp) => {
-    const propId = `${prop.id}`;
+    const propId = String(prop.id);
     if (slipIds.has(propId)) {
-      toast(`${prop.player} already in slip`);
+      toast.error(`${prop.player} already in slip`);
       return;
     }
     addLeg({
       id:        propId,
       propId,
-      player:    prop.player,
-      prop:      prop.prop,
-      line:      prop.line,
-      selection: prop.overUnder || 'Over',
-      odds:      -110,
-      matchup:   prop.matchup,
-      team:      prop.team,
+      player:    prop.player ?? 'Unknown',
+      prop:      prop.prop ?? 'Prop',
+      line:      prop.line ?? 0,
+      selection: (prop.overUnder as 'Over' | 'Under') || 'Over',
+      odds:      prop.bestOdds ?? -110,
+      matchup:   prop.matchup ?? '',
+      team:      prop.team ?? '',
       week:      prop.week ?? undefined,
       season:    prop.season ?? undefined,
       gameDate:  prop.gameDate ?? new Date().toISOString(),
@@ -203,14 +224,13 @@ export default function AllPropsPage() {
     <main className="min-h-screen bg-[#060606] text-white p-4 md:p-8">
       <div className="max-w-[1600px] mx-auto space-y-5">
 
-        {/* ── Header ── */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-black tracking-tight text-white italic uppercase">Historical Props</h1>
             <p className="text-zinc-500 text-sm mt-0.5">
               {loading
                 ? 'Loading…'
-                : `${filtered.length.toLocaleString()} of ${totalCount.toLocaleString()} props`}
+                : `${filtered.length.toLocaleString()} of ${(totalCount ?? 0).toLocaleString()} props`}
               {cacheAge != null && !loading && (
                 <span className="text-zinc-700 ml-2 text-[10px] font-mono">cache {cacheAge}s</span>
               )}
@@ -218,7 +238,6 @@ export default function AllPropsPage() {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* View toggle */}
             <div className="flex rounded-xl overflow-hidden border border-white/[0.08]">
               <button onClick={() => setView('cards')}
                 className={`flex items-center gap-1.5 px-3 py-2 text-xs font-black uppercase transition-colors ${
@@ -234,6 +253,15 @@ export default function AllPropsPage() {
               </button>
             </div>
 
+            <button 
+              onClick={handleBulkEnrich} 
+              disabled={isEnriching || !weekFilter}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 hover:bg-blue-500/20 text-xs font-black uppercase transition-colors disabled:opacity-30"
+            >
+              <Zap className={`h-3.5 w-3.5 ${isEnriching ? 'animate-pulse' : ''}`} />
+              Enrich
+            </button>
+
             <button onClick={() => setShowManual(true)}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-white/[0.08] text-zinc-500 hover:text-white text-xs font-black uppercase transition-colors">
               <Plus className="h-3.5 w-3.5" /> Manual
@@ -247,9 +275,7 @@ export default function AllPropsPage() {
           </div>
         </div>
 
-        {/* ── Filters (shared between both views) ── */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 flex-wrap">
-          {/* Player search */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-600" />
             <input
@@ -266,7 +292,6 @@ export default function AllPropsPage() {
             )}
           </div>
 
-          {/* Prop type */}
           <select
             value={propFilter}
             onChange={e => setPropFilter(e.target.value)}
@@ -275,14 +300,12 @@ export default function AllPropsPage() {
             {propTypes.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
 
-          {/* Week */}
           <input
             type="number" min={1} max={22} placeholder="Week #" value={weekFilter}
             onChange={e => setWeekFilter(e.target.value)}
             className="w-20 py-2 px-3 bg-black/40 border border-white/[0.08] text-white text-xs font-mono rounded-xl outline-none focus:ring-1 focus:ring-[#FFD700]/30"
           />
 
-          {/* Season */}
           <div className="flex rounded-xl overflow-hidden border border-white/[0.08]">
             {SEASON_OPTIONS.map(s => (
               <button key={s.value} onClick={() => setSeasonFilter(s.value)}
@@ -301,8 +324,7 @@ export default function AllPropsPage() {
             </button>
           )}
 
-          {/* Slip count */}
-          {selections.length > 0 && (
+          {selections.length > 0 && isInitialized && (
             <a href="/parlay-studio"
               className="ml-auto flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#FFD700] text-black text-xs font-black uppercase hover:bg-[#e6c200] transition-colors">
               Slip ({selections.length}) →
@@ -310,7 +332,6 @@ export default function AllPropsPage() {
           )}
         </div>
 
-        {/* ── Error ── */}
         {error && (
           <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400 flex items-center justify-between">
             <span>{error}</span>
@@ -318,7 +339,6 @@ export default function AllPropsPage() {
           </div>
         )}
 
-        {/* ── Loading skeleton ── */}
         {loading && (
           <div className="flex items-center justify-center py-20 text-zinc-600">
             <Loader2 className="h-6 w-6 animate-spin mr-3" />
@@ -326,18 +346,16 @@ export default function AllPropsPage() {
           </div>
         )}
 
-        {/* ── Table view ── */}
         {!loading && view === 'table' && (
           <PropsTable
             props={filtered}
-            loading={loading}
-            onAddToSlip={handleAddToSlip}
+            isLoading={loading}
+            onAddToBetSlip={handleAddToSlip} // Fix 2322: Rename prop
             onDelete={deleteProp}
             slipIds={slipIds}
           />
         )}
 
-        {/* ── Cards view ── */}
         {!loading && view === 'cards' && (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -346,7 +364,7 @@ export default function AllPropsPage() {
                   key={prop.id}
                   prop={prop}
                   onAdd={handleAddToSlip}
-                  inSlip={slipIds.has(prop.id)}
+                  inSlip={slipIds.has(String(prop.id))}
                 />
               ))}
             </div>
@@ -358,7 +376,6 @@ export default function AllPropsPage() {
               </div>
             )}
 
-            {/* Card pagination */}
             {cardPages > 1 && (
               <div className="flex items-center justify-between pt-2">
                 <button onClick={() => setCardPage(p => Math.max(0, p - 1))} disabled={cardPage === 0}

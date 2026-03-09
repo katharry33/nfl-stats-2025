@@ -13,7 +13,10 @@ export type SortKey =
   | 'odds'   | 'Odds'
   | 'overOdds' | 'underOdds'
   | 'seasonHitPct' | 'projWinPct' | 'avgWinProb'
-  | 'bestEV' | 'bestEdgePct' | 'confidenceScore';
+  | 'bestEV' | 'bestEdgePct' | 'confidenceScore'
+  | 'yardsScore' | 'rankScore' | 'totalScore' | 'scoreDiff'
+  | 'scalingFactor' | 'winProbability' | 'impliedProb'
+  | 'expectedValue' | 'kellyPct' | 'valueIcon';
 
 // ─── BetLeg ───────────────────────────────────────────────────────────────────
 
@@ -117,51 +120,74 @@ export type PropResult = 'won' | 'lost' | 'push' | 'pending';
 
 export interface NFLProp {
   id?:          string;
+
+  // ── Identity ────────────────────────────────────────────────────────────
   player?:      string;
   Player?:      string;
   prop?:        string;
   Prop?:        string;
   line?:        number;
   Line?:        number;
-  odds?:        number;
-  Odds?:        number;
   team?:        string;
   Team?:        string;
   matchup?:     string;
   Matchup?:     string;
   week?:        number;
-  // season accepts both number (scripts) and string (legacy Firestore docs)
+  Week?:        number;
+  /** season accepts both number (scripts) and string (legacy Firestore docs) */
   season?:      number | string;
   gameDate?:    string;
   gameTime?:    string;
   overUnder?:   string;
   overOdds?:    number;
   underOdds?:   number;
-  fdOdds?:      number;
-  dkOdds?:      number;
-  bestOdds?:    number;
-  bestBook?:    string;
-  bestEV?:      number;
-  bestEdgePct?:     number;
-  bestImpliedProb?: number;
-  bestKellyPct?:    number;
-  valueIcon?:       string;
-  confidenceScore?: number;
+
+  // ── Raw odds (from BettingPros scraper) ─────────────────────────────────
+  fdOdds?:      number;   // FanDuel
+  dkOdds?:      number;   // DraftKings
+  odds?:        number;   // generic / normalized alias
+
+  // ── Best odds (picked by pickBestOdds) ──────────────────────────────────
+  bestOdds?:        number;
+  bestBook?:        string;
+
+  // ── Player / defense enrichment (from PFR + TeamRankings) ───────────────
   playerAvg?:         number;
   opponentRank?:      number;
   opponentAvgVsStat?: number;
-  seasonHitPct?:      number;
-  projWinPct?:        number;
-  avgWinProb?:        number;
-  gameStat?:          number;
+  seasonHitPct?:      number;   // T — pre-filled by fillPropHitPercent
+
+  // ── Scoring formula outputs (Google Sheets columns L–AB) ─────────────────
+  yardsScore?:      number;   // L: playerAvg + (opponentAvgVsStat / 100)
+  rankScore?:       number;   // M: (opponentRank / 32) * 10
+  totalScore?:      number;   // N: yardsScore - rankScore
+  scoreDiff?:       number;   // O: totalScore - line
+  scalingFactor?:   number;   // P: scoreDiff / 10
+  winProbability?:  number;   // Q: exp(-scalingFactor)
+  projWinPct?:      number;   // S: 1/(1+winProb) or winProb/(1+winProb)
+  avgWinProb?:      number;   // U: avg(projWinPct, seasonHitPct)
+  impliedProb?:     number;   // W: implied prob from bestOdds
+  bestEdgePct?:     number;   // X: avgWinProb - impliedProb
+  expectedValue?:   number;   // Y: EV
+  kellyPct?:        number;   // Z: Kelly %, capped by prop type
+  valueIcon?:       string;   // AA: 🔥 / ⚠️ / ❄️
+  confidenceScore?: number;   // AB: 0.5*projWinPct + 0.3*seasonHitPct + 0.2*avgWinProb
+
+  // ── Legacy aliases (kept for backwards compat) ───────────────────────────
+  bestEV?:            number;   // alias for expectedValue
+  bestImpliedProb?:   number;   // alias for impliedProb
+  bestKellyPct?:      number;   // alias for kellyPct
+
+  // ── Post-game ────────────────────────────────────────────────────────────
+  gameStat?:      number;
   /** Lowercase result — set by postGame.ts after game completes */
   actualResult?:  PropResult;
+  betAmount?:     number;
+  profitLoss?:    number;
+
+  // ── Meta ─────────────────────────────────────────────────────────────────
   expertPick?:    string;
   expertStars?:   number;
-  /** Set by loadProps.ts / useBetSlip */
-  betAmount?:     number;
-  /** Set by postGame.ts */
-  profitLoss?:    number;
   updatedAt?:     string;
 }
 

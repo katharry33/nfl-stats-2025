@@ -3,13 +3,13 @@
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import type { NFLProp } from '@/lib/types';
 
-const db = () => getFirestore();
+export const adminDb = getFirestore();
 
-const weeklyPropsRef = (season: number, week: number) =>
-  db().collection(`weeklyProps_${season}`).doc(String(week)).collection('props');
+export const weeklyPropsRef = (season: number, week: number) =>
+  adminDb.collection('seasons').doc(String(season)).collection('weeks').doc(String(week)).collection('props');
 
 const allPropsRef = (season: number) =>
-  db().collection(`allProps_${season}`);
+  adminDb.collection(`allProps_${season}`);
 
 function dupKey(p: { player?: string; prop?: string; matchup?: string; week?: number | null }): string {
   return `${p.player ?? ''}||${p.prop ?? ''}||${p.matchup ?? ''}||${p.week ?? ''}`.toLowerCase();
@@ -35,7 +35,7 @@ export async function saveProps(props: NFLProp[]): Promise<number> {
 
   for (let i = 0; i < props.length; i += BATCH_SIZE) {
     const chunk = props.slice(i, i + BATCH_SIZE);
-    const batch = db().batch();
+    const batch = adminDb.batch();
     let batchCount = 0;
     chunk.forEach(prop => {
       const key = dupKey(prop);
@@ -49,7 +49,7 @@ export async function saveProps(props: NFLProp[]): Promise<number> {
     if (batchCount > 0) { await batch.commit(); added += batchCount; }
   }
 
-  console.log(`✅ ${added} props saved to weeklyProps_${season}/${week} (${props.length - added} skipped)`);
+  console.log(`✅ ${added} props saved to seasons/${season}/weeks/${week}/props (${props.length - added} skipped)`);
   return added;
 }
 
@@ -61,13 +61,13 @@ export async function updateProps(
   const ref = weeklyPropsRef(season, week);
   const BATCH_SIZE = 500;
   for (let i = 0; i < updates.length; i += BATCH_SIZE) {
-    const batch = db().batch();
+    const batch = adminDb.batch();
     updates.slice(i, i + BATCH_SIZE).forEach(u => {
       batch.update(ref.doc(u.id), { ...u.data, updatedAt: Timestamp.now() });
     });
     await batch.commit();
   }
-  console.log(`✅ ${updates.length} props updated in weeklyProps_${season}/${week}`);
+  console.log(`✅ ${updates.length} props updated in seasons/${season}/weeks/${week}/props`);
 }
 
 export async function getPropsForWeek(
@@ -104,8 +104,8 @@ export async function movePropsToAllProps(
 
   for (let i = 0; i < weeklySnap.docs.length; i += BATCH_SIZE) {
     const chunk = weeklySnap.docs.slice(i, i + BATCH_SIZE);
-    const writeBatch = db().batch();
-    const deleteBatch = db().batch();
+    const writeBatch = adminDb.batch();
+    const deleteBatch = adminDb.batch();
     let chunkMoved = 0;
 
     chunk.forEach(doc => {
@@ -143,8 +143,30 @@ export async function getAllProps(
   return docs;
 }
 
+
+export async function updateAllProps(
+  season: number,
+  updates: Array<{ id: string; data: Partial<NFLProp> }>
+): Promise<void> {
+  if (!updates.length) return;
+
+  const col = adminDb.collection(`allProps_${season}`);
+  const BATCH_SIZE = 400;
+
+  for (let i = 0; i < updates.length; i += BATCH_SIZE) {
+    const batch = adminDb.batch();
+    const chunk = updates.slice(i, i + BATCH_SIZE);
+    for (const { id, data } of chunk) {
+      batch.set(col.doc(id), { ...data, _updatedAt: new Date().toISOString() }, { merge: true });
+    }
+    await batch.commit();
+    console.log(`   ✅ Batch ${Math.floor(i / BATCH_SIZE) + 1}: ${chunk.length} docs written`);
+  }
+}
+
+
 export async function getPfrIdMap(): Promise<Record<string, string>> {
-  const snapshot = await db().collection('pfr_id_map').get();
+  const snapshot = await adminDb.collection('pfr_id_map').get();
   const map: Record<string, string> = {};
   snapshot.docs.forEach(doc => {
     const data = doc.data() as { playerName: string; pfrId: string };
@@ -154,11 +176,11 @@ export async function getPfrIdMap(): Promise<Record<string, string>> {
 }
 
 export async function savePfrId(playerName: string, pfrId: string): Promise<void> {
-  await db().collection('pfr_id_map').add({ playerName, pfrId, createdAt: Timestamp.now() });
+  await adminDb.collection('pfr_id_map').add({ playerName, pfrId, createdAt: Timestamp.now() });
 }
 
 export async function getPlayerTeamMap(): Promise<Record<string, string>> {
-  const snapshot = await db().collection('player_team_map').get();
+  const snapshot = await adminDb.collection('player_team_map').get();
   const map: Record<string, string> = {};
   snapshot.docs.forEach(doc => {
     const data = doc.data() as { playerName: string; team: string };

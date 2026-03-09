@@ -4,8 +4,14 @@ import { getCurrentNFLWeek } from '@/lib/nfl/getCurrentWeek';
 
 const SEASON = 2025;
 
-export default function BetBuilderPage() {
-  const week = getCurrentNFLWeek(SEASON);
+interface Props {
+  searchParams: { week?: string };
+}
+
+export default function BetBuilderPage({ searchParams }: Props) {
+  const weekParam = searchParams?.week ? parseInt(searchParams.week) : null;
+  const week = weekParam && !isNaN(weekParam) ? weekParam : getCurrentNFLWeek(SEASON);
+
   return (
     <div className="min-h-screen bg-[#060606]">
       <BetBuilderClient initialWeek={week} season={SEASON} />
