@@ -16,6 +16,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
+import { syncResults } from './postGame';
 
 if (!getApps().length) {
   const keyPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;

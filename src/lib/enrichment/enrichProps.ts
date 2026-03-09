@@ -1,5 +1,5 @@
 #!/usr/bin/env tsx
-// src/lib/enrichment/enrichProps.ts — fixed version
+// src/lib/enrichment/enrichProps.ts
 // Pipeline: player avg → defense stats → hit % → scoring formulas
 
 import type { NFLProp } from './types';
@@ -8,6 +8,8 @@ import { fetchSeasonLog, getPfrId, calculateAvg, calculateHitPct } from './pfr';
 import { fetchAllDefenseStats, lookupDefenseStats, lookupComboDefenseStats } from './defense';
 import { computeScoring, pickBestOdds } from './scoring';
 import { getPropsForWeek, updateProps, getPfrIdMap, savePfrId, getPlayerTeamMap } from './firestore';
+
+export type DefenseMap = Record<string, Record<string, { rank: number; avg: number }>>;
 
 export interface EnrichOptions {
   week:          number;

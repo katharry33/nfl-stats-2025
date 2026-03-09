@@ -18,18 +18,25 @@ import { getPropsForWeek, updateProps, getPfrIdMap, movePropsToAllProps } from '
 import { fetchSeasonLog, getPfrId, getStatFromGame } from '@/lib/enrichment/pfr';
 import { normalizeProp, splitComboProp } from '@/lib/enrichment/normalize';
 import { determineResult, calculateProfitLoss } from '@/lib/enrichment/scoring';
-import type { NFLProp } from '@/lib/types';
+import type { NFLProp, PropResult } from '@/lib/types';
 import type { PFRGame } from '@/lib/enrichment/types';
 
 async function main() {
   const weekArg   = process.argv.find((a: string) => a.startsWith('--week='))?.split('=')[1]   ?? process.env.WEEK;
   const seasonArg = process.argv.find((a: string) => a.startsWith('--season='))?.split('=')[1] ?? process.env.SEASON ?? '2025';
 
-  if (!weekArg) { console.error('Usage: tsx scripts/postGame.ts --week=14'); process.exit(1); }
+  if (!weekArg) { 
+    console.error('Usage: tsx scripts/postGame.ts --week=14'); 
+    process.exit(1); 
+  }
 
   const week   = parseInt(weekArg, 10);
   const season = parseInt(seasonArg, 10);
-  if (isNaN(week) || isNaN(season)) { console.error('Invalid week or season'); process.exit(1); }
+  
+  if (isNaN(week) || isNaN(season)) { 
+    console.error('Invalid week or season'); 
+    process.exit(1); 
+  }
 
   console.log(`\n🏆 Post-Game Processing — Week ${week}, Season ${season}`);
   console.log('='.repeat(50));
@@ -42,40 +49,48 @@ async function main() {
   ]);
 
   console.log(`📋 ${props.length} props to process`);
-  if (!props.length) { console.log('Nothing to do.'); process.exit(0); }
+  if (!props.length) { 
+    console.log('Nothing to do.'); 
+    process.exit(0); 
+  }
 
-  // ── Prefetch PFR logs ──────────────────────────────────────────────────────
   const pfrCache = new Map<string, PFRGame[]>();
 
   async function getLogs(playerName: string): Promise<PFRGame[]> {
     if (pfrCache.has(playerName)) return pfrCache.get(playerName)!;
     const pfrId = await getPfrId(playerName, pfrIdMap);
-    if (!pfrId) { pfrCache.set(playerName, []); return []; }
+    if (!pfrId) { 
+      pfrCache.set(playerName, []); 
+      return []; 
+    }
     const logs = await fetchSeasonLog(playerName, pfrId, pfrSeason);
     pfrCache.set(playerName, logs);
     return logs;
   }
 
-  // Filter to props with a player name, prefetch all in parallel
   const validProps = props.filter((p): p is NFLProp & { id: string; player: string } =>
-    !!p.id && !!p.player
+    !!p.id && !!p.player && p.actualResult === 'pending' // only process pending props
   );
 
   const playerSet = new Set(validProps.map(p => p.player));
   console.log(`Fetching PFR data for ${playerSet.size} unique players...`);
   await Promise.all(Array.from(playerSet).map(player => getLogs(player)));
 
-  // ── Pass 1: Standard props ─────────────────────────────────────────────────
   const gameStatMap = new Map<string, number>();
   const updates: Array<{ id: string; season: number; week: number; data: Partial<NFLProp> }> = [];
 
+  // ── PASS 1: Standard Props ────────────────────────────────────────────────
   for (const prop of validProps) {
     const propNorm = normalizeProp(prop.prop ?? '');
     if (propNorm.includes('+')) continue;
 
     const logs = await getLogs(prop.player);
-    const game = logs.find((g: PFRGame) => g.week === week);
-    if (!game) { console.warn(`⚠️  No game: ${prop.player} Week ${week}`); continue; }
+    const game = logs.find((g: PFRGame) => Number(g.week) === week);
+    
+    if (!game) { 
+      console.warn(`⚠️  No game found for ${prop.player} in Week ${week}`); 
+      continue; 
+    }
 
     const stat = getStatFromGame(game, propNorm);
     if (stat === null) continue;
@@ -84,22 +99,19 @@ async function main() {
 
     const update: Partial<NFLProp> = { gameStat: stat };
 
-    if (prop.overUnder) {
-      const result = determineResult(stat, prop.line ?? 0, prop.overUnder);
+    if (prop.overUnder && prop.line != null) {
+      const result = determineResult(stat, prop.line, prop.overUnder);
       update.actualResult = result;
+      
       if (prop.betAmount != null && prop.bestOdds != null) {
         update.profitLoss = calculateProfitLoss(result, prop.betAmount, prop.bestOdds);
       }
     }
 
-    updates.push({ id: prop.id, season, week, data: update });
+    updates.push({ id: prop.id, season: season, week: week, data: update });
   }
 
-  console.log(`✅ Pass 1 (standard): ${updates.length} props`);
-
-  // ── Pass 2: Combo props ────────────────────────────────────────────────────
-  let comboCount = 0;
-
+  // ── PASS 2: Combo Props ───────────────────────────────────────────────────
   for (const prop of validProps) {
     const propNorm = normalizeProp(prop.prop ?? '');
     if (!propNorm.includes('+')) continue;
@@ -116,39 +128,36 @@ async function main() {
 
     const update: Partial<NFLProp> = { gameStat: combinedStat };
 
-    if (prop.overUnder) {
-      const result = determineResult(combinedStat, prop.line ?? 0, prop.overUnder);
+    if (prop.overUnder && prop.line != null) {
+      const result = determineResult(combinedStat, prop.line, prop.overUnder);
       update.actualResult = result;
       if (prop.betAmount != null && prop.bestOdds != null) {
         update.profitLoss = calculateProfitLoss(result, prop.betAmount, prop.bestOdds);
       }
     }
 
-    updates.push({ id: prop.id, season, week, data: update });
-    comboCount++;
+    updates.push({ id: prop.id, season: season, week: week, data: update });
   }
-
-  console.log(`✅ Pass 2 (combos): ${comboCount} props`);
 
   if (updates.length > 0) {
     await updateProps(updates);
-    console.log(`✅ Results written to weeklyProps_${season}/${week}`);
+    console.log(`✅ Results written for ${updates.length} props`);
   }
 
-  // ── Move to allProps_{season} ──────────────────────────────────────────────
-  console.log(`\n📦 Moving to allProps_${season}...`);
+  // ── Finalization: Move to Archive ─────────────────────────────────────────
+  console.log(`\n📦 Archiving to allProps_${season}...`);
   const { moved, skipped } = await movePropsToAllProps(season, week);
 
-  // ── Summary ───────────────────────────────────────────────────────────────
   const wins   = updates.filter(u => u.data.actualResult === 'won').length;
   const losses = updates.filter(u => u.data.actualResult === 'lost').length;
-  const pushes = updates.filter(u => u.data.actualResult === 'push').length;
 
   console.log('\n' + '='.repeat(50));
-  console.log(`✅ Done`);
-  console.log(`   📊 W: ${wins} | L: ${losses} | P: ${pushes}`);
-  console.log(`   📦 Moved: ${moved} → allProps_${season} | Skipped: ${skipped} duplicates`);
-  console.log(`   🗑️  weeklyProps_${season}/${week} cleared`);
+  console.log(`✅ DONE`);
+  console.log(`📊 Record: ${wins}W - ${losses}L`);
+  console.log(`📦 Archive: ${moved} moved | ${skipped} skipped`);
 }
 
-main().catch(err => { console.error('❌', err); process.exit(1); });
+main().catch(err => { 
+  console.error('❌ Error during post-game processing:', err); 
+  process.exit(1); 
+});

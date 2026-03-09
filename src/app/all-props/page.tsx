@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useBetSlip } from '@/context/betslip-context';
+import { useBetSlip } from '@/hooks/useBetSlip';
 import { useAllProps } from '@/hooks/useAllProps';
 import type { NormalizedProp } from '@/hooks/useAllProps';
 import { PropsTable } from '@/components/bets/PropsTable';
@@ -17,11 +17,11 @@ import { toast } from 'sonner';
 function PropCard({ prop, onAdd, inSlip }: {
   prop: NormalizedProp; onAdd: (p: NormalizedProp) => void; inSlip: boolean;
 }) {
-  const hasResult = prop.actualResult !== null && prop.actualResult !== undefined && !p.result;
-  const resultNum = hasResult ? parseFloat(String(prop.actualResult)) : null;
+  const hasResult = prop.actualResult != null && prop.actualResult !== 'pending';
+  const resultNum = hasResult && prop.gameStat != null ? prop.gameStat : null;
   const lineVal = prop.line ?? 0;
   
-  const hit = resultNum != null && !isNaN(resultNum)
+  const hit = resultNum != null
     ? prop.overUnder?.toLowerCase() === 'over' ? resultNum > lineVal : resultNum < lineVal
     : null;
 
@@ -84,7 +84,7 @@ function PropCard({ prop, onAdd, inSlip }: {
           'bg-white/[0.03] border-white/[0.06] text-zinc-400'
         }`}>
           <span>Result</span>
-          <span className="font-mono">{prop.actualResult}{hit != null ? (hit ? ' ✓' : ' ✗') : ''}</span>
+          <span className="font-mono">{prop.gameStat}{hit != null ? (hit ? ' ✓' : ' ✗') : ''}</span>
         </div>
       )}
 
@@ -102,6 +102,7 @@ function PropCard({ prop, onAdd, inSlip }: {
     </div>
   );
 }
+
 
 // ─── Page Component ──────────────────────────────────────────────────────────
 
@@ -163,7 +164,7 @@ export default function AllPropsPage() {
   const cardPages  = Math.ceil(filtered.length / CARDS_PER_PAGE);
   const cardSlice  = filtered.slice(cardPage * CARDS_PER_PAGE, (cardPage + 1) * CARDS_PER_PAGE);
 
-  const slipIds = useMemo(() => new Set(selections.map((s: any) => s.propId ?? s.id)), [selections]);
+  const slipIds = useMemo(() => new Set(selections.map((s: any) => String(s.propId ?? s.id))), [selections]);
 
   const handleBulkEnrich = async () => {
     const currentWeek = weekFilter ? parseInt(weekFilter) : null;
@@ -350,7 +351,7 @@ export default function AllPropsPage() {
           <PropsTable
             props={filtered}
             isLoading={loading}
-            onAddToBetSlip={handleAddToSlip} // Fix 2322: Rename prop
+            onAddToBetSlip={handleAddToSlip}
             onDelete={deleteProp}
             slipIds={slipIds}
           />

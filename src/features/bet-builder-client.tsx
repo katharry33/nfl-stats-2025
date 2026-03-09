@@ -7,7 +7,7 @@ import { useBetSlip } from '@/hooks/useBetSlip';
 import BetBuilderTable from '@/components/bets/bet-builder-table';
 import { PropsTable } from '@/components/bets/PropsTable';
 import { BetSlipPanel } from '@/components/bets/BetSlipPanel';
-import { RefreshCw, LayoutGrid, Table2, SlidersHorizontal } from 'lucide-react';
+import { RefreshCw, LayoutGrid, Table2, SlidersHorizontal, Trash2 } from 'lucide-react';
 
 type ViewMode = 'cards' | 'table';
 
@@ -18,43 +18,40 @@ const PROP_TYPE_OPTIONS = [
 ];
 
 export function BetBuilderClient({ initialWeek, season = 2025 }: { initialWeek: number; season?: number }) {
-  const { allProps: rawProps, loading: isLoading, error, propTypes, fetchProps } = useAllProps(initialWeek);
-  const { items, isInBetSlip, addToBetSlip, removeFromBetSlip, clearBetSlip } = useBetSlip(initialWeek, season);
-
-  const [viewMode, setViewMode] = useState<ViewMode>('table');
-  const [filters, setFilters] = useState({ search: '', propType: '', team: '' });
-  const [showFilters, setShowFilters] = useState(false);
-
-  const filteredProps = useMemo(() => {
-    let list: NormalizedProp[] = rawProps ?? [];
-    const search = filters.search.trim().toLowerCase();
-    if (search) {
-      list = list.filter(p =>
-        (p.player ?? '').toLowerCase().includes(search) ||
-        (p.prop ?? '').toLowerCase().includes(search) ||
-        (p.matchup ?? '').toLowerCase().includes(search)
-      );
-    }
-    if (filters.propType) {
-      list = list.filter(p => (p.prop ?? '').toLowerCase() === filters.propType.toLowerCase());
-    }
-    if (filters.team) {
-      list = list.filter(p => (p.team ?? '').toLowerCase() === filters.team.toLowerCase());
-    }
-    return list.filter((p): p is NormalizedProp & { id: string } => !!p.id);
-  }, [rawProps, filters]);
-
-  // Unique teams for filter dropdown
-  const teamOptions = useMemo(() => {
-    return Array.from(new Set(rawProps.map(p => p.team).filter(Boolean))).sort() as string[];
-  }, [rawProps]);
-
-  useEffect(() => { fetchProps(); }, [fetchProps]);
-
-  // BetSlipItem has { prop, betAmount, overUnder, odds } — extract prop for the panel
-  const betSlipLegs: NormalizedProp[] = useMemo(() => {
-    return items.map(item => item.prop as unknown as NormalizedProp).filter(Boolean);
-  }, [items]);
+    const { allProps: rawProps, loading: isLoading, error, propTypes, fetchProps, deleteProp } = useAllProps(initialWeek);
+    const { items, selections, addLeg, removeLeg, clear, isInSlip } = useBetSlip();
+  
+    const [viewMode, setViewMode] = useState<ViewMode>('table');
+    const [filters, setFilters] = useState({ search: '', propType: '', team: '' });
+    const [showFilters, setShowFilters] = useState(false);
+  
+    const filteredProps = useMemo(() => {
+      let list: NormalizedProp[] = rawProps ?? [];
+      const search = filters.search.trim().toLowerCase();
+      if (search) {
+        list = list.filter(p =>
+          (p.player ?? '').toLowerCase().includes(search) ||
+          (p.prop ?? '').toLowerCase().includes(search) ||
+          (p.matchup ?? '').toLowerCase().includes(search)
+        );
+      }
+      if (filters.propType) {
+        list = list.filter(p => (p.prop ?? '').toLowerCase() === filters.propType.toLowerCase());
+      }
+      if (filters.team) {
+        list = list.filter(p => (p.team ?? '').toLowerCase() === filters.team.toLowerCase());
+      }
+      return list.filter((p): p is NormalizedProp & { id: string } => !!p.id);
+    }, [rawProps, filters]);
+  
+    // Unique teams for filter dropdown
+    const teamOptions = useMemo(() => {
+      return Array.from(new Set(rawProps.map(p => p.team).filter(Boolean))).sort() as string[];
+    }, [rawProps]);
+  
+    useEffect(() => { fetchProps(); }, [fetchProps]);
+    
+    const slipIds = useMemo(() => new Set(selections.map(s => s.propId)), [selections]);
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#060606] text-white">
@@ -70,8 +67,8 @@ export function BetBuilderClient({ initialWeek, season = 2025 }: { initialWeek: 
               NFL Week {initialWeek}
               <span className="text-zinc-800 mx-2">|</span>
               {isLoading ? 'Loading...' : `${filteredProps.length} props`}
-              {betSlipLegs.length > 0 && (
-                <span className="ml-2 text-[#FFD700]">· {betSlipLegs.length} in slip</span>
+              {selections.length > 0 && (
+                <span className="ml-2 text-[#FFD700]">· {selections.length} in slip</span>
               )}
             </p>
           </div>
@@ -165,32 +162,23 @@ export function BetBuilderClient({ initialWeek, season = 2025 }: { initialWeek: 
 
         {/* Props content */}
         <div className="flex-1 overflow-y-auto px-6 py-4">
-          {viewMode === 'table' ? (
             <PropsTable
               props={filteredProps}
               isLoading={isLoading}
-              isInBetSlip={(id: string) => isInBetSlip(id)}
-              onAddToBetSlip={(prop: any) => addToBetSlip(prop)}
-              onRemoveFromBetSlip={(id: string) => removeFromBetSlip(id)}
+              onAddToBetSlip={(prop: any) => addLeg(prop)}
+              onDelete={deleteProp} 
+              slipIds={slipIds}
             />
-          ) : (
-            <BetBuilderTable
-              props={filteredProps}
-              isLoading={isLoading}
-              isInBetSlip={(id: string) => isInBetSlip(id)}
-              onAddToBetSlip={(prop: any) => addToBetSlip(prop)}
-              onRemoveFromBetSlip={(id: string) => removeFromBetSlip(id)}
-            />
-          )}
         </div>
       </div>
 
       {/* Bet Slip sidebar */}
-      <div className="w-72 shrink-0 border-l border-white/5 overflow-hidden">
+      <div className="w-96 shrink-0 border-l border-white/5 overflow-hidden">
         <BetSlipPanel
-          legs={betSlipLegs}
-          onRemove={removeFromBetSlip}
-          onClear={clearBetSlip}
+          selections={selections}
+          onRemove={removeLeg}
+          onClear={clear}
+          week={initialWeek}
         />
       </div>
     </div>

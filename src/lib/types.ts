@@ -3,7 +3,7 @@
 // ─── Shared Primitives ────────────────────────────────────────────────────────
 export type BetStatus = 'pending' | 'won' | 'lost' | 'void' | 'cashed';
 export type BetType   = 'Single' | 'Parlay';
-export type DefenseMap = Record<string, { rank: number; avg: number }>;
+export type DefenseMap = Record<string, Record<string, { rank: number; avg: number }>>;
 export type SortDir = 'asc' | 'desc';
 export type SortKey =
   | 'player' | 'Player'
