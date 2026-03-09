@@ -1,12 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useBetSlip } from '@/hooks/useBetSlip';
 import { useAllProps } from '@/hooks/useAllProps';
 import type { NormalizedProp } from '@/hooks/useAllProps';
 import { PropsTable } from '@/components/bets/PropsTable';
 import { ManualEntryModal } from '@/components/bets/manual-entry-modal';
-import { useDebounce } from '@/hooks/use-debounce';
 import {
   Search, RefreshCw, Loader2, Plus, LayoutGrid, TableIcon,
   ChevronLeft, ChevronRight, X, Filter, Zap
@@ -119,33 +118,30 @@ export default function AllPropsPage() {
   const { selections, addLeg, isInitialized } = useBetSlip();
 
   const [view,          setView]          = useState<ViewMode>('cards');
-  const [playerSearch,  setPlayerSearch]  = useState('');
+  const [searchTerm,    setSearchTerm]    = useState('');
   const [propFilter,    setPropFilter]    = useState('');
   const [weekFilter,    setWeekFilter]    = useState('');
   const [seasonFilter,  setSeasonFilter]  = useState('all');
   const [showManual,    setShowManual]    = useState(false);
   const [isEnriching,   setIsEnriching]   = useState(false);
+  const [propLegs,      setPropLegs]      = useState<NormalizedProp[]>([]);
 
   const [cardPage, setCardPage] = useState(0);
   const CARDS_PER_PAGE = 48;
 
-  const debouncedPlayer = useDebounce(playerSearch, 300);
-  const hasLoaded = useRef(false);
-
   useEffect(() => {
-    if (!hasLoaded.current) {
-      hasLoaded.current = true;
-      fetchProps();
-    }
+    fetchProps();
   }, [fetchProps]);
 
-  useEffect(() => { setCardPage(0); }, [debouncedPlayer, propFilter, weekFilter, seasonFilter]);
+  useEffect(() => {
+    setCardPage(0);
+  }, [propLegs]);
 
-  const filtered = useMemo(() => {
+  const handleSearch = () => {
     let list = allProps;
-    if (debouncedPlayer) {
-      const lp = debouncedPlayer.toLowerCase();
-      list = list.filter(p => (p.player ?? '').toLowerCase().includes(lp));
+    if (searchTerm) {
+      const ls = searchTerm.toLowerCase();
+      list = list.filter(p => (p.player ?? '').toLowerCase().includes(ls));
     }
     if (propFilter) {
       list = list.filter(p => (p.prop ?? '').toLowerCase().includes(propFilter.toLowerCase()));
@@ -158,11 +154,20 @@ export default function AllPropsPage() {
       const sn = parseInt(seasonFilter);
       list = list.filter(p => p.season === sn);
     }
-    return list;
-  }, [allProps, debouncedPlayer, propFilter, weekFilter, seasonFilter]);
+    setPropLegs(list);
+    fetchProps(); 
+  };
+  
+  const handleReset = () => {
+    setSearchTerm('');
+    setPropFilter('');
+    setWeekFilter('');
+    setSeasonFilter('all');
+    setPropLegs([]);
+  };
 
-  const cardPages  = Math.ceil(filtered.length / CARDS_PER_PAGE);
-  const cardSlice  = filtered.slice(cardPage * CARDS_PER_PAGE, (cardPage + 1) * CARDS_PER_PAGE);
+  const cardPages  = Math.ceil(propLegs.length / CARDS_PER_PAGE);
+  const cardSlice  = propLegs.slice(cardPage * CARDS_PER_PAGE, (cardPage + 1) * CARDS_PER_PAGE);
 
   const slipIds = useMemo(() => new Set(selections.map((s: any) => String(s.propId ?? s.id))), [selections]);
 
@@ -174,20 +179,34 @@ export default function AllPropsPage() {
     }
     
     setIsEnriching(true);
-    const toastId = toast.loading(`Enriching Week ${currentWeek}...`);
-
+    const toastId = toast.loading(`Enriching Week ${currentWeek} and updating Betting Log...`);
+  
     try {
       const res = await fetch('/api/enrich', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ week: currentWeek, season: parseInt(seasonFilter === 'all' ? '2025' : seasonFilter) })
+        body: JSON.stringify({ 
+          week: currentWeek, 
+          season: parseInt(seasonFilter === 'all' ? '2025' : seasonFilter) 
+        })
       });
       
+      if (!res.ok) throw new Error('Enrichment API failed');
+  
       const data = await res.json();
-      toast.success(`Successfully enriched ${data.count} props`, { id: toastId });
-      fetchProps(true);
+      
+      // SUCCESS: Force a hard refresh of the props data and the betting log
+      toast.success(`Enriched ${data.count} props. Updating logs...`, { id: toastId });
+      
+      // This triggers useAllProps to re-pull from Firestore
+      await fetchProps(true); 
+      
+      // Reset local display list to show the newly enriched data
+      handleSearch(); 
+  
     } catch (err) {
-      toast.error("Enrichment failed", { id: toastId });
+      console.error(err);
+      toast.error("Enrichment failed. Check server logs.", { id: toastId });
     } finally {
       setIsEnriching(false);
     }
@@ -219,8 +238,6 @@ export default function AllPropsPage() {
     });
   }, [addLeg, slipIds]);
 
-  const activeFilterCount = [playerSearch, propFilter, weekFilter, seasonFilter !== 'all'].filter(Boolean).length;
-
   return (
     <main className="min-h-screen bg-[#060606] text-white p-4 md:p-8">
       <div className="max-w-[1600px] mx-auto space-y-5">
@@ -231,7 +248,7 @@ export default function AllPropsPage() {
             <p className="text-zinc-500 text-sm mt-0.5">
               {loading
                 ? 'Loading…'
-                : `${filtered.length.toLocaleString()} of ${(totalCount ?? 0).toLocaleString()} props`}
+                : `${propLegs.length.toLocaleString()} of ${(totalCount ?? 0).toLocaleString()} props shown`}
               {cacheAge != null && !loading && (
                 <span className="text-zinc-700 ml-2 text-[10px] font-mono">cache {cacheAge}s</span>
               )}
@@ -276,61 +293,70 @@ export default function AllPropsPage() {
           </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 flex-wrap">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-600" />
-            <input
-              placeholder="Search player…"
-              value={playerSearch}
-              onChange={e => setPlayerSearch(e.target.value)}
-              className="pl-9 pr-8 py-2 w-48 bg-black/40 border border-white/[0.08] text-white text-xs font-mono rounded-xl outline-none focus:ring-1 focus:ring-[#FFD700]/30 placeholder:text-zinc-700"
+        <div className="flex flex-wrap items-end gap-3 bg-slate-900/50 p-4 rounded-xl border border-slate-800">
+          <div className="space-y-1">
+            <label className="text-[10px] text-slate-500 font-bold uppercase ml-1">Player</label>
+            <input 
+              value={searchTerm} 
+              onChange={e => setSearchTerm(e.target.value)}
+              className="bg-slate-950 border border-slate-700 text-white text-xs px-3 py-2 rounded-lg outline-none focus:border-emerald-500"
+              placeholder="Search Player..."
             />
-            {playerSearch && (
-              <button onClick={() => setPlayerSearch('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-white">
-                <X className="h-3 w-3" />
-              </button>
-            )}
           </div>
 
-          <select
-            value={propFilter}
-            onChange={e => setPropFilter(e.target.value)}
-            className="py-2 px-3 bg-black/40 border border-white/[0.08] text-zinc-300 text-xs font-mono rounded-xl outline-none focus:ring-1 focus:ring-[#FFD700]/30">
-            <option value="">All Props</option>
-            {propTypes.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-
-          <input
-            type="number" min={1} max={22} placeholder="Week #" value={weekFilter}
-            onChange={e => setWeekFilter(e.target.value)}
-            className="w-20 py-2 px-3 bg-black/40 border border-white/[0.08] text-white text-xs font-mono rounded-xl outline-none focus:ring-1 focus:ring-[#FFD700]/30"
-          />
-
-          <div className="flex rounded-xl overflow-hidden border border-white/[0.08]">
-            {SEASON_OPTIONS.map(s => (
-              <button key={s.value} onClick={() => setSeasonFilter(s.value)}
-                className={`px-2.5 py-2 text-[9px] font-black uppercase whitespace-nowrap transition-colors ${
-                  seasonFilter === s.value ? 'bg-[#FFD700]/20 text-[#FFD700]' : 'bg-black/40 text-zinc-600 hover:text-zinc-400'
-                }`}>
-                {s.label}
-              </button>
-            ))}
+          <div className="space-y-1">
+            <label className="text-[10px] text-slate-500 font-bold uppercase ml-1">Prop</label>
+            <select 
+              value={propFilter} 
+              onChange={e => setPropFilter(e.target.value)}
+              className="bg-slate-950 border border-slate-700 text-white text-xs px-3 py-2 rounded-lg outline-none focus:border-emerald-500 h-[34px]"
+            >
+              <option value="">All Props</option>
+              {propTypes.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+          
+          <div className="space-y-1">
+            <label className="text-[10px] text-slate-500 font-bold uppercase ml-1">Week</label>
+            <input 
+              type="number"
+              min="1"
+              max="22"
+              value={weekFilter} 
+              onChange={e => setWeekFilter(e.target.value)}
+              className="bg-slate-950 border border-slate-700 text-white text-xs px-3 py-2 rounded-lg outline-none focus:border-emerald-500"
+              placeholder="Week #"
+            />
           </div>
 
-          {activeFilterCount > 0 && (
-            <button onClick={() => { setPlayerSearch(''); setPropFilter(''); setWeekFilter(''); setSeasonFilter('all'); }}
-              className="flex items-center gap-1 text-[9px] text-zinc-600 hover:text-white font-black uppercase transition-colors">
-              <X className="h-3 w-3" /> Clear all
+          <div className="space-y-1">
+            <label className="text-[10px] text-slate-500 font-bold uppercase ml-1">Season</label>
+            <div className="flex rounded-lg overflow-hidden border border-slate-700 h-[34px]">
+              {SEASON_OPTIONS.map(s => (
+                  <button key={s.value} onClick={() => setSeasonFilter(s.value)}
+                  className={`px-2.5 py-2 text-[9px] font-bold uppercase whitespace-nowrap transition-colors ${
+                      seasonFilter === s.value ? 'bg-emerald-600 text-white' : 'bg-slate-950 text-slate-400 hover:bg-slate-800'
+                  }`}>
+                  {s.label}
+                  </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <button 
+              onClick={handleSearch}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2 rounded-lg text-xs font-bold transition-colors"
+            >
+              SEARCH
             </button>
-          )}
-
-          {selections.length > 0 && isInitialized && (
-            <a href="/parlay-studio"
-              className="ml-auto flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#FFD700] text-black text-xs font-black uppercase hover:bg-[#e6c200] transition-colors">
-              Slip ({selections.length}) →
-            </a>
-          )}
+            <button 
+              onClick={handleReset}
+              className="bg-slate-800 hover:bg-slate-700 text-slate-400 px-4 py-2 rounded-lg text-xs font-bold transition-colors"
+            >
+              RESET
+            </button>
+          </div>
         </div>
 
         {error && (
@@ -340,7 +366,7 @@ export default function AllPropsPage() {
           </div>
         )}
 
-        {loading && (
+        {loading && propLegs.length === 0 && (
           <div className="flex items-center justify-center py-20 text-zinc-600">
             <Loader2 className="h-6 w-6 animate-spin mr-3" />
             <span className="text-sm font-black uppercase italic">Loading props…</span>
@@ -349,7 +375,7 @@ export default function AllPropsPage() {
 
         {!loading && view === 'table' && (
           <PropsTable
-            props={filtered}
+            props={propLegs}
             isLoading={loading}
             onAddToBetSlip={handleAddToSlip}
             onDelete={deleteProp}
@@ -374,6 +400,7 @@ export default function AllPropsPage() {
               <div className="flex flex-col items-center justify-center py-20 text-zinc-700">
                 <Filter className="h-10 w-10 mb-3" />
                 <p className="text-sm font-black uppercase italic">No props match filters</p>
+                <p className="text-xs text-zinc-500">Try changing your search criteria</p>
               </div>
             )}
 
@@ -384,7 +411,7 @@ export default function AllPropsPage() {
                   <ChevronLeft className="h-3.5 w-3.5" /> Prev
                 </button>
                 <span className="text-zinc-600 text-[10px] font-mono">
-                  {cardPage * CARDS_PER_PAGE + 1}–{Math.min((cardPage + 1) * CARDS_PER_PAGE, filtered.length)} of {filtered.length.toLocaleString()}
+                  {cardPage * CARDS_PER_PAGE + 1}–{Math.min((cardPage + 1) * CARDS_PER_PAGE, propLegs.length)} of {propLegs.length.toLocaleString()}
                 </span>
                 <button onClick={() => setCardPage(p => Math.min(cardPages - 1, p + 1))} disabled={cardPage === cardPages - 1}
                   className="flex items-center gap-1 px-4 py-2 rounded-xl border border-white/[0.08] text-zinc-500 hover:text-white text-xs font-black uppercase disabled:opacity-30 transition-colors">

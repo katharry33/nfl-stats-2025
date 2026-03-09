@@ -1,15 +1,30 @@
 // src/lib/enrichment/firestore.ts
 
-import { getFirestore, Timestamp } from 'firebase-admin/firestore';
+import { getFirestore, Timestamp, Firestore } from 'firebase-admin/firestore';
+import { adminDb } from '@/lib/firebase/admin'
 import type { NFLProp } from '@/lib/types';
 
-export const adminDb = getFirestore();
+// Use a getter or a helper function to ensure DB is initialized
+let _db: Firestore;
 
-export const weeklyPropsRef = (season: number, week: number) =>
-  adminDb.collection('seasons').doc(String(season)).collection('weeks').doc(String(week)).collection('props');
+const getDb = async (): Promise<Firestore> => {
+  if (!_db) {
+    await adminDb ; // Wait for the app to initialize
+    _db = getFirestore();
+  }
+  return _db;
+};
 
-const allPropsRef = (season: number) =>
-  adminDb.collection(`allProps_${season}`);
+// Re-map your existing refs to use the dynamic DB instance
+export const weeklyPropsRef = async (season: number, week: number) => {
+  const db = await getDb();
+  return db.collection('seasons').doc(String(season)).collection('weeks').doc(String(week)).collection('props');
+};
+
+const allPropsRef = async (season: number) => {
+  const db = await getDb();
+  return db.collection(`allProps_${season}`);
+};
 
 function dupKey(p: { player?: string; prop?: string; matchup?: string; week?: number | null }): string {
   return `${p.player ?? ''}||${p.prop ?? ''}||${p.matchup ?? ''}||${p.week ?? ''}`.toLowerCase();
@@ -23,9 +38,10 @@ function docWithId(d: FirebaseFirestore.QueryDocumentSnapshot): NFLProp & { id: 
 
 export async function saveProps(props: NFLProp[]): Promise<number> {
   if (!props.length) return 0;
+  const db = await getDb();
   const season = Number(props[0].season);
   const week   = props[0].week!;
-  const ref    = weeklyPropsRef(season, week);
+  const ref    = await weeklyPropsRef(season, week);
 
   const existing = await ref.select('player', 'prop', 'matchup', 'week').get();
   const existingKeys = new Set(existing.docs.map(d => dupKey(d.data() as NFLProp)));
@@ -35,7 +51,7 @@ export async function saveProps(props: NFLProp[]): Promise<number> {
 
   for (let i = 0; i < props.length; i += BATCH_SIZE) {
     const chunk = props.slice(i, i + BATCH_SIZE);
-    const batch = adminDb.batch();
+    const batch = db.batch();
     let batchCount = 0;
     chunk.forEach(prop => {
       const key = dupKey(prop);
@@ -57,11 +73,12 @@ export async function updateProps(
   updates: Array<{ id: string; season: number; week: number; data: Partial<NFLProp> }>
 ): Promise<void> {
   if (!updates.length) return;
+  const db = await getDb();
   const { season, week } = updates[0];
-  const ref = weeklyPropsRef(season, week);
+  const ref = await weeklyPropsRef(season, week);
   const BATCH_SIZE = 500;
   for (let i = 0; i < updates.length; i += BATCH_SIZE) {
-    const batch = adminDb.batch();
+    const batch = db.batch();
     updates.slice(i, i + BATCH_SIZE).forEach(u => {
       batch.update(ref.doc(u.id), { ...u.data, updatedAt: Timestamp.now() });
     });
@@ -73,14 +90,16 @@ export async function updateProps(
 export async function getPropsForWeek(
   season: number, week: number
 ): Promise<Array<NFLProp & { id: string }>> {
-  const snapshot = await weeklyPropsRef(season, week).orderBy('confidenceScore', 'desc').get();
+  const ref = await weeklyPropsRef(season, week);
+  const snapshot = await ref.orderBy('confidenceScore', 'desc').get();
   return snapshot.docs.map(docWithId);
 }
 
 export async function getTopValueBets(
   season: number, week: number, minEdge = 0.05, limit = 25
 ): Promise<Array<NFLProp & { id: string }>> {
-  const snapshot = await weeklyPropsRef(season, week)
+  const ref = await weeklyPropsRef(season, week);
+  const snapshot = await ref
     .where('bestEdgePct', '>', minEdge).orderBy('bestEdgePct', 'desc').limit(limit).get();
   return snapshot.docs.map(docWithId);
 }
@@ -88,13 +107,14 @@ export async function getTopValueBets(
 export async function movePropsToAllProps(
   season: number, week: number
 ): Promise<{ moved: number; skipped: number }> {
-  const weeklySnap = await weeklyPropsRef(season, week).get();
+  const db = await getDb();
+  const weeklySnap = await (await weeklyPropsRef(season, week)).get();
   if (weeklySnap.empty) {
     console.log(`⚠️  No weekly props for season ${season} week ${week}`);
     return { moved: 0, skipped: 0 };
   }
 
-  const destRef = allPropsRef(season);
+  const destRef = await allPropsRef(season);
   const existingSnap = await destRef.where('week', '==', week)
     .select('player', 'prop', 'matchup', 'week').get();
   const existingKeys = new Set(existingSnap.docs.map(d => dupKey(d.data() as NFLProp)));
@@ -104,8 +124,8 @@ export async function movePropsToAllProps(
 
   for (let i = 0; i < weeklySnap.docs.length; i += BATCH_SIZE) {
     const chunk = weeklySnap.docs.slice(i, i + BATCH_SIZE);
-    const writeBatch = adminDb.batch();
-    const deleteBatch = adminDb.batch();
+    const writeBatch = db.batch();
+    const deleteBatch = db.batch();
     let chunkMoved = 0;
 
     chunk.forEach(doc => {
@@ -131,7 +151,8 @@ export async function getAllProps(
   season: number,
   filters: { week?: number; prop?: string; team?: string; minEdge?: number; valueOnly?: boolean; limit?: number } = {}
 ): Promise<Array<NFLProp & { id: string }>> {
-  let query = allPropsRef(season).orderBy('confidenceScore', 'desc') as FirebaseFirestore.Query;
+    const ref = await allPropsRef(season);
+  let query = ref.orderBy('confidenceScore', 'desc') as FirebaseFirestore.Query;
   if (filters.week)    query = query.where('week', '==', filters.week);
   if (filters.minEdge) query = query.where('bestEdgePct', '>', filters.minEdge);
   if (filters.limit)   query = query.limit(filters.limit);
@@ -149,12 +170,12 @@ export async function updateAllProps(
   updates: Array<{ id: string; data: Partial<NFLProp> }>
 ): Promise<void> {
   if (!updates.length) return;
-
-  const col = adminDb.collection(`allProps_${season}`);
+    const db = await getDb();
+  const col = db.collection(`allProps_${season}`);
   const BATCH_SIZE = 400;
 
   for (let i = 0; i < updates.length; i += BATCH_SIZE) {
-    const batch = adminDb.batch();
+    const batch = db.batch();
     const chunk = updates.slice(i, i + BATCH_SIZE);
     for (const { id, data } of chunk) {
       batch.set(col.doc(id), { ...data, _updatedAt: new Date().toISOString() }, { merge: true });
@@ -166,7 +187,8 @@ export async function updateAllProps(
 
 
 export async function getPfrIdMap(): Promise<Record<string, string>> {
-  const snapshot = await adminDb.collection('pfr_id_map').get();
+    const db = await getDb();
+  const snapshot = await db.collection('pfr_id_map').get();
   const map: Record<string, string> = {};
   snapshot.docs.forEach(doc => {
     const data = doc.data() as { playerName: string; pfrId: string };
@@ -176,11 +198,13 @@ export async function getPfrIdMap(): Promise<Record<string, string>> {
 }
 
 export async function savePfrId(playerName: string, pfrId: string): Promise<void> {
-  await adminDb.collection('pfr_id_map').add({ playerName, pfrId, createdAt: Timestamp.now() });
+    const db = await getDb();
+  await db.collection('pfr_id_map').add({ playerName, pfrId, createdAt: Timestamp.now() });
 }
 
 export async function getPlayerTeamMap(): Promise<Record<string, string>> {
-  const snapshot = await adminDb.collection('player_team_map').get();
+    const db = await getDb();
+  const snapshot = await db.collection('player_team_map').get();
   const map: Record<string, string> = {};
   snapshot.docs.forEach(doc => {
     const data = doc.data() as { playerName: string; team: string };

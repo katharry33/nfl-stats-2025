@@ -1,4 +1,3 @@
-// src/hooks/useAllProps.ts
 import { useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import { NFLProp } from '@/lib/types';
@@ -29,10 +28,22 @@ export function useAllProps(week?: number): UseAllPropsReturn {
     setError(null);
     try {
       const params = new URLSearchParams();
-      if (week != null) params.set('week', String(week));
-      if (bustCache) params.set('bust', 'true');
+      // Ensure we pass the week if available
+      if (week !== undefined && week !== null) {
+        params.set('week', String(week));
+      }
       
-      const res = await fetch(`/api/all-props?${params.toString()}`);
+      // If we are forcing a refresh after enrichment, tell the API
+      if (bustCache) {
+        params.set('bust', 'true');
+        params.set('refresh', 'true'); // Added for backend cache-control clarity
+      }
+      
+      const res = await fetch(`/api/all-props?${params.toString()}`, {
+        // Force browser-level cache bypass if bustCache is true
+        cache: bustCache ? 'no-store' : 'default'
+      });
+
       if (!res.ok) {
         const errorText = await res.text();
         throw new Error(`Failed to fetch props: ${res.status} ${errorText}`);
@@ -45,26 +56,31 @@ export function useAllProps(week?: number): UseAllPropsReturn {
       setCacheAge(data.cacheAge ?? null);
     } catch (err: any) {
       setError(err.message);
+      toast.error(`Fetch Error: ${err.message}`);
     } finally {
       setLoading(false);
     }
   }, [week]);
 
   const deleteProp = useCallback(async (id: string) => {
-    const originalProps = [...allProps];
-    setAllProps(prev => prev.filter(p => p.id !== id));
+    // Keep a snapshot for potential rollback
+    let snapshot: NormalizedProp[] = [];
+    
+    setAllProps(prev => {
+      snapshot = prev;
+      return prev.filter(p => p.id !== id);
+    });
+    
     toast.info('Prop deleted.');
 
     try {
       const res = await fetch(`/api/props/${id}`, { method: 'DELETE' });
-      if (!res.ok) {
-        throw new Error('Failed to delete on server');
-      }
+      if (!res.ok) throw new Error('Delete failed on server');
     } catch (err) {
-      toast.error('Failed to delete prop.');
-      setAllProps(originalProps); // Revert optimistic update
+      toast.error('Failed to delete prop. Reverting...');
+      setAllProps(snapshot); // Revert to snapshot on failure
     }
-  }, [allProps]);
+  }, []); // Removed allProps from dependency to prevent unnecessary recreations
 
   return { 
     allProps, 

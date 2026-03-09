@@ -5,7 +5,7 @@ import { Loader2, Trash2, Plus } from 'lucide-react';
 interface PropsTableProps {
   props: NormalizedProp[];
   isLoading: boolean;
-  onAddToBetSlip: (prop: NormalizedProp) => void;
+  onAddToBetSlip: (prop: NormalizedProp, userSelection?: 'Over' | 'Under') => void;
   slipIds?: Set<string>;
   onDelete?: (id: string) => Promise<void>;
   visibleColumns?: string[];

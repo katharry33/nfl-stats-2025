@@ -1,67 +1,61 @@
-// src/hooks/useBetSlip.ts
 'use client';
 
-import { useState, useCallback } from 'react';
-import { NFLProp, BetLeg, BetSlipItem } from '@/lib/types';
+import { useState, useCallback, useEffect } from 'react';
+import { BetLeg, NormalizedProp, BetSlipItem } from '@/lib/types';
 
 export interface UseBetSlipReturn {
-  items: BetSlipItem[];
-  addToBetSlip: (prop: NFLProp & { id: string }, overUnder?: 'Over' | 'Under') => void;
-  removeFromBetSlip: (propId: string) => void;
-  updateBetAmount: (propId: string, amount: number) => void;
-  clearBetSlip: () => void;
-  isInBetSlip: (propId: string) => boolean;
-  addLegToSlip: (leg: BetLeg) => void;
+  selections: BetSlipItem[];
+  addLeg: (leg: BetLeg) => void;
+  removeLeg: (id: string) => void;
+  clear: () => void;
+  updateAmount: (id: string, amount: number) => void;
+  isInSlip: (id: string) => boolean;
   totalStake: number;
   totalProps: number;
   savingIds: Set<string>;
+  isInitialized: boolean;
 }
 
-export function useBetSlip(week: number, season = 2025): UseBetSlipReturn {
-  const [items, setItems]       = useState<BetSlipItem[]>([]);
+/**
+ * Hook to manage the active bet slip state.
+ * @param week - Optional week number (defaults to 1 for global pages)
+ * @param season - Optional season year (defaults to 2025)
+ */
+export function useBetSlip(week: number = 1, season: number = 2025): UseBetSlipReturn {
+  const [items, setItems] = useState<BetSlipItem[]>([]);
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
+  const [isInitialized, setIsInitialized] = useState(false);
 
-  const addToBetSlip = useCallback((
-    prop: NFLProp & { id: string },
-    overUnder?: 'Over' | 'Under'
-  ) => {
-    setItems(prev => {
-      if (prev.some(i => i.prop.id === prop.id)) return prev; // already added
-      const selection = overUnder ?? (prop.overUnder as 'Over' | 'Under') ?? 'Over';
-      const odds = selection === 'Over' ? prop.overOdds : prop.underOdds;
-      return [...prev, {
-        prop,
-        betAmount: 10, // default stake
-        overUnder: selection,
-        odds: odds ?? -110,
-      }];
-    });
-  }, []);
-
-  const removeFromBetSlip = useCallback((propId: string) => {
-    setItems(prev => prev.filter(i => i.prop.id !== propId));
+  // Initialize hook - could be expanded to load from localStorage
+  useEffect(() => {
+    setIsInitialized(true);
   }, []);
 
   const addLegToSlip = useCallback((leg: BetLeg) => {
     setItems(prev => {
-      if (prev.some(item => item.prop.id === leg.id)) return prev;
+      // Check for existing ID to prevent duplicates
+      const exists = prev.some(item => String(item.prop.id) === String(leg.id));
+      if (exists) return prev;
 
-      const propFromLeg = {
-        id: leg.id,
-        player: leg.player,
-        prop: leg.prop,
-        line: leg.line,
-        team: leg.team,
-        matchup: leg.matchup,
-        gameDate: leg.gameDate,
-        overUnder: leg.selection,
-        odds: leg.odds,
+      const propFromLeg: NormalizedProp = {
+        id: String(leg.id),
+        player: leg.player || 'Unknown',
+        prop: leg.prop || 'Unknown Prop',
+        line: leg.line ?? 0,
+        team: leg.team || '',
+        matchup: leg.matchup || '',
+        gameDate: leg.gameDate || new Date().toISOString(),
+        overUnder: leg.selection as 'Over' | 'Under',
+        odds: leg.odds || -110,
         isManual: true,
+        playerAvg: null,
+        seasonHitPct: null,
+        bestOdds: null,
       };
       
       const newSlipItem: BetSlipItem = {
-        prop: propFromLeg as NFLProp & { id: string },
-        betAmount: 10, // default stake
+        prop: propFromLeg,
+        betAmount: 10, // default amount
         overUnder: leg.selection,
         odds: leg.odds,
       };
@@ -70,48 +64,33 @@ export function useBetSlip(week: number, season = 2025): UseBetSlipReturn {
     });
   }, []);
 
-  const updateBetAmount = useCallback((propId: string, amount: number) => {
-    setItems(prev =>
-      prev.map(i => i.prop.id === propId ? { ...i, betAmount: amount } : i)
-    );
+  const removeFromBetSlip = useCallback((propId: string) => {
+    setItems(prev => prev.filter(i => String(i.prop.id) !== String(propId)));
   }, []);
 
   const clearBetSlip = useCallback(() => setItems([]), []);
 
+  const updateBetAmount = useCallback((propId: string, amount: number) => {
+    setItems(prev =>
+      prev.map(i => String(i.prop.id) === String(propId) ? { ...i, betAmount: amount } : i)
+    );
+  }, []);
+
   const isInBetSlip = useCallback(
-    (propId: string) => items.some(i => i.prop.id === propId),
+    (propId: string) => items.some(i => String(i.prop.id) === String(propId)),
     [items]
   );
 
-  // Persist bet amounts to Firestore when user is done editing
-  const persistBetAmount = useCallback(async (propId: string, betAmount: number, overUnder: string) => {
-    setSavingIds(prev => new Set(prev).add(propId));
-    try {
-      await fetch(`/api/props/${propId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ betAmount, overUnder, week, season, betStatus: 'Pending' }),
-      });
-    } catch (err) {
-      console.error('Failed to save bet amount:', err);
-    } finally {
-      setSavingIds(prev => { const s = new Set(prev); s.delete(propId); return s; });
-    }
-  }, [week, season]);
-
-  const totalStake = items.reduce((sum, i) => sum + i.betAmount, 0);
-  const totalProps = items.length;
-
   return {
-    items,
-    addToBetSlip,
-    removeFromBetSlip,
-    updateBetAmount,
-    clearBetSlip,
-    isInBetSlip,
-    addLegToSlip,
-    totalStake,
-    totalProps,
+    selections: items,
+    addLeg: addLegToSlip,
+    removeLeg: removeFromBetSlip,
+    clear: clearBetSlip,
+    updateAmount: updateBetAmount,
+    isInSlip: isInBetSlip,
+    totalStake: items.reduce((sum, i) => sum + i.betAmount, 0),
+    totalProps: items.length,
     savingIds,
+    isInitialized,
   };
 }
