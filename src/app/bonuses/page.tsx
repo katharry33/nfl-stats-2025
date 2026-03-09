@@ -7,165 +7,107 @@ import { collection, query, onSnapshot, orderBy, updateDoc, doc, deleteDoc } fro
 import { toast } from 'sonner';
 import {
   PlusCircle, Gift, Zap, Ghost, Layers, Star, MoreHorizontal,
-  CheckCircle2, XCircle, Clock, Trash2, Pencil, X,
+  CheckCircle2, XCircle, Clock, Trash2, Pencil, X, ChevronDown
 } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import type { Bonus } from '@/lib/types';
 import { resolveFirestoreDate } from '@/lib/types';
 
-// ─── Type meta ─────────────────────────────────────────────────────────────────
-
+// Updated Meta with the app's neon palette
 const TYPE_META: Record<string, { icon: React.ReactNode; color: string; bg: string }> = {
-  bonus_bet:     { icon: <Gift  className="h-3.5 w-3.5" />, color: 'text-violet-400', bg: 'bg-violet-500/10' },
-  profit_boost:  { icon: <Zap   className="h-3.5 w-3.5" />, color: 'text-amber-400',  bg: 'bg-amber-500/10' },
-  ghost_parlay:  { icon: <Ghost className="h-3.5 w-3.5" />, color: 'text-blue-400',   bg: 'bg-blue-500/10' },
-  parlay_boost:  { icon: <Layers className="h-3.5 w-3.5" />, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
-  sgp:           { icon: <Star  className="h-3.5 w-3.5" />, color: 'text-pink-400',   bg: 'bg-pink-500/10' },
+  bonus_bet:     { icon: <Gift className="h-3.5 w-3.5" />, color: 'text-violet-400', bg: 'bg-violet-500/10 border-violet-500/20' },
+  profit_boost:  { icon: <Zap className="h-3.5 w-3.5" />, color: 'text-[#FFD700]',  bg: 'bg-[#FFD700]/10 border-[#FFD700]/20' },
+  ghost_parlay:  { icon: <Ghost className="h-3.5 w-3.5" />, color: 'text-blue-400',   bg: 'bg-blue-500/10 border-blue-500/20' },
+  parlay_boost:  { icon: <Layers className="h-3.5 w-3.5" />, color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20' },
+  sgp:           { icon: <Star className="h-3.5 w-3.5" />, color: 'text-pink-400',    bg: 'bg-pink-500/10 border-pink-500/20' },
 };
-
-function getTypeMeta(betType: string) {
-  return TYPE_META[betType] ?? { icon: <Zap className="h-3.5 w-3.5" />, color: 'text-slate-400', bg: 'bg-slate-700/30' };
-}
-
-function formatBetTypeLabel(id: string): string {
-  const labels: Record<string, string> = {
-    bonus_bet: 'Bonus Bet', profit_boost: 'Profit Boost', ghost_parlay: 'Ghost Parlay',
-    parlay_boost: 'Parlay Boost', sgp: 'SGP Boost',
-  };
-  return labels[id] ?? id.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-}
-
-// ─── Status badge ──────────────────────────────────────────────────────────────
 
 function StatusBadge({ status }: { status: string }) {
   const map = {
-    active:  { cls: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25', icon: <Clock className="h-3 w-3" />, label: 'Active' },
-    used:    { cls: 'bg-blue-500/15 text-blue-400 border-blue-500/25',          icon: <CheckCircle2 className="h-3 w-3" />, label: 'Used' },
-    expired: { cls: 'bg-slate-700/30 text-slate-500 border-slate-700/30',       icon: <XCircle className="h-3 w-3" />, label: 'Expired' },
-  }[status] ?? { cls: 'bg-slate-700/30 text-slate-500 border-slate-700/30', icon: null, label: status };
+    active:  { cls: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20', icon: <Clock className="h-3 w-3" />, label: 'Active' },
+    used:    { cls: 'bg-blue-500/10 text-blue-400 border-blue-500/20', icon: <CheckCircle2 className="h-3 w-3" />, label: 'Used' },
+    expired: { cls: 'bg-white/5 text-zinc-600 border-white/5', icon: <XCircle className="h-3 w-3" />, label: 'Expired' },
+  }[status] ?? { cls: 'bg-white/5 text-zinc-500', icon: null, label: status };
+  
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${map.cls}`}>
+    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[9px] font-black uppercase border tracking-tighter ${map.cls}`}>
       {map.icon}{map.label}
     </span>
   );
 }
 
-// ─── Bonus Card ────────────────────────────────────────────────────────────────
-
 function BonusCard({ bonus, onEdit, onMarkUsed, onDelete }: {
-  bonus: Bonus;
-  onEdit: (b: Bonus) => void;
-  onMarkUsed: (id: string) => void;
-  onDelete: (id: string) => void;
+  bonus: Bonus; onEdit: (b: Bonus) => void; onMarkUsed: (id: string) => void; onDelete: (id: string) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const expiry    = resolveFirestoreDate(bonus.expirationDate);
-  const usedAt    = bonus.usedAt ? resolveFirestoreDate(bonus.usedAt) : null;
-  const meta      = getTypeMeta(bonus.betType ?? '');
-  const isActive  = bonus.status === 'active';
+  const expiry = resolveFirestoreDate(bonus.expirationDate);
+  const usedAt = bonus.usedAt ? resolveFirestoreDate(bonus.usedAt) : null;
+  const meta = TYPE_META[bonus.betType ?? ''] ?? { icon: <Zap className="h-3.5 w-3.5" />, color: 'text-zinc-500', bg: 'bg-white/5 border-white/10' };
+  const isActive = bonus.status === 'active';
 
-  const expiresInMs   = expiry ? expiry.getTime() - Date.now() : null;
-  const expiresInHrs  = expiresInMs !== null ? expiresInMs / 3_600_000 : null;
-  const urgentExpiry  = expiresInHrs !== null && expiresInHrs > 0 && expiresInHrs < 24;
+  const expiresInMs = expiry ? expiry.getTime() - Date.now() : null;
+  const expiresInHrs = expiresInMs !== null ? expiresInMs / 3_600_000 : null;
+  const urgentExpiry = expiresInHrs !== null && expiresInHrs > 0 && expiresInHrs < 24;
 
   return (
-    <div className={`relative rounded-xl border p-4 transition-all group ${
-      isActive
-        ? 'bg-slate-900 border-slate-800 hover:border-slate-700'
-        : 'bg-slate-900/40 border-slate-800/50 opacity-70'
-    }`}>
-      {/* Urgency stripe */}
-      {urgentExpiry && (
-        <div className="absolute top-0 left-0 right-0 h-0.5 bg-amber-500 rounded-t-xl" />
-      )}
+    <div className={`relative rounded-2xl border transition-all duration-300 ${
+      isActive 
+        ? 'bg-[#0f1115] border-white/5 hover:border-white/10' 
+        : 'bg-black/40 border-white/5 opacity-50'
+    } p-5`}>
+      {urgentExpiry && <div className="absolute top-0 left-0 right-0 h-1 bg-red-500/50 rounded-t-2xl shadow-[0_0_10px_rgba(239,68,68,0.2)]" />}
 
-      <div className="flex items-start justify-between gap-3">
-        {/* Left: type icon + info */}
-        <div className="flex items-start gap-3 min-w-0">
-          <div className={`w-9 h-9 rounded-lg ${meta.bg} flex items-center justify-center flex-shrink-0 ${meta.color}`}>
+      <div className="flex items-start justify-between">
+        <div className="flex gap-4 min-w-0">
+          <div className={`w-12 h-12 rounded-xl border ${meta.bg} flex items-center justify-center flex-shrink-0 ${meta.color} shadow-inner`}>
             {meta.icon}
           </div>
           <div className="min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="font-bold text-slate-100 text-sm truncate">{bonus.name}</h3>
+            <div className="flex items-center gap-3 mb-1">
+              <h3 className="font-black text-white text-sm uppercase tracking-tight truncate">{bonus.name}</h3>
               <StatusBadge status={bonus.status ?? 'active'} />
             </div>
-            <div className="flex items-center gap-2 mt-1 flex-wrap">
-              <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${meta.bg} ${meta.color}`}>
-                {formatBetTypeLabel(bonus.betType ?? '')}
+            
+            <div className="flex items-center gap-2 mb-3">
+               <span className="text-[10px] font-mono font-black text-[#FFD700] bg-[#FFD700]/10 px-1.5 py-0.5 rounded">
+                {bonus.boost}% BOOST
               </span>
-              <span className="text-[10px] text-slate-500">
-                <span className="text-amber-400 font-bold font-mono">{bonus.boost}%</span> boost
-              </span>
-              <span className="text-[10px] text-slate-500">
-                max <span className="text-slate-300 font-mono">${bonus.maxWager}</span>
+              <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">
+                MAX ${bonus.maxWager}
               </span>
             </div>
 
-            {/* Win logic */}
-            {(bonus as any).winLogic && (
-              <p className="text-[10px] text-slate-500 mt-1.5 italic leading-relaxed">
-                {(bonus as any).winLogic}
-              </p>
-            )}
+            {bonus.description && <p className="text-xs text-zinc-500 mb-2 line-clamp-1 italic">{bonus.description}</p>}
 
-            {/* Description */}
-            {bonus.description && (
-              <p className="text-xs text-slate-500 mt-1">{bonus.description}</p>
-            )}
-
-            {/* Dates */}
-            <div className="flex items-center gap-3 mt-2 flex-wrap">
-              {expiry && (
-                <span className={`text-[10px] ${urgentExpiry ? 'text-amber-400 font-bold' : 'text-slate-600'}`}>
-                  {isActive
-                    ? urgentExpiry
-                      ? `⚡ Expires ${formatDistanceToNow(expiry, { addSuffix: true })}`
-                      : `Expires ${format(expiry, 'MMM d, yyyy h:mm a')}`
-                    : `Expired ${format(expiry, 'MMM d, yyyy')}`
-                  }
+            <div className="flex items-center gap-4">
+               {expiry && (
+                <span className={`text-[10px] font-mono font-bold uppercase tracking-tighter ${urgentExpiry ? 'text-red-400' : 'text-zinc-600'}`}>
+                   {isActive ? (urgentExpiry ? `⚡ ${formatDistanceToNow(expiry)} left` : `Exp: ${format(expiry, 'MM/dd HH:mm')}`) : `Expired`}
                 </span>
               )}
-              {usedAt && (
-                <span className="text-[10px] text-blue-400">
-                  Used {format(usedAt, 'MMM d, yyyy')}
-                </span>
-              )}
+              {usedAt && <span className="text-[10px] text-blue-500 font-bold uppercase">Used: {format(usedAt, 'MM/dd')}</span>}
             </div>
           </div>
         </div>
 
-        {/* Right: actions */}
         {isActive && (
-          <div className="relative flex-shrink-0">
-            <button
-              onClick={() => setMenuOpen(o => !o)}
-              className="p-1.5 text-slate-600 hover:text-slate-300 rounded-lg hover:bg-slate-800 transition-colors"
-            >
-              <MoreHorizontal className="h-4 w-4" />
+          <div className="relative">
+            <button onClick={() => setMenuOpen(!menuOpen)} className="p-2 text-zinc-600 hover:text-white transition-colors">
+              <MoreHorizontal className="h-5 w-5" />
             </button>
             {menuOpen && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-                <div className="absolute right-0 top-8 z-20 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl py-1 min-w-[160px]">
-                  <button
-                    onClick={() => { onEdit(bonus); setMenuOpen(false); }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-slate-300 hover:bg-slate-800 transition-colors"
-                  >
-                    <Pencil className="h-3.5 w-3.5 text-slate-500" /> Edit
+                <div className="absolute right-0 top-10 z-20 bg-[#0f1115] border border-white/10 rounded-xl shadow-2xl py-2 min-w-[180px]">
+                  <button onClick={() => { onEdit(bonus); setMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-2 text-xs text-zinc-300 hover:bg-white/5 transition-colors">
+                    <Pencil className="h-3.5 w-3.5" /> Edit
                   </button>
-                  <button
-                    onClick={() => { onMarkUsed(bonus.id); setMenuOpen(false); }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-blue-400 hover:bg-slate-800 transition-colors"
-                  >
-                    <CheckCircle2 className="h-3.5 w-3.5" /> Mark as Used
+                  <button onClick={() => { onMarkUsed(bonus.id); setMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-2 text-xs text-emerald-400 hover:bg-emerald-500/5 transition-colors">
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Use Now
                   </button>
-                  <div className="border-t border-slate-800 my-1" />
-                  <button
-                    onClick={() => { onDelete(bonus.id); setMenuOpen(false); }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-rose-400 hover:bg-slate-800 transition-colors"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" /> Delete
+                  <div className="border-t border-white/5 my-1" />
+                  <button onClick={() => { onDelete(bonus.id); setMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-2 text-xs text-red-400 hover:bg-red-500/5 transition-colors">
+                    <Trash2 className="h-3.5 w-3.5" /> Burn
                   </button>
                 </div>
               </>
@@ -177,185 +119,90 @@ function BonusCard({ bonus, onEdit, onMarkUsed, onDelete }: {
   );
 }
 
-// ─── Section ───────────────────────────────────────────────────────────────────
-
-function Section({ title, icon, count, children, defaultCollapsed = false }: {
-  title: string; icon: React.ReactNode; count: number;
-  children: React.ReactNode; defaultCollapsed?: boolean;
-}) {
-  const [open, setOpen] = useState(!defaultCollapsed);
-  if (count === 0) return null;
-  return (
-    <div className="space-y-3">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="flex items-center gap-2 text-sm font-bold text-slate-400 hover:text-white transition-colors w-full text-left"
-      >
-        {icon}
-        {title}
-        <span className="ml-1 text-slate-600 text-xs font-mono">({count})</span>
-        <span className={`ml-auto text-slate-600 text-xs transition-transform ${open ? 'rotate-180' : ''}`}>▼</span>
-      </button>
-      {open && <div className="space-y-2">{children}</div>}
-    </div>
-  );
-}
-
-// ─── Main Page ─────────────────────────────────────────────────────────────────
-
 export default function BonusesPage() {
-  const [bonuses,       setBonuses]       = useState<Bonus[]>([]);
-  const [isLoading,     setIsLoading]     = useState(true);
-  const [modalOpen,     setModalOpen]     = useState(false);
-  const [editingBonus,  setEditingBonus]  = useState<Bonus | null>(null);
+  const [bonuses, setBonuses] = useState<Bonus[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingBonus, setEditingBonus] = useState<Bonus | null>(null);
 
   useEffect(() => {
     const q = query(collection(db, 'bonuses'), orderBy('createdAt', 'desc'));
     return onSnapshot(q, snapshot => {
-      const updated = snapshot.docs.map(d => {
-        const data = d.data();
-        const expiry = resolveFirestoreDate(data.expirationDate);
-        let status = data.status ?? 'active';
-        if (status === 'active' && expiry && expiry < new Date()) {
-          status = 'expired';
-          updateDoc(d.ref, { status: 'expired' });
-        }
-        return {
-          id: d.id, ...data, status,
-          expirationDate: expiry,
-          usedAt: data.usedAt ? resolveFirestoreDate(data.usedAt) : undefined,
-        } as unknown as Bonus;
-      });
+      const updated = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Bonus));
       setBonuses(updated);
-      setIsLoading(false);
-    }, err => {
-      console.error(err);
-      toast.error('Failed to load bonuses');
       setIsLoading(false);
     });
   }, []);
 
-  const openAdd  = () => { setEditingBonus(null); setModalOpen(true); };
-  const openEdit = (b: Bonus) => { setEditingBonus(b); setModalOpen(true); };
-  const closeModal = () => { setModalOpen(false); setEditingBonus(null); };
-
-  const handleMarkUsed = async (id: string) => {
-    await updateDoc(doc(db, 'bonuses', id), { status: 'used', usedAt: new Date() });
-    toast.success('Marked as used');
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm('Delete this bonus?')) return;
-    await deleteDoc(doc(db, 'bonuses', id));
-    toast.success('Bonus deleted');
-  };
-
-  const active  = bonuses.filter(b => b.status === 'active');
-  const used    = bonuses.filter(b => b.status === 'used');
-  const expired = bonuses.filter(b => b.status === 'expired');
-
-  // Stats
-  const totalBoostValue = active.reduce((sum, b) => sum + (b.maxWager ?? 0) * (b.boost ?? 0) / 100, 0);
+  const active = bonuses.filter(b => b.status === 'active');
+  const used = bonuses.filter(b => b.status === 'used');
+  const totalValue = active.reduce((sum, b) => sum + (b.maxWager ?? 0) * (b.boost ?? 0) / 100, 0);
 
   return (
-    <div className="max-w-3xl mx-auto p-6 space-y-6">
-
-      {/* ── Header ──────────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between">
+    <div className="max-w-3xl mx-auto p-6 space-y-8 bg-black min-h-screen">
+      <div className="flex items-end justify-between border-b border-white/5 pb-6">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Bonuses</h1>
-          <p className="text-slate-500 text-sm mt-0.5">Track sportsbook promos, boosts &amp; free bets.</p>
+          <h1 className="text-3xl font-black text-white tracking-tighter uppercase italic">Inventory</h1>
+          <p className="text-zinc-600 text-[10px] font-bold uppercase tracking-widest mt-1">Strategic Assets & Bonuses</p>
         </div>
-        <button
-          onClick={openAdd}
-          className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold rounded-xl transition-colors shadow-lg shadow-emerald-900/30"
-        >
+        <button onClick={() => { setEditingBonus(null); setModalOpen(true); }} className="flex items-center gap-2 px-5 py-2.5 bg-white text-black text-xs font-black uppercase rounded-full hover:bg-zinc-200 transition-all shadow-[0_0_20px_rgba(255,255,255,0.1)]">
           <PlusCircle className="h-4 w-4" /> Add Bonus
         </button>
       </div>
 
-      {/* ── Summary stats ───────────────────────────────────────────────────── */}
-      {!isLoading && bonuses.length > 0 && (
-        <div className="grid grid-cols-3 gap-3">
-          {[
-            { label: 'Active',       value: active.length,           color: 'text-emerald-400' },
-            { label: 'Total Value',  value: `$${totalBoostValue.toFixed(0)}`, color: 'text-amber-400' },
-            { label: 'Lifetime Used', value: used.length,            color: 'text-blue-400' },
-          ].map(s => (
-            <div key={s.label} className="bg-slate-900 border border-slate-800 rounded-xl px-4 py-3">
-              <div className={`text-xl font-black font-mono ${s.color}`}>{s.value}</div>
-              <div className="text-[10px] text-slate-500 uppercase font-bold tracking-wider mt-0.5">{s.label}</div>
-            </div>
-          ))}
-        </div>
-      )}
+      <div className="grid grid-cols-3 gap-4">
+        {[
+          { label: 'Active', value: active.length, color: 'text-emerald-500' },
+          { label: 'Unused Value', value: `$${totalValue.toFixed(0)}`, color: 'text-[#FFD700]' },
+          { label: 'Burned', value: used.length, color: 'text-zinc-500' },
+        ].map(s => (
+          <div key={s.label} className="bg-[#0f1115] border border-white/5 rounded-2xl p-4">
+            <div className={`text-2xl font-black font-mono tracking-tighter ${s.color}`}>{s.value}</div>
+            <div className="text-[9px] text-zinc-600 uppercase font-black tracking-widest mt-1">{s.label}</div>
+          </div>
+        ))}
+      </div>
 
-      {/* ── Content ─────────────────────────────────────────────────────────── */}
-      {isLoading ? (
-        <div className="flex flex-col items-center py-20 gap-3">
-          <div className="h-6 w-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-          <p className="text-slate-600 text-xs uppercase font-mono tracking-wider">Loading…</p>
-        </div>
-      ) : bonuses.length === 0 ? (
-        <div className="flex flex-col items-center py-24 border border-dashed border-slate-800 rounded-2xl gap-3">
-          <Gift className="h-8 w-8 text-slate-700" />
-          <p className="text-slate-500 text-sm">No bonuses yet.</p>
-          <button onClick={openAdd} className="text-emerald-400 text-xs hover:underline">
-            Add your first bonus →
-          </button>
-        </div>
-      ) : (
-        <div className="space-y-6">
-          <Section title="Active" icon={<Clock className="h-4 w-4 text-emerald-500" />} count={active.length}>
-            {active.map(b => (
-              <BonusCard key={b.id} bonus={b} onEdit={openEdit} onMarkUsed={handleMarkUsed} onDelete={handleDelete} />
-            ))}
+      <div className="space-y-12">
+        <Section title="Active Promos" icon={<Clock className="h-4 w-4 text-emerald-500" />} count={active.length}>
+          {active.map(b => <BonusCard key={b.id} bonus={b} onEdit={b => {setEditingBonus(b); setModalOpen(true)}} onMarkUsed={id => updateDoc(doc(db, 'bonuses', id), {status: 'used', usedAt: new Date()})} onDelete={id => deleteDoc(doc(db, 'bonuses', id))} />)}
+        </Section>
+        
+        {used.length > 0 && (
+          <Section title="History" icon={<CheckCircle2 className="h-4 w-4 text-zinc-600" />} count={used.length} defaultCollapsed>
+            {used.map(b => <BonusCard key={b.id} bonus={b} onEdit={b => {setEditingBonus(b); setModalOpen(true)}} onMarkUsed={() => {}} onDelete={id => deleteDoc(doc(db, 'bonuses', id))} />)}
           </Section>
-          <Section title="Used" icon={<CheckCircle2 className="h-4 w-4 text-blue-500" />} count={used.length} defaultCollapsed>
-            {used.map(b => (
-              <BonusCard key={b.id} bonus={b} onEdit={openEdit} onMarkUsed={handleMarkUsed} onDelete={handleDelete} />
-            ))}
-          </Section>
-          <Section title="Expired" icon={<XCircle className="h-4 w-4 text-slate-500" />} count={expired.length} defaultCollapsed>
-            {expired.map(b => (
-              <BonusCard key={b.id} bonus={b} onEdit={openEdit} onMarkUsed={handleMarkUsed} onDelete={handleDelete} />
-            ))}
-          </Section>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* ── Modal ───────────────────────────────────────────────────────────── */}
       {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm px-4 pb-4 sm:pb-0">
-          <div className="bg-slate-900 border border-slate-700/60 rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] flex flex-col">
-
-            {/* Modal header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 flex-shrink-0">
-              <div>
-                <h2 className="text-white font-bold">{editingBonus ? 'Edit Bonus' : 'New Bonus'}</h2>
-                <p className="text-slate-500 text-xs mt-0.5">
-                  {editingBonus ? 'Update bonus details' : 'Add a promo, boost or free bet'}
-                </p>
-              </div>
-              <button
-                onClick={closeModal}
-                className="p-1.5 text-slate-500 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            {/* Modal body — scrollable */}
-            <div className="overflow-y-auto px-6 py-5 flex-1">
-              <BonusForm
-                onSave={closeModal}
-                bonusToEdit={editingBonus}
-                onClose={closeModal}
-              />
-            </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md px-4">
+          <div className="bg-[#0f1115] border border-white/10 rounded-3xl w-full max-w-lg shadow-[0_0_50px_rgba(0,0,0,0.5)] overflow-hidden">
+             <div className="flex items-center justify-between px-8 py-6 border-b border-white/5">
+                <h2 className="text-white font-black uppercase italic tracking-tighter text-xl">Asset Configuration</h2>
+                <button onClick={() => setModalOpen(false)} className="text-zinc-500 hover:text-white"><X className="h-5 w-5"/></button>
+             </div>
+             <div className="p-8 max-h-[80vh] overflow-y-auto">
+               <BonusForm onSave={() => setModalOpen(false)} bonusToEdit={editingBonus} onClose={() => setModalOpen(false)} />
+             </div>
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function Section({ title, icon, count, children, defaultCollapsed = false }: any) {
+  const [open, setOpen] = useState(!defaultCollapsed);
+  return (
+    <div className="space-y-4">
+      <button onClick={() => setOpen(!open)} className="w-full flex items-center gap-3 group">
+        <span className="bg-white/5 p-1.5 rounded-lg group-hover:bg-white/10 transition-colors">{icon}</span>
+        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 group-hover:text-zinc-300 transition-colors">{title} ({count})</span>
+        <div className="flex-1 h-px bg-white/5 ml-2" />
+        <ChevronDown className={`h-4 w-4 text-zinc-700 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && <div className="space-y-3">{children}</div>}
     </div>
   );
 }

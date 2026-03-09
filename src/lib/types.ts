@@ -115,3 +115,44 @@ export interface PFRGame {
   recYds:     number;
   recTds:     number;
 }
+
+export interface Bonus {
+  id: string;
+  name: string;
+  boost: number;
+  betType: string;
+  maxWager: number;
+  expirationDate: any; // Date or Timestamp
+  description?: string;
+  winLogic?: string;
+  status: 'active' | 'used' | 'expired';
+  usedAt?: any;
+  createdAt?: any;
+}
+
+export function resolveFirestoreDate(date: any): Date | null {
+  if (!date) return null;
+  if (date instanceof Date) return date;
+  if (typeof date.toDate === 'function') return date.toDate();
+  if (typeof date === 'string' || typeof date === 'number') return new Date(date);
+  return null;
+}
+
+export interface Bet {
+  id: string;
+  type: 'straight' | 'parlay' | 'teaser';
+  status: 'pending' | 'won' | 'lost' | 'void';
+  amount: number;
+  toWin: number;
+  placedAt: any; // Firestore Timestamp or ISO string
+  legs: {
+    propId: string;
+    player: string;
+    prop: string;
+    line: number;
+    selection: 'Over' | 'Under';
+    odds: number;
+    gameStat?: number;     // Syncs with your enrichment data
+    actualResult?: string; // Syncs with your enrichment data
+  }[];
+}

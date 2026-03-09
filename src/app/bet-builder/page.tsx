@@ -1,5 +1,5 @@
 // src/app/bet-builder/page.tsx
-import { BetBuilderClient } from '@/features/bet-builder-client';
+import BetBuilderClient from '@/features/bet-builder-client';
 import { getCurrentNFLWeek } from '@/lib/nfl/getCurrentWeek';
 
 const SEASON = 2025;

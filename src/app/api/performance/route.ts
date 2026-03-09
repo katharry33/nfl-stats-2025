@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { adminDb } from '@/lib/firebase/admin';
+import { db } from '@/lib/firebase/admin';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   try {
     // 1. Fetch from 'bettingLog'
-    const snap = await adminDb
+    const snap = await db
       .collection('bettingLog')
       .orderBy('createdAt', 'desc')
       .get();

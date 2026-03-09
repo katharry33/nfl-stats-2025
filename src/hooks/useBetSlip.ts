@@ -1,96 +1,93 @@
 'use client';
+// src/hooks/useBetSlip.ts
+// Flat selection shape — no nested objects, safe to render anywhere
 
 import { useState, useCallback, useEffect } from 'react';
-import { BetLeg, NormalizedProp, BetSlipItem } from '@/lib/types';
+import type { BetLeg } from '@/lib/types';
+
+// ─── Flat selection — everything a panel/parlay page needs ───────────────────
+export interface BetSlipSelection {
+  id:        string;
+  propId?:   string;
+  player:    string;
+  propName:  string;   // renamed from 'prop' to avoid collision with NormalizedProp.prop
+  line:      number;
+  selection: 'Over' | 'Under';
+  odds?:     number;
+  team?:     string;
+  matchup?:  string;
+  week?:     number;
+  season?:   number;
+  gameDate?: string;
+  // enrichment display fields (optional)
+  confidenceScore?: number | null;
+  bestEdgePct?:     number | null;
+  expectedValue?:   number | null;
+}
 
 export interface UseBetSlipReturn {
-  selections: BetSlipItem[];
-  addLeg: (leg: BetLeg) => void;
-  removeLeg: (id: string) => void;
-  clear: () => void;
-  updateAmount: (id: string, amount: number) => void;
-  isInSlip: (id: string) => boolean;
-  totalStake: number;
-  totalProps: number;
-  savingIds: Set<string>;
+  selections:    BetSlipSelection[];
+  addLeg:        (leg: BetLeg) => void;
+  removeLeg:     (id: string) => void;
+  clear:         () => void;
+  updateAmount:  (id: string, amount: number) => void;
+  isInSlip:      (id: string) => boolean;
+  totalStake:    number;
+  totalProps:    number;
   isInitialized: boolean;
 }
 
-/**
- * Hook to manage the active bet slip state.
- * @param week - Optional week number (defaults to 1 for global pages)
- * @param season - Optional season year (defaults to 2025)
- */
 export function useBetSlip(week: number = 1, season: number = 2025): UseBetSlipReturn {
-  const [items, setItems] = useState<BetSlipItem[]>([]);
-  const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
+  const [items,         setItems]         = useState<BetSlipSelection[]>([]);
   const [isInitialized, setIsInitialized] = useState(false);
 
-  // Initialize hook - could be expanded to load from localStorage
-  useEffect(() => {
-    setIsInitialized(true);
-  }, []);
+  useEffect(() => { setIsInitialized(true); }, []);
 
-  const addLegToSlip = useCallback((leg: BetLeg) => {
+  const addLeg = useCallback((leg: BetLeg) => {
     setItems(prev => {
-      // Check for existing ID to prevent duplicates
-      const exists = prev.some(item => String(item.prop.id) === String(leg.id));
-      if (exists) return prev;
+      const id = String(leg.id ?? leg.propId ?? '');
+      if (prev.some(s => s.id === id)) return prev;
 
-      const propFromLeg: NormalizedProp = {
-        id: String(leg.id),
-        player: leg.player || 'Unknown',
-        prop: leg.prop || 'Unknown Prop',
-        line: leg.line ?? 0,
-        team: leg.team || '',
-        matchup: leg.matchup || '',
-        gameDate: leg.gameDate || new Date().toISOString(),
-        overUnder: leg.selection as 'Over' | 'Under',
-        odds: leg.odds || -110,
-        isManual: true,
-        playerAvg: null,
-        seasonHitPct: null,
-        bestOdds: null,
+      const selection: BetSlipSelection = {
+        id,
+        propId:    String(leg.propId ?? leg.id ?? ''),
+        player:    leg.player    || 'Unknown',
+        propName:  leg.prop      || 'Prop',      // string field name
+        line:      leg.line      ?? 0,
+        selection: (leg.selection as 'Over' | 'Under') || 'Over',
+        odds:      leg.odds,
+        team:      leg.team,
+        matchup:   leg.matchup,
+        week:      leg.week      ?? week,
+        season:    leg.season    ?? season,
+        gameDate:  leg.gameDate,
+        // enrichment fields passed through if leg carries them
+        confidenceScore: (leg as any).confidenceScore ?? null,
+        bestEdgePct:     (leg as any).bestEdgePct     ?? null,
+        expectedValue:   (leg as any).expectedValue   ?? null,
       };
-      
-      const newSlipItem: BetSlipItem = {
-        prop: propFromLeg,
-        betAmount: 10, // default amount
-        overUnder: leg.selection,
-        odds: leg.odds,
-      };
-
-      return [...prev, newSlipItem];
+      return [...prev, selection];
     });
-  }, []);
+  }, [week, season]);
 
-  const removeFromBetSlip = useCallback((propId: string) => {
-    setItems(prev => prev.filter(i => String(i.prop.id) !== String(propId)));
-  }, []);
+  const removeLeg  = useCallback((id: string) => setItems(prev => prev.filter(s => s.id !== id)), []);
+  const clear      = useCallback(() => setItems([]), []);
+  const updateAmount = useCallback((_id: string, _amount: number) => {}, []); // stub — extend if needed
 
-  const clearBetSlip = useCallback(() => setItems([]), []);
-
-  const updateBetAmount = useCallback((propId: string, amount: number) => {
-    setItems(prev =>
-      prev.map(i => String(i.prop.id) === String(propId) ? { ...i, betAmount: amount } : i)
-    );
-  }, []);
-
-  const isInBetSlip = useCallback(
-    (propId: string) => items.some(i => String(i.prop.id) === String(propId)),
+  const isInSlip = useCallback(
+    (id: string) => items.some(s => s.id === id || s.propId === id),
     [items]
   );
 
   return {
     selections: items,
-    addLeg: addLegToSlip,
-    removeLeg: removeFromBetSlip,
-    clear: clearBetSlip,
-    updateAmount: updateBetAmount,
-    isInSlip: isInBetSlip,
-    totalStake: items.reduce((sum, i) => sum + i.betAmount, 0),
-    totalProps: items.length,
-    savingIds,
+    addLeg,
+    removeLeg,
+    clear,
+    updateAmount,
+    isInSlip,
+    totalStake:    0,
+    totalProps:    items.length,
     isInitialized,
   };
 }

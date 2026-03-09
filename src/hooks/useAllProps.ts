@@ -1,95 +1,76 @@
-import { useState, useCallback } from 'react';
-import { toast } from 'sonner';
-import { NFLProp } from '@/lib/types';
+import { useState, useEffect, useCallback } from 'react';
 
-export type NormalizedProp = NFLProp & { id: string };
-
-export interface UseAllPropsReturn {
-  allProps: NormalizedProp[];
-  propTypes: string[];
-  loading: boolean;
-  error: string | null;
-  cacheAge: number | null;
-  totalCount: number;
-  fetchProps: (force?: boolean) => Promise<void>;
-  deleteProp: (id: string) => Promise<void>;
+export interface NormalizedProp {
+  id: string;
+  player?: string;
+  prop?: string;
+  line?: number;
+  overUnder?: string;
+  bestOdds?: number;
+  odds?: number;
+  matchup?: string;
+  team?: string;
+  week?: number;
+  season?: number;
+  gameDate?: string;
+  gameStat?: number;     // Added for enrichment results
+  actualResult?: string; // Added for enrichment results
 }
 
-export function useAllProps(week?: number): UseAllPropsReturn {
-  const [allProps, setAllProps] = useState<NormalizedProp[]>([]);
-  const [propTypes, setPropTypes] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
+export function useAllProps() {
+  const [props, setProps] = useState<NormalizedProp[]>([]);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [cacheAge, setCacheAge] = useState<number | null>(null);
-  const [totalCount, setTotalCount] = useState(0);
+  const [lastId, setLastId] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(true);
 
-  const fetchProps = useCallback(async (bustCache = false) => {
+  const fetchProps = useCallback(async (isInitial = false) => {
+    // If we're already loading, or if there's no more data (and not a reset), bail out.
+    if (loading || (!hasMore && !isInitial)) return;
+
     setLoading(true);
     setError(null);
-    try {
-      const params = new URLSearchParams();
-      // Ensure we pass the week if available
-      if (week !== undefined && week !== null) {
-        params.set('week', String(week));
-      }
-      
-      // If we are forcing a refresh after enrichment, tell the API
-      if (bustCache) {
-        params.set('bust', 'true');
-        params.set('refresh', 'true'); // Added for backend cache-control clarity
-      }
-      
-      const res = await fetch(`/api/all-props?${params.toString()}`, {
-        // Force browser-level cache bypass if bustCache is true
-        cache: bustCache ? 'no-store' : 'default'
-      });
 
-      if (!res.ok) {
-        const errorText = await res.text();
-        throw new Error(`Failed to fetch props: ${res.status} ${errorText}`);
-      }
+    try {
+      const cursor = isInitial ? '' : `&lastId=${lastId}`;
+      const res = await fetch(`/api/all-props?limit=1000${cursor}`);
+      
+      if (!res.ok) throw new Error(`Server responded with ${res.status}`);
       
       const data = await res.json();
-      setAllProps(data.props ?? []);
-      setPropTypes(data.propTypes ?? []);
-      setTotalCount(data.totalCount ?? 0);
-      setCacheAge(data.cacheAge ?? null);
+      const newProps: NormalizedProp[] = data.props || [];
+
+      setProps(prev => isInitial ? newProps : [...prev, ...newProps]);
+      setLastId(data.lastId || null);
+      setHasMore(data.hasMore ?? false);
     } catch (err: any) {
-      setError(err.message);
-      toast.error(`Fetch Error: ${err.message}`);
+      console.error("Pagination error:", err);
+      setError(err.message || "Failed to load historical props");
     } finally {
       setLoading(false);
     }
-  }, [week]);
+  }, [lastId, loading, hasMore]);
 
-  const deleteProp = useCallback(async (id: string) => {
-    // Keep a snapshot for potential rollback
-    let snapshot: NormalizedProp[] = [];
-    
-    setAllProps(prev => {
-      snapshot = prev;
-      return prev.filter(p => p.id !== id);
-    });
-    
-    toast.info('Prop deleted.');
+  // Reset the state and trigger a fresh fetch
+  const refresh = useCallback(async () => {
+    setProps([]); // Clear current list to show loading state
+    setLastId(null);
+    setHasMore(true);
+    await fetchProps(true);
+  }, [fetchProps]);
 
-    try {
-      const res = await fetch(`/api/props/${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Delete failed on server');
-    } catch (err) {
-      toast.error('Failed to delete prop. Reverting...');
-      setAllProps(snapshot); // Revert to snapshot on failure
-    }
-  }, []); // Removed allProps from dependency to prevent unnecessary recreations
+  // Initial load on mount
+  useEffect(() => {
+    fetchProps(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); 
 
   return { 
-    allProps, 
+    props, 
     loading, 
-    error, 
-    propTypes, 
-    fetchProps,
-    cacheAge,
-    totalCount,
-    deleteProp,
+    error,
+    hasMore, 
+    loadMore: () => fetchProps(false), 
+    refresh 
   };
 }

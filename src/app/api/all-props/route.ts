@@ -1,53 +1,40 @@
 // src/app/api/all-props/route.ts
-// Serves the Bet Builder page — reads from weeklyProps_{season}
-// Serves the Historical Props page — reads from allProps_{season}
-// ?week=22        → filters to that week
-// ?collection=all → reads allProps instead of weeklyProps
-
+import { db } from '@/lib/firebase/admin';
 import { NextRequest, NextResponse } from 'next/server';
-import { getAllProps, getPropsForWeek } from '@/lib/enrichment/firestore';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const limit = parseInt(searchParams.get('limit') || '1000', 10);
+  const lastId = searchParams.get('lastId'); // The cursor
+
   try {
-    const { searchParams } = new URL(req.url);
-    const weekParam  = searchParams.get('week');
-    const bust       = searchParams.get('bust') === 'true';
-    const season     = parseInt(searchParams.get('season') ?? '2025', 10);
-    const collection = searchParams.get('collection') ?? 'weekly'; // 'weekly' | 'all'
+    let query = db.collection('allProps_2025')
+      .orderBy('week', 'desc')
+      .orderBy('__name__', 'desc') // Essential for stable pagination
+      .limit(limit);
 
-    const week = weekParam ? parseInt(weekParam, 10) : null;
-
-    let props: any[];
-
-    if (collection === 'all' || !week) {
-      // Historical props page — allProps_{season}
-      props = await getAllProps(week, bust);
-    } else {
-      // Bet Builder — weeklyProps_{season} week N
-      props = await getPropsForWeek(season, week);
+    if (lastId) {
+      const lastDoc = await db.collection('allProps_2025').doc(lastId).get();
+      if (lastDoc.exists) {
+        query = query.startAfter(lastDoc);
+      }
     }
 
-    const propTypes = Array.from(
-      new Set(props.map((p: any) => p.prop ?? p.Prop).filter(Boolean))
-    ).sort() as string[];
+    const snapshot = await query.get();
+    const props = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-    return NextResponse.json({
+    const response = {
       props,
-      propTypes,
-      totalCount: props.length,
-      cacheAge: bust ? 0 : 60,
-    }, {
-      headers: {
-        'Cache-Control': bust
-          ? 'no-store, max-age=0, must-revalidate'
-          : 'public, s-maxage=60, stale-while-revalidate=30',
-      },
-    });
+      lastId: props.length === limit ? props[props.length - 1]?.id : null,
+      hasMore: props.length === limit,
+    };
+
+    return NextResponse.json(response);
 
   } catch (error: any) {
-    console.error('Error fetching props:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error('Error fetching all props:', error);
+    return NextResponse.json({ error: 'Failed to fetch props' }, { status: 500 });
   }
 }

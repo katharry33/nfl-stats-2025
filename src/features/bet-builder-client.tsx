@@ -1,199 +1,180 @@
 'use client';
-// src/features/bet-builder-client.tsx
 
-import { useState, useMemo, useEffect, useCallback } from 'react';
-import { useAllProps, NormalizedProp } from '@/hooks/useAllProps';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useBetSlip } from '@/hooks/useBetSlip';
+import { useAllProps, NormalizedProp } from '@/hooks/useAllProps';
 import { PropsTable } from '@/components/bets/PropsTable';
-import { BetSlipPanel } from '@/components/bets/BetSlipPanel';
 import { EnrichModal } from '@/components/bets/EnrichModal';
-import { RefreshCw, LayoutGrid, Table2, SlidersHorizontal, Zap } from 'lucide-react';
-import { BetLeg } from '@/lib/types';
+import { ManualEntryModal } from '@/components/bets/manual-entry-modal';
+import { RefreshCw, Plus, Zap, Loader2, Database } from 'lucide-react';
+import { toast } from 'sonner';
 
-type ViewMode = 'cards' | 'table';
+export default function BetBuilderClient() {
+  // 1. Hook Integration
+  const { 
+    props: allProps, 
+    loading, 
+    error, 
+    hasMore, 
+    loadMore, 
+    refresh 
+  } = useAllProps();
+  
+  const { selections, addLeg, isInitialized } = useBetSlip();
 
-const PROP_TYPE_OPTIONS = [
-  'Passing Yards', 'Rushing Yards', 'Receiving Yards',
-  'Receptions', 'Passing TDs', 'Anytime TD',
-  'Pass Attempts', 'Pass Completions',
-];
+  // 2. State for Modals & Filters
+  const [showManual, setShowManual] = useState(false);
+  const [showEnrich, setShowEnrich] = useState(false);
+  const [selectedType, setSelectedType] = useState<string>('All');
 
-export function BetBuilderClient({ initialWeek, season = 2025 }: { initialWeek: number; season?: number }) {
-  const { allProps: rawProps, loading: isLoading, error, propTypes, fetchProps, deleteProp } = useAllProps(initialWeek);
-  const { selections, addLeg, removeLeg, clear } = useBetSlip(initialWeek, season);
+  // 3. Dynamic propTypes Generation (replaces the missing hook property)
+  const propTypes = useMemo(() => {
+    const types = new Set(allProps.map(p => p.prop).filter(Boolean));
+    return ['All', ...Array.from(types)].sort();
+  }, [allProps]);
 
-  const [viewMode,     setViewMode]     = useState<ViewMode>('table');
-  const [filters,      setFilters]      = useState({ search: '', propType: '', team: '' });
-  const [showFilters,  setShowFilters]  = useState(false);
-  const [showEnrich,   setShowEnrich]   = useState(false);
-
-  const safeSelections = selections ?? [];
-
+  // 4. Client-side Filter Logic
   const filteredProps = useMemo(() => {
-    let list: NormalizedProp[] = rawProps ?? [];
-    const search = filters.search.trim().toLowerCase();
-    if (search) {
-      list = list.filter(p =>
-        (p.player ?? '').toLowerCase().includes(search) ||
-        (p.prop ?? '').toLowerCase().includes(search) ||
-        (p.matchup ?? '').toLowerCase().includes(search)
-      );
-    }
-    if (filters.propType) {
-      list = list.filter(p => (p.prop ?? '').toLowerCase() === filters.propType.toLowerCase());
-    }
-    if (filters.team) {
-      list = list.filter(p => (p.team ?? '').toLowerCase() === filters.team.toLowerCase());
-    }
-    return list.filter((p): p is NormalizedProp & { id: string } => !!p.id);
-  }, [rawProps, filters]);
-
-  const teamOptions = useMemo(() =>
-    Array.from(new Set((rawProps ?? []).map(p => p.team).filter(Boolean))).sort() as string[]
-  , [rawProps]);
-
-  useEffect(() => { fetchProps(); }, [fetchProps]);
+    if (selectedType === 'All') return allProps;
+    return allProps.filter(p => p.prop === selectedType);
+  }, [allProps, selectedType]);
 
   const slipIds = useMemo(
-    () => new Set<string>(safeSelections.map((s: any) => String(s.id))),
-    [safeSelections]
+    () => new Set((selections ?? []).map((s: any) => String(s.propId ?? s.id))),
+    [selections]
   );
 
-  const handleAddLeg = useCallback((prop: NormalizedProp, userSelection?: 'Over' | 'Under') => {
+  // 5. Handlers
+  const handleAddToSlip = useCallback((prop: NormalizedProp) => {
+    const propId = String(prop.id);
+    if (slipIds.has(propId)) {
+      toast.error(`${prop.player} already in slip`);
+      return;
+    }
+    
     addLeg({
-      id: String(prop.id),
-      player: prop.player,
-      prop: prop.prop,
-      line: prop.line,
-      team: prop.team ?? '', 
-      matchup: prop.matchup ?? '', 
-      selection: userSelection ?? (prop.overUnder as 'Over' | 'Under') ?? 'Over',
-      odds: prop.odds ?? -110,
+      id: propId,
+      propId,
+      player: prop.player ?? 'Unknown',
+      prop: prop.prop ?? 'Prop',
+      line: prop.line ?? 0,
+      selection: (prop.overUnder as 'Over' | 'Under') || 'Over',
+      odds: prop.bestOdds ?? prop.odds ?? -110,
+      matchup: prop.matchup ?? '',
+      team: prop.team ?? '',
+      week: prop.week,
+      season: prop.season,
       gameDate: prop.gameDate ?? new Date().toISOString(),
-      status: 'pending',
     });
-  }, [addLeg, initialWeek, season]);
+
+    toast.success(`${prop.player} added to slip`);
+  }, [addLeg, slipIds]);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#060606] text-white">
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-
-        {/* Top bar */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 shrink-0">
-          <div>
-            <h1 className="text-3xl font-black italic uppercase tracking-tighter leading-none">
-              Market <span className="text-[#FFD700]">Builder</span>
-            </h1>
-            <p className="text-[10px] text-zinc-600 font-bold uppercase tracking-[0.2em] mt-1">
-              NFL Week {initialWeek}
-              <span className="text-zinc-800 mx-2">|</span>
-              {isLoading ? 'Loading...' : `${filteredProps.length} props`}
-              {safeSelections.length > 0 && (
-                <span className="ml-2 text-[#FFD700]">· {safeSelections.length} in slip</span>
-              )}
-            </p>
+    <div className="space-y-6">
+      {/* Header & Controls */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white/[0.02] border border-white/[0.05] p-6 rounded-3xl">
+        <div className="flex items-center gap-4">
+          <div className="h-12 w-12 rounded-2xl bg-[#FFD700]/10 flex items-center justify-center border border-[#FFD700]/20">
+            <Database className="h-6 w-6 text-[#FFD700]" />
           </div>
-
-          <div className="flex items-center gap-2">
-            <input
-              className="bg-zinc-900 border border-white/5 rounded-xl px-4 py-2 text-xs w-52 placeholder:text-zinc-700 focus:outline-none focus:border-[#FFD700]/30"
-              placeholder="Search players, props..."
-              value={filters.search}
-              onChange={e => setFilters(f => ({ ...f, search: e.target.value }))}
-            />
-
-            <button onClick={() => setShowFilters(v => !v)}
-              className={`p-2 rounded-xl border transition-all ${showFilters
-                ? 'bg-[#FFD700]/10 border-[#FFD700]/30 text-[#FFD700]'
-                : 'bg-zinc-900 border-white/5 text-zinc-500 hover:text-white'}`}>
-              <SlidersHorizontal className="w-4 h-4" />
-            </button>
-
-            {/* Enrich button */}
-            <button onClick={() => setShowEnrich(true)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 hover:bg-blue-500/20 text-xs font-black uppercase transition-colors">
-              <Zap className="w-3.5 h-3.5" /> Enrich Stats
-            </button>
-
-            <div className="flex bg-zinc-900 border border-white/5 rounded-xl p-1 gap-1">
-              <button onClick={() => setViewMode('table')}
-                className={`p-1.5 rounded-lg transition-all ${viewMode === 'table' ? 'bg-[#FFD700] text-black' : 'text-zinc-500 hover:text-white'}`}>
-                <Table2 className="w-3.5 h-3.5" />
-              </button>
-              <button onClick={() => setViewMode('cards')}
-                className={`p-1.5 rounded-lg transition-all ${viewMode === 'cards' ? 'bg-[#FFD700] text-black' : 'text-zinc-500 hover:text-white'}`}>
-                <LayoutGrid className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            <button onClick={() => fetchProps(true)}
-              className="p-2 bg-zinc-900 border border-white/5 rounded-xl text-zinc-500 hover:text-white transition-colors">
-              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-            </button>
+          <div>
+            <h2 className="text-xl font-black italic tracking-tighter uppercase">Prop Builder</h2>
+            <p className="text-zinc-500 text-xs font-medium uppercase tracking-widest">
+              {loading ? 'Syncing...' : `${allProps.length} Total Props Available`}
+            </p>
           </div>
         </div>
 
-        {/* Filter bar */}
-        {showFilters && (
-          <div className="flex items-center gap-3 px-6 py-3 border-b border-white/5 bg-black/20 shrink-0">
-            <select value={filters.propType} onChange={e => setFilters(f => ({ ...f, propType: e.target.value }))}
-              className="bg-zinc-900 border border-white/5 rounded-xl px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:border-[#FFD700]/30">
-              <option value="">All Prop Types</option>
-              {(propTypes.length > 0 ? propTypes : PROP_TYPE_OPTIONS).map(pt => (
-                <option key={pt} value={pt}>{pt}</option>
-              ))}
-            </select>
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Prop Type Filter */}
+          <select 
+            value={selectedType}
+            onChange={(e) => setSelectedType(e.target.value)}
+            className="bg-black border border-white/10 rounded-xl px-4 py-2 text-xs font-bold text-zinc-400 outline-none focus:border-[#FFD700]/50 transition-all"
+          >
+            {propTypes.map(type => (
+              <option key={type} value={type}>{type}</option>
+            ))}
+          </select>
 
-            <select value={filters.team} onChange={e => setFilters(f => ({ ...f, team: e.target.value }))}
-              className="bg-zinc-900 border border-white/5 rounded-xl px-3 py-1.5 text-xs text-zinc-300 focus:outline-none focus:border-[#FFD700]/30">
-              <option value="">All Teams</option>
-              {teamOptions.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
+          <button 
+            onClick={() => setShowEnrich(true)}
+            className="p-2.5 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-xl hover:bg-blue-500/20 transition-all"
+            title="Enrich Data"
+          >
+            <Zap className="h-4 w-4" />
+          </button>
 
-            {(filters.propType || filters.team) && (
-              <button onClick={() => setFilters(f => ({ ...f, propType: '', team: '' }))}
-                className="text-[10px] text-zinc-600 hover:text-white uppercase font-bold tracking-widest transition-colors">
-                Clear filters
-              </button>
-            )}
-          </div>
-        )}
+          <button 
+            onClick={() => setShowManual(true)}
+            className="p-2.5 bg-white/5 text-zinc-400 border border-white/10 rounded-xl hover:bg-white/10 transition-all"
+            title="Manual Entry"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
 
-        {error && (
-          <div className="mx-6 mt-4 text-red-500 text-xs uppercase font-bold tracking-widest bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-2">
-            {error}
-          </div>
-        )}
-
-        <div className="flex-1 overflow-y-auto px-6 py-4">
-          <PropsTable
-            props={filteredProps}
-            isLoading={isLoading}
-            onAddToBetSlip={handleAddLeg}
-            onDelete={deleteProp}
-            slipIds={slipIds}
-          />
+          <button 
+            onClick={() => refresh()}
+            disabled={loading}
+            className="p-2.5 bg-white/5 text-zinc-400 border border-white/10 rounded-xl hover:bg-white/10 transition-all disabled:opacity-50"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          </button>
         </div>
       </div>
 
-      {/* Bet Slip sidebar */}
-      <div className="w-96 shrink-0 border-l border-white/5 overflow-hidden">
-        <BetSlipPanel
-          selections={safeSelections}
-          onRemove={removeLeg}
-          onClear={clear}
-          week={initialWeek}
+      {error && (
+        <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-400 text-sm flex justify-between items-center">
+          <span>{error}</span>
+          <button onClick={() => refresh()} className="font-black underline uppercase text-[10px]">Retry</button>
+        </div>
+      )}
+
+      {/* Main Table */}
+      <div className="min-h-[400px]">
+        <PropsTable 
+          props={filteredProps}
+          isLoading={loading && allProps.length === 0}
+          onAddToBetSlip={handleAddToSlip}
+          slipIds={slipIds}
         />
       </div>
 
-      {/* Enrich modal */}
+      {/* Pagination Footer */}
+      {hasMore && (
+        <div className="flex justify-center pt-4 pb-12">
+          <button
+            onClick={() => loadMore()}
+            disabled={loading}
+            className="flex items-center gap-3 px-10 py-4 bg-zinc-900 border border-white/10 rounded-2xl hover:border-[#FFD700]/40 transition-all group"
+          >
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin text-[#FFD700]" />
+            ) : (
+              <Database className="h-4 w-4 text-zinc-600 group-hover:text-[#FFD700] transition-colors" />
+            )}
+            <span className="text-xs font-black uppercase tracking-widest text-zinc-400 group-hover:text-white">
+              {loading ? 'Fetching more...' : 'Load 1,000 More Props'}
+            </span>
+          </button>
+        </div>
+      )}
+
+      {/* Modals */}
+      {showManual && (
+        <ManualEntryModal
+          isOpen={showManual}
+          onClose={() => setShowManual(false)}
+          onAddLeg={addLeg}
+        />
+      )}
+
       <EnrichModal
         isOpen={showEnrich}
         onClose={() => setShowEnrich(false)}
-        onComplete={() => { fetchProps(true); setShowEnrich(false); }}
-        defaultWeek={initialWeek}
-        defaultSeason={season}
-        defaultCollection="weekly"
+        onComplete={() => { refresh(); setShowEnrich(false); }}
+        defaultCollection="all"
       />
     </div>
   );

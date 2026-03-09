@@ -1,23 +1,27 @@
 // src/lib/firebase/admin.ts
-import { initializeApp, getApps, cert } from 'firebase-admin/app';
+import { initializeApp, cert, getApps, getApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 
-if (!getApps().length) {
-  const keyPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-  const keyJson = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+function getCredential() {
+  const key = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+  
+  if (!key) return undefined;
 
-  if (keyPath) {
-    initializeApp({ credential: cert(keyPath) });
-  } else if (keyJson) {
-    initializeApp({ credential: cert(JSON.parse(keyJson)) });
-  } else {
-    throw new Error(
-      'Firebase Admin: set GOOGLE_APPLICATION_CREDENTIALS (file path) or FIREBASE_SERVICE_ACCOUNT_KEY (JSON string)'
-    );
+  try {
+    // If it's a JSON string (typical for Vercel/Env variables), parse it
+    if (key.startsWith('{')) {
+      return cert(JSON.parse(key));
+    }
+    // Otherwise, treat it as a path to a JSON file
+    return cert(key);
+  } catch (err) {
+    console.error("❌ Failed to parse Firebase Credential:", err);
+    return undefined;
   }
 }
 
-export const adminDb = getFirestore();
+export const app = !getApps().length 
+  ? initializeApp({ credential: getCredential() })
+  : getApp();
 
-// Alias — some files import initAdmin
-export const initAdmin = adminDb;
+export const db = getFirestore(app);
