@@ -9,7 +9,12 @@ import { ManualEntryModal } from '@/components/bets/manual-entry-modal';
 import { RefreshCw, Plus, Zap, Loader2, Database } from 'lucide-react';
 import { toast } from 'sonner';
 
-export default function BetBuilderClient() {
+interface BetBuilderClientProps {
+  initialWeek?: number;
+  season?: number;
+}
+
+export default function BetBuilderClient({ initialWeek, season = 2025 }: BetBuilderClientProps) {
   // 1. Hook Integration
   const { 
     props: allProps, 
@@ -18,9 +23,9 @@ export default function BetBuilderClient() {
     hasMore, 
     loadMore, 
     refresh 
-  } = useAllProps();
+  } = useAllProps({ week: initialWeek });
   
-  const { selections, addLeg, isInitialized } = useBetSlip();
+  const { selections, addLeg, isInitialized } = useBetSlip({ week: initialWeek, season });
 
   // 2. State for Modals & Filters
   const [showManual, setShowManual] = useState(false);
@@ -174,6 +179,8 @@ export default function BetBuilderClient() {
         isOpen={showEnrich}
         onClose={() => setShowEnrich(false)}
         onComplete={() => { refresh(); setShowEnrich(false); }}
+        defaultWeek={initialWeek}
+        defaultSeason={season}
         defaultCollection="all"
       />
     </div>

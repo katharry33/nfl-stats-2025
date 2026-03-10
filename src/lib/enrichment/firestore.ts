@@ -115,7 +115,7 @@ export async function getAllProps(
   week: number | null,
   _bust: boolean = false
 ): Promise<Array<NFLProp & { id: string }>> {
-  const season = 2025;
+  const season = 2026;
   const ref = allPropsRef(season);
 
   if (week) {
@@ -302,17 +302,23 @@ export async function getTopValueBets(
 
 // ─── PFR ID map ───────────────────────────────────────────────────────────────
 export async function getPfrIdMap(): Promise<Record<string, string>> {
-  const snapshot = await db.collection('pfr_id_map').get();
+  const snapshot = await db.collection('static_pfrIdMap').get();
   const map: Record<string, string> = {};
   snapshot.docs.forEach(doc => {
-    const data = doc.data() as { playerName: string; pfrId: string };
-    map[data.playerName] = data.pfrId;
+    const data = doc.data() as Record<string, any>;
+    const player = data.player ?? doc.id.replace(/_/g, ' ');
+    const pfrid  = data.pfrid ?? data.pfrId;
+    if (player && pfrid) map[player] = pfrid;
   });
   return map;
 }
 
 export async function savePfrId(playerName: string, pfrId: string): Promise<void> {
-  await db.collection('pfr_id_map').add({ playerName, pfrId, createdAt: Timestamp.now() });
+  const docId = playerName.replace(/\s+/g, '_');
+  await db.collection('static_pfrIdMap').doc(docId).set(
+    { player: playerName, pfrid: pfrId, _updatedAt: new Date().toISOString() },
+    { merge: true }
+  );
 }
 
 // ─── Player/Team map ──────────────────────────────────────────────────────────
