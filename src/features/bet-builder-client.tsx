@@ -23,7 +23,7 @@ export default function BetBuilderClient({ initialWeek, season = 2025 }: BetBuil
     hasMore, 
     loadMore, 
     refresh 
-  } = useAllProps({ week: initialWeek });
+  } = useAllProps({ week: initialWeek, season });
   
   const { selections, addLeg, isInitialized } = useBetSlip({ week: initialWeek, season });
 

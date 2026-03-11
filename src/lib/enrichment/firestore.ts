@@ -321,13 +321,79 @@ export async function savePfrId(playerName: string, pfrId: string): Promise<void
   );
 }
 
-// ─── Player/Team map ──────────────────────────────────────────────────────────
+// ─── getPlayerTeamMap (FIXED) ──────────────────────────────────────────────────
+// Replace your existing getPlayerTeamMap with this:
 export async function getPlayerTeamMap(): Promise<Record<string, string>> {
-  const snapshot = await db.collection('player_team_map').get();
+  const snapshot = await db.collection('static_playerTeamMapping').get();
   const map: Record<string, string> = {};
   snapshot.docs.forEach(doc => {
-    const data = doc.data() as { playerName: string; team: string };
-    map[data.playerName.toLowerCase().trim()] = data.team.toUpperCase();
+    const data = doc.data() as Record<string, any>;
+    // field is 'player', fallback to doc ID
+    const p = data.player ?? data.playerName ?? doc.id.replace(/_/g, ' ');
+    if (p && data.team) map[p.toLowerCase().trim()] = data.team.toUpperCase();
   });
   return map;
+}
+
+// ─── getPlayerSeasonAvg ────────────────────────────────────────────────────────
+// Looks up a player's per-game average for a propNorm from static_playerSeasonStats
+// Returns null if not found
+export async function getPlayerSeasonAvg(
+  playerName: string,
+  propNorm: string,
+  season: number
+): Promise<number | null> {
+  const col = db.collection('static_playerSeasonStats');
+
+  // Try exact player name match first
+  const snap = await col
+    .where('player', '==', playerName)
+    .where('season', '==', season)
+    .limit(1)
+    .get();
+
+  const doc = snap.empty
+    ? (await col
+        .where('player', '==', playerName.replace(/\./g, ''))  // "AJ Brown" vs "A.J. Brown"
+        .where('season', '==', season)
+        .limit(1)
+        .get()
+      ).docs[0]
+    : snap.docs[0];
+
+  if (!doc) {
+    // Case-insensitive fallback — scan (expensive but rare)
+    const allSnap = await col.where('season', '==', season).get();
+    const norm    = playerName.toLowerCase().replace(/\./g, '').trim();
+    const match   = allSnap.docs.find(d => {
+      const p = (d.data().player ?? '').toLowerCase().replace(/\./g, '').trim();
+      return p === norm;
+    });
+    if (!match) return null;
+    const key = propNorm.replace(/\s/g, '_');
+    return match.data()[key] ?? null;
+  }
+
+  const key = propNorm.replace(/\s/g, '_');
+  return doc.data()[key] ?? null;
+}
+
+// ─── getTeamDefenseStats ───────────────────────────────────────────────────────
+// Looks up a team's defensive rank + avg-allowed for a propNorm from static_teamDefenseStats
+export async function getTeamDefenseStats(
+  teamAbbr: string,
+  propNorm: string,
+  season: number
+): Promise<{ rank: number; avg: number } | null> {
+  const docId = `${teamAbbr.toUpperCase()}_${season}`;
+  const doc   = await db.collection('static_teamDefenseStats').doc(docId).get();
+  if (!doc.exists) return null;
+
+  const data = doc.data()!;
+  const key  = propNorm.replace(/\s/g, '_');
+  const rank = data[`${key}_rank`];
+  const avg  = data[`${key}_avg`];
+
+  if (rank == null || avg == null) return null;
+  return { rank, avg };
 }

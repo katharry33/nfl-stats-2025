@@ -12,7 +12,8 @@
     "load-props": "tsx scripts/loadProps.ts",
     "enrich": "tsx scripts/enrich.ts",
     "post-game": "tsx scripts/postGame.ts",
-    "load weekly props": "tsx scripts/loadweeklyprops.ts"
+    "load weekly props": "tsx scripts/loadweeklyprops.ts",
+    "enrich:debug": "dotenv -e .env.local -- tsx scripts/debugEnrich.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.37.4",

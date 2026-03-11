@@ -9,7 +9,7 @@ import { computeScoring, pickBestOdds } from '@/lib/enrichment/scoring';
 const args = process.argv.slice(2);
 const WEEK = parseInt(args.find(a => a.startsWith('--week='))?.split('=')[1] ?? '22', 10);
 const SEASON = parseInt(args.find(a => a.startsWith('--season='))?.split('=')[1] ?? '2025', 10);
-const PFR_SEASON = WEEK <= 3 ? SEASON - 1 : SEASON;
+const PFR_SEASON = SEASON;
 const COLL = args.includes('--all') ? `allProps_${SEASON}` : `weeklyProps_${SEASON}`;
 
 async function main() {
@@ -26,7 +26,25 @@ async function main() {
   console.log(`\n⏳ Step 2: Sample prop week ${WEEK}...`);
   const weekSnap = await db.collection(COLL).where('week', '==', WEEK).limit(1).get();
   const docSnap = weekSnap.empty ? ping.docs[0] : weekSnap.docs[0];
-  const prop = { id: docSnap.id, ...docSnap.data() } as any;
+  const r = docSnap.data() as Record<string, any>;
+  const pick = (...keys: string[]) => { for (const k of keys) { const v = r[k]; if (v != null && v !== '') return v; } return null; };
+  const prop: any = {
+    id:        docSnap.id,
+    player:    pick('Player','player')                       ?? '',
+    prop:      pick('Prop','prop')                           ?? '',
+    line:      pick('Line','line')                           ?? 0,
+    team:      pick('Team','team')                           ?? '',
+    matchup:   pick('Matchup','matchup')                     ?? '',
+    week:      pick('Week','week'),
+    season:    pick('Season','season'),
+    overUnder: pick('Over/Under?','Over/Under','overUnder')  ?? '',
+    fdOdds:    pick('FdOdds','fdOdds'),
+    dkOdds:    pick('DkOdds','dkOdds'),
+    gameDate:  pick('Game Date','gameDate')                  ?? '',
+    playerAvg: pick('Player Avg','playerAvg'),
+    opponentRank: pick('Opponent Rank','opponentRank'),
+    confidenceScore: pick('Confidence Score','confidenceScore'),
+  };
   console.log(`✅ ${prop.player} | ${prop.prop} ${prop.line} ${prop.overUnder} | Week ${prop.week}`);
   console.log(`   matchup=${prop.matchup} team=${prop.team} fdOdds=${prop.fdOdds} dkOdds=${prop.dkOdds}`);
   console.log(`   existing: avg=${prop.playerAvg} oppRank=${prop.opponentRank} conf=${prop.confidenceScore}`);
