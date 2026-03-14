@@ -70,7 +70,8 @@ export async function GET(req: NextRequest) {
         season:            pick('season', 'Season'),
         overUnder:         pick('overUnder', 'over under', 'overunder', 'Over/Under', 'Over/Under?'),
         // Analytics — prefer enriched camelCase, fall back to old Sheets spaced fields
-        playerAvg:         pick('playerAvg', 'player avg', 'Player Avg'),
+        // playerAvg: skip 0 (failed enrichment) so old Sheets "player avg" value wins
+        playerAvg:         (() => { for (const k of ['playerAvg', 'player avg', 'Player Avg']) { const v = d[k]; if (v != null && v !== '' && v !== 0) return v; } return d['playerAvg'] ?? d['player avg'] ?? d['Player Avg']; })(),
         opponentRank:      pick('opponentRank', 'opponent rank', 'Opponent Rank'),
         opponentAvgVsStat: pick('opponentAvgVsStat', 'opponent avg vs stat', 'Opponent Avg vs Stat'),
         scoreDiff:         pick('scoreDiff', 'score diff', 'Score Diff'),

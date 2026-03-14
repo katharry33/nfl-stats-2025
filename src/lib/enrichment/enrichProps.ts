@@ -75,7 +75,7 @@ export async function enrichPropsForWeek(options: EnrichOptions): Promise<number
     }
 
     // 1. Player average — prior season for weeks 1-3, rookie fallback to current
-    let avg: number;
+    let avg: number | null = null;
     if (isEarlySeason) {
       const priorAvg = await getPlayerSeasonAvg(playerName, propNorm, priorSeason);
       if (priorAvg != null) {
@@ -83,15 +83,21 @@ export async function enrichPropsForWeek(options: EnrichOptions): Promise<number
       } else {
         // Rookie/new player — fall back to current season PFR logs
         const currentLogs = await getLogs(playerName, season);
-        avg = currentLogs.length > 0 ? calculateAvg(currentLogs, propNorm, week, gameDate) : 0;
+        const computed = currentLogs.length > 0 ? calculateAvg(currentLogs, propNorm, week, gameDate) : null;
+        avg = computed ?? null;
       }
     } else {
       const logs = await getLogs(playerName, season);
-      avg = calculateAvg(logs, propNorm, week, gameDate);
+      const computed = calculateAvg(logs, propNorm, week, gameDate);
+      avg = computed > 0 ? computed : (logs.length > 0 ? computed : null);
     }
-    update.playerAvg = avg;
+    // Only write playerAvg when we have a real value — never overwrite with null/0
+    if (avg != null) {
+      update.playerAvg = avg;
+    }
+    const avgForCache = avg ?? (prop.playerAvg as number | null) ?? 0;
     if (!playerAvgCache.has(playerName)) playerAvgCache.set(playerName, {});
-    playerAvgCache.get(playerName)![propNorm] = avg;
+    playerAvgCache.get(playerName)![propNorm] = avgForCache;
 
     // 2. Season hit % — prior season for weeks 1-3, rookie fallback to current
     if (prop.overUnder) {
@@ -332,25 +338,27 @@ export async function enrichAllPropsCollection({ season, week, skipEnriched }: E
         if (t) update.team = t;
       }
 
-      // 1. Player average — with rookie fallback
+      // 1. Player average — with rookie fallback, never overwrite with 0
       if (needsAvg || !skipEnriched) {
-        let avg: number;
+        let avg: number | null = null;
         if (isEarlySeason) {
           const priorAvg = await getPlayerSeasonAvg(playerName, propNorm, priorSeason);
           if (priorAvg != null) {
             avg = priorAvg;
           } else {
-            // Rookie/new player — try current season logs
             const currentLogs = await getLogs(playerName, season);
-            avg = currentLogs.length > 0 ? calculateAvg(currentLogs, propNorm, w, gameDate) : 0;
+            const computed = currentLogs.length > 0 ? calculateAvg(currentLogs, propNorm, w, gameDate) : null;
+            avg = computed ?? null;
           }
         } else {
           const logs = await getLogs(playerName, season);
-          avg = calculateAvg(logs, propNorm, w, gameDate);
+          const computed = calculateAvg(logs, propNorm, w, gameDate);
+          avg = computed > 0 ? computed : (logs.length > 0 ? computed : null);
         }
-        update.playerAvg = avg;
+        if (avg != null) update.playerAvg = avg;
+        const avgForCache = avg ?? (prop.playerAvg as number | null) ?? 0;
         if (!playerAvgCache.has(playerName)) playerAvgCache.set(playerName, {});
-        playerAvgCache.get(playerName)![propNorm] = avg;
+        playerAvgCache.get(playerName)![propNorm] = avgForCache;
       } else {
         if (!playerAvgCache.has(playerName)) playerAvgCache.set(playerName, {});
         playerAvgCache.get(playerName)![propNorm] = prop.playerAvg!;
