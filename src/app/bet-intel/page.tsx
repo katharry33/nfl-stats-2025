@@ -258,7 +258,7 @@ export function WinningDnaPanel({ intel }: { intel: any }) {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {winningDna.sweetSpots.scoreDiff && (
               <div className="p-3 bg-muted rounded-lg">
-                <div className="text-xs text-muted-foreground mb-1">Score Differential</div>
+                <div className="text-xs text-muted-foreground mb-1">prop.scoreDifferential</div>
                 <div className="text-sm font-semibold">
                   {formatRange(winningDna.sweetSpots.scoreDiff)}
                   <span className="text-xs text-muted-foreground">

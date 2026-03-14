@@ -68,10 +68,14 @@ function kellyCap(propNorm: string): number {
 export function computeScoring(input: ScoringInput): ScoringOutput {
   const { playerAvg, opponentRank, opponentAvgVsStat, line, seasonHitPct, odds, propNorm } = input;
 
-  // L – N
-  const yardsScore  = playerAvg + (opponentAvgVsStat / 100);
-  const rankScore   = (opponentRank / 32) * 10;
-  const totalScore  = yardsScore - rankScore;
+  // Blended player score:
+  //   yardsScore = weighted avg of playerAvg (70%) + defenseAllowed (30%)
+  //   rankScore  = rank penalty: rank 1 (best defense) subtracts ~3.1pts, rank 32 adds ~3.1pts
+  //   totalScore = yardsScore + rankAdjustment
+  //   scoreDiff  = totalScore - line  (positive → model favors Over)
+  const yardsScore     = playerAvg * 0.7 + opponentAvgVsStat * 0.3;
+  const rankAdjustment = ((opponentRank - 16.5) / 32) * 10; // rank 1 = -5, rank 32 = +5
+  const totalScore     = yardsScore + rankAdjustment;
 
   // O – Q
   const scoreDiff      = totalScore - line;
@@ -101,15 +105,12 @@ export function computeScoring(input: ScoringInput): ScoringOutput {
     impliedProb = impliedProbFromOdds(odds);
     bestEdgePct = winProb - impliedProb;
 
-    // EV: min(winProb * payout - (1 - winProb), 2)
+    // EV: standard expected value (no arbitrary cap)
     const payout = odds > 0 ? odds / 100 : 100 / Math.abs(odds);
-    expectedValue = Math.min(winProb * payout - (1 - winProb), 2);
+    expectedValue = winProb * payout - (1 - winProb);
 
     if (bestEdgePct > 0) {
-      const b = payout;
-      const p = winProb;
-      const q = 1 - winProb;
-      const rawKelly = (b * p - q) / b;
+      const rawKelly = (payout * winProb - (1 - winProb)) / payout;
       kellyPct = Math.min(rawKelly, kellyCap(propNorm));
     }
   }
@@ -118,15 +119,15 @@ export function computeScoring(input: ScoringInput): ScoringOutput {
   const edge = bestEdgePct ?? 0;
   const valueIcon = edge > 0.10 ? '🔥' : edge > 0.05 ? '⚠️' : '❄️';
 
-  // AB — use available hit % data; fall back gracefully
-  const s = projWinPct;
-  const t = seasonHitPct ?? projWinPct;
-  const u = avgWinProb ?? projWinPct;
-  const confidenceScore = 0.5 * s + 0.3 * t + 0.2 * u;
+  // AB: confidence — 40% model, 40% historical hit%, 20% blend (when hit% available)
+  //     Falls back to pure model when no hit% data
+  const confidenceScore = seasonHitPct != null
+    ? 0.4 * projWinPct + 0.4 * seasonHitPct + 0.2 * (avgWinProb ?? projWinPct)
+    : projWinPct;
 
   return {
     yardsScore:      Math.round(yardsScore * 1000) / 1000,
-    rankScore:       Math.round(rankScore * 1000) / 1000,
+    rankScore:       Math.round(rankAdjustment * 1000) / 1000,
     totalScore:      Math.round(totalScore * 1000) / 1000,
     scoreDiff:       Math.round(scoreDiff * 1000) / 1000,
     scalingFactor:   Math.round(scalingFactor * 1000) / 1000,

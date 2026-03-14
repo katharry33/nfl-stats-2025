@@ -62,7 +62,7 @@ function normalizeDoc(d: FirebaseFirestore.QueryDocumentSnapshot): NFLProp & { i
     yardsScore:        pick('Yards Score', 'yardsScore'),
     rankScore:         pick('Rank Score', 'rankScore'),
     totalScore:        pick('Total Score', 'totalScore'),
-    scoreDiff:         pick('Score Diff', 'scoreDiff'),
+    scoreDiff:         pick('prop.scoreDiff', 'scoreDiff'),
     scalingFactor:     pick('Scaling Factor', 'scalingFactor'),
     winProbability:    pick('Win Probability', 'winProbability'),
     projWinPct:        pick('Proj Win %', 'projWinPct'),

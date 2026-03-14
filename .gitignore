@@ -3,7 +3,6 @@ node_modules/
 .env*
 functions/node_modules/
 functions/lib/
-serviceAccountKey.jsonserviceAccountKey.json
 serviceAccountKey.json
 realkey.json
 *.json

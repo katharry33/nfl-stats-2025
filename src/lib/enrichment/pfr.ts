@@ -6,7 +6,6 @@ import type { PFRGame } from './types';
 import { normalizeProp, splitComboProp } from './normalize';
 
 const PFR_CACHE = new Map<string, PFRGame[]>();
-const SCRAPER_API_KEY = process.env.SCRAPER_API_KEY;
 
 // ---------------------------------------------------------------------------
 // PFR ID Resolution
@@ -69,10 +68,7 @@ export async function fetchSeasonLog(
   const cacheKey = `${pfrId}:${season}`;
   if (PFR_CACHE.has(cacheKey)) return PFR_CACHE.get(cacheKey)!;
 
-  const rawUrl = `https://www.pro-football-reference.com/players/${pfrId[0]}/${pfrId}/gamelog/${season}/`;
-  const url = SCRAPER_API_KEY
-    ? `https://api.scraperapi.com?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(rawUrl)}`
-    : rawUrl;
+  const url = `https://www.pro-football-reference.com/players/${pfrId[0]}/${pfrId}/gamelog/${season}/`;
   console.log(`📥 PFR: ${playerName} (${season}): ${url}`);
 
   try {

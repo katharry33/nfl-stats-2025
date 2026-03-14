@@ -16,7 +16,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
-import { syncResults } from './postGame';
 
 if (!getApps().length) {
   const keyPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
@@ -33,7 +32,6 @@ import { fetchBettingProsProps }   from '@/lib/enrichment/bettingpros';
 import { saveProps, getPlayerTeamMap, weeklyPropsRef, movePropsToAllProps } from '@/lib/enrichment/firestore';
 import { normalizePlayerName }     from '@/lib/enrichment/normalize';
 import { enrichPropsForWeek }      from '@/lib/enrichment/enrichProps';
-import { writeActualResults }      from '@/scripts/postGame';  // you may need to export this
 import type { NFLProp }            from '@/lib/types';
 
 // ─── CLI args ─────────────────────────────────────────────────────────────────

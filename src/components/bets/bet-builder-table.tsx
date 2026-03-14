@@ -29,7 +29,7 @@ const ALL_COLS: ColDef[] = [
   { key: 'opponentRank',      label: 'Opp Rank',   fmt: v => v != null ? `#${v}` : '—',
     color: v => v <= 8 ? 'text-red-400' : v <= 16 ? 'text-yellow-400' : 'text-emerald-400' },
   { key: 'opponentAvgVsStat', label: 'Opp Avg vs Stat', fmt: v => v?.toFixed(1) ?? '—' },
-  { key: 'scoreDiff',         label: 'Score Diff', fmt: v => v?.toFixed(2) ?? '—',
+  { key: 'scoreDiff',         label: 'prop.scoreDiff', fmt: v => v?.toFixed(2) ?? '—',
     color: v => v > 0 ? 'text-emerald-400' : v < 0 ? 'text-red-400' : 'text-zinc-400' },
   { key: 'overUnder',         label: 'Over/Under',
     color: v => v === 'Over' ? 'text-emerald-400 font-bold' : v === 'Under' ? 'text-red-400 font-bold' : '' },

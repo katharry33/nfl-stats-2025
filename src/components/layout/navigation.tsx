@@ -86,7 +86,7 @@ const Navigation: React.FC<NavigationProps> = ({
         <NavItem icon={Database} label="Bet Intel" page="bet-intel" />
         <NavItem icon={History} label="Betting Log" page="betting-log" />
         <NavItem icon={BarChart} label="Performance" page="performance" />
-        <NavItem icon={TrendingUp} label="Insights" page="insights" />
+        <NavItem icon={TrendingUp} label="Insights" page="market-insights" />
         <NavItem icon={Shield} label="Bonuses" page="bonuses" />
         <NavItem icon={Wallet} label="Wallet" page="wallet" />
         <NavItem icon={CalendarDays} label="Schedule" page="schedule" />
