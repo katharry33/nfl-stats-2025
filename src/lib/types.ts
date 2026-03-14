@@ -83,7 +83,6 @@ export interface BetSlipItem {
 }
 
 // ─── Sort key (for table column sorting) ─────────────────────────────────────
-export type SortKey = keyof NFLProp | 'default';
 
 // ─── Defense map (used by enrichment scripts) ─────────────────────────────────
 export interface DefenseMap {

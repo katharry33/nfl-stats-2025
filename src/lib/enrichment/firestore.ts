@@ -321,64 +321,85 @@ export async function savePfrId(playerName: string, pfrId: string): Promise<void
   );
 }
 
-// ─── getPlayerTeamMap (FIXED) ──────────────────────────────────────────────────
-// Replace your existing getPlayerTeamMap with this:
+// ─── getPlayerTeamMap ─────────────────────────────────────────────────────────
 export async function getPlayerTeamMap(): Promise<Record<string, string>> {
   const snapshot = await db.collection('static_playerTeamMapping').get();
   const map: Record<string, string> = {};
   snapshot.docs.forEach(doc => {
     const data = doc.data() as Record<string, any>;
-    // field is 'player', fallback to doc ID
     const p = data.player ?? data.playerName ?? doc.id.replace(/_/g, ' ');
     if (p && data.team) map[p.toLowerCase().trim()] = data.team.toUpperCase();
   });
   return map;
 }
 
-// ─── getPlayerSeasonAvg ────────────────────────────────────────────────────────
+// ─── nameToDocKey ─────────────────────────────────────────────────────────────
+// Converts a player name to the doc ID format used by scrapeSeasonStats.ts
+// "A.J. Brown" → "A_J__Brown"  |  "Derrick Henry" → "Derrick_Henry"
+// "Ja'Marr Chase" → "JaMarr_Chase"
+function nameToDocKey(name: string): string {
+  return name
+    .replace(/'/g, '')          // remove apostrophes
+    .replace(/\./g, '_')        // dots → underscore
+    .replace(/\s+/g, '_')       // spaces → underscore
+    .replace(/__+/g, '__');     // collapse 3+ underscores to double
+}
+
+// ─── getPlayerSeasonAvg ───────────────────────────────────────────────────────
 // Looks up a player's per-game average for a propNorm from static_playerSeasonStats
-// Returns null if not found
+// Tries multiple doc ID formats before falling back to a query (avoids full scan)
 export async function getPlayerSeasonAvg(
   playerName: string,
   propNorm: string,
   season: number
 ): Promise<number | null> {
   const col = db.collection('static_playerSeasonStats');
+  const statKey = propNorm.replace(/\s/g, '_'); // "rec yds" → "rec_yds"
 
-  // Try exact player name match first
-  const snap = await col
+  // Build candidate doc IDs to try — order matters (most likely first)
+  const candidates = [
+    `${nameToDocKey(playerName)}_${season}`,                             // "Derrick_Henry_2024"
+    `${nameToDocKey(playerName.replace(/\./g, ''))}_${season}`,         // without dots: "AJ_Brown_2024"
+    `${playerName.replace(/\s+/g, '_').replace(/\./g, '_')}_${season}`, // raw replace
+  ];
+
+  // Try each candidate doc ID
+  for (const docId of [...new Set(candidates)]) {
+    const doc = await col.doc(docId).get();
+    if (doc.exists) {
+      const val = doc.data()![statKey];
+      return val != null ? Number(val) : null;
+    }
+  }
+
+  // Fallback: query by player name (normalized comparison)
+  const norm = playerName.toLowerCase().replace(/\./g, '').replace(/'/g, '').trim();
+
+  // Try exact query first (fast, uses index)
+  const exactSnap = await col
     .where('player', '==', playerName)
     .where('season', '==', season)
     .limit(1)
     .get();
 
-  const doc = snap.empty
-    ? (await col
-        .where('player', '==', playerName.replace(/\./g, ''))  // "AJ Brown" vs "A.J. Brown"
-        .where('season', '==', season)
-        .limit(1)
-        .get()
-      ).docs[0]
-    : snap.docs[0];
-
-  if (!doc) {
-    // Case-insensitive fallback — scan (expensive but rare)
-    const allSnap = await col.where('season', '==', season).get();
-    const norm    = playerName.toLowerCase().replace(/\./g, '').trim();
-    const match   = allSnap.docs.find(d => {
-      const p = (d.data().player ?? '').toLowerCase().replace(/\./g, '').trim();
-      return p === norm;
-    });
-    if (!match) return null;
-    const key = propNorm.replace(/\s/g, '_');
-    return match.data()[key] ?? null;
+  if (!exactSnap.empty) {
+    const val = exactSnap.docs[0].data()[statKey];
+    return val != null ? Number(val) : null;
   }
 
-  const key = propNorm.replace(/\s/g, '_');
-  return doc.data()[key] ?? null;
+  // Last resort: scan season's docs (slow — only hits for unusual names)
+  const seasonSnap = await col.where('season', '==', season).get();
+  const match = seasonSnap.docs.find(d => {
+    const p = (d.data().player ?? '').toLowerCase().replace(/\./g, '').replace(/'/g, '').trim();
+    return p === norm;
+  });
+
+  if (!match) return null;
+  const val = match.data()[statKey];
+  return val != null ? Number(val) : null;
 }
 
-// ─── getTeamDefenseStats ───────────────────────────────────────────────────────
+// ─── getTeamDefenseStats ──────────────────────────────────────────────────────
 // Looks up a team's defensive rank + avg-allowed for a propNorm from static_teamDefenseStats
 export async function getTeamDefenseStats(
   teamAbbr: string,
@@ -395,5 +416,5 @@ export async function getTeamDefenseStats(
   const avg  = data[`${key}_avg`];
 
   if (rank == null || avg == null) return null;
-  return { rank, avg };
+  return { rank: Number(rank), avg: Number(avg) };
 }

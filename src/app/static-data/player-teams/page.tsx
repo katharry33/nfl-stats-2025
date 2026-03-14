@@ -47,7 +47,7 @@ export default function PlayerTeamsPage() {
       const res = await fetch('/api/static-data/player-teams', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: editRow.id, playerName: editRow.player, team: editTeam }),
+        body: JSON.stringify({ id: editRow.id, player: editRow.player, team: editTeam }),
       });
       if (res.ok) {
         setEditRow(null);

@@ -16,26 +16,18 @@ const SEASON_OPTIONS = [
 ];
 
 export default function AllPropsPage() {
-  const { props, loading, hasMore, loadMore, refresh } = useAllProps();
-  const { selections, addLeg, isInitialized } = useBetSlip();
-
   const [weekFilter,   setWeekFilter]   = useState('');
   const [seasonFilter, setSeasonFilter] = useState('all');
-  const [showManual,   setShowManual]   = useState(false);
-  const [showEnrich,   setShowEnrich]   = useState(false);
 
-  const filtered = useMemo(() => {
-    let list = props;
-    if (weekFilter) {
-      const wn = parseInt(weekFilter);
-      if (!isNaN(wn)) list = list.filter(p => p.week === wn);
-    }
-    if (seasonFilter !== 'all') {
-      const sn = parseInt(seasonFilter);
-      list = list.filter(p => p.season === sn);
-    }
-    return list;
-  }, [props, weekFilter, seasonFilter]);
+  // Pass filters to the hook so the API is queried correctly
+  const { props, loading, hasMore, loadMore, refresh, deleteProp } = useAllProps({
+    week:   weekFilter   ? parseInt(weekFilter)   : undefined,
+    season: seasonFilter !== 'all' ? parseInt(seasonFilter) : undefined,
+  });
+
+  const { selections, addLeg, isInitialized } = useBetSlip();
+  const [showManual, setShowManual] = useState(false);
+  const [showEnrich, setShowEnrich] = useState(false);
 
   const slipIds = useMemo(
     () => new Set((selections ?? []).map((s: any) => String(s.propId ?? s.id))),
@@ -52,7 +44,7 @@ export default function AllPropsPage() {
       id:        propId,
       propId,
       player:    prop.player    ?? 'Unknown',
-      prop:      prop.prop      ?? 'Prop',      // string
+      prop:      prop.prop      ?? 'Prop',
       line:      prop.line      ?? 0,
       selection: (prop.overUnder as 'Over' | 'Under') || 'Over',
       odds:      prop.bestOdds  ?? prop.odds ?? -110,
@@ -78,7 +70,7 @@ export default function AllPropsPage() {
             <p className="text-zinc-500 text-sm mt-0.5">
               {loading && props.length === 0
                 ? 'Loading…'
-                : `${filtered.length.toLocaleString()} props shown`}
+                : `${props.length.toLocaleString()} props shown`}
             </p>
           </div>
 
@@ -133,16 +125,16 @@ export default function AllPropsPage() {
 
         {/* Table */}
         <PropsTable
-          props={filtered}
+          props={props}
           isLoading={loading && props.length === 0}
           onAddToBetSlip={handleAddToSlip}
-          onDelete={() => {}}
+          onDelete={deleteProp}
           slipIds={slipIds}
         />
 
         {hasMore && (
           <div className="flex justify-center py-8">
-            <button 
+            <button
               onClick={loadMore}
               disabled={loading}
               className="px-6 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl border border-white/10 transition-all disabled:opacity-50"

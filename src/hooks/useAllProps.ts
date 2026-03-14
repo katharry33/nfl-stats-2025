@@ -1,73 +1,121 @@
-import { useState, useEffect, useCallback } from 'react';
+// src/hooks/useAllProps.ts
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { toast } from 'sonner';
+import type { NFLProp } from '@/lib/types';
 
-// FIX 1: Ensure 'export' is here so the component can see it
-export interface NormalizedProp {
-  id: string;
-  player?: string;
-  prop?: string;
-  line?: number;
-  overUnder?: string;
-  bestOdds?: number;
-  odds?: number;
-  matchup?: string;
-  team?: string;
-  week?: number;
-  season?: number;
-  gameDate?: string;
-  gameStat?: number;
-  actualResult?: string;
-}
+export type NormalizedProp = NFLProp & { id: string };
 
-// Interface for the hook arguments
-interface UseAllPropsFilters {
-  week?: number;
+export interface UseAllPropsOptions {
+  week?:   number;
   season?: number;
 }
 
-// FIX 2: Update signature to accept the object instead of a number
-export function useAllProps(filters: UseAllPropsFilters = {}) {
-  const [props, setProps] = useState<NormalizedProp[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [lastId, setLastId] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(true);
+export interface UseAllPropsReturn {
+  props:    NormalizedProp[];
+  loading:  boolean;
+  error:    string | null;
+  hasMore:  boolean;
+  loadMore: () => void;
+  refresh:  () => void;
+  deleteProp: (id: string) => Promise<void>;
+  // Legacy aliases for Bet Builder compatibility
+  allProps:   NormalizedProp[];
+  propTypes:  string[];
+  fetchProps: (force?: boolean) => Promise<void>;
+}
 
-  const fetchProps = useCallback(async (isInitial = false) => {
-    if (loading || (!hasMore && !isInitial)) return;
+const PAGE_SIZE = 50;
 
+export function useAllProps(options?: UseAllPropsOptions | number): UseAllPropsReturn {
+  // Support both: useAllProps(weekNumber) and useAllProps({ week, season })
+  const opts: UseAllPropsOptions = typeof options === 'number'
+    ? { week: options }
+    : (options ?? {});
+
+  const { week, season } = opts;
+
+  const [props,     setProps]     = useState<NormalizedProp[]>([]);
+  const [propTypes, setPropTypes] = useState<string[]>([]);
+  const [loading,   setLoading]   = useState(true);
+  const [error,     setError]     = useState<string | null>(null);
+  const [hasMore,   setHasMore]   = useState(false);
+  const [cursor,    setCursor]    = useState<string | null>(null);
+  const loadingRef = useRef(false);
+
+  const buildParams = useCallback((cursorVal?: string | null, bust?: boolean) => {
+    const p = new URLSearchParams();
+    if (week   !== undefined) p.set('week',   String(week));
+    if (season !== undefined) p.set('season', String(season));
+    // Bet Builder passes week only → weekly; Historical Props → all
+    p.set('collection', week !== undefined && season === undefined ? 'weekly' : 'all');
+    p.set('limit', String(PAGE_SIZE));
+    if (cursorVal) p.set('cursor', cursorVal);
+    if (bust)      p.set('bust', 'true');
+    return p.toString();
+  }, [week, season]);
+
+  const fetchProps = useCallback(async (force = false) => {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     setLoading(true);
+    setError(null);
     try {
-      const cursor = isInitial ? '' : `&lastId=${lastId}`;
-      
-      // Build query params from filters
-      const weekParam = filters.week ? `&week=${filters.week}` : '';
-      const seasonParam = filters.season ? `&season=${filters.season}` : '';
-      
-      const res = await fetch(`/api/all-props?limit=1000${cursor}${weekParam}${seasonParam}`);
+      const res = await fetch(`/api/all-props?${buildParams(null, force)}`, {
+        cache: force ? 'no-store' : 'default',
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`${res.status}: ${text}`);
+      }
       const data = await res.json();
-
-      const newProps: NormalizedProp[] = data.props || [];
-
-      setProps(prev => isInitial ? newProps : [...prev, ...newProps]);
-      setLastId(data.lastId || null);
+      setProps(data.props ?? []);
+      setPropTypes(data.propTypes ?? []);
       setHasMore(data.hasMore ?? false);
-    } catch (err) {
-      console.error("Pagination error:", err);
+      setCursor(data.cursor ?? null);
+    } catch (err: any) {
+      setError(err.message);
+      toast.error(`Fetch error: ${err.message}`);
     } finally {
       setLoading(false);
+      loadingRef.current = false;
     }
-    // Add filters to dependency array
-  }, [lastId, loading, hasMore, filters.week, filters.season]);
+  }, [buildParams]);
 
-  const refresh = useCallback(() => {
-    setLastId(null);
-    setHasMore(true);
-    fetchProps(true);
-  }, [fetchProps]);
+  const loadMore = useCallback(async () => {
+    if (!hasMore || !cursor || loadingRef.current) return;
+    loadingRef.current = true;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/all-props?${buildParams(cursor)}`);
+      if (!res.ok) throw new Error(`${res.status}`);
+      const data = await res.json();
+      setProps(prev => [...prev, ...(data.props ?? [])]);
+      setHasMore(data.hasMore ?? false);
+      setCursor(data.cursor ?? null);
+    } catch (err: any) {
+      toast.error(`Load more failed: ${err.message}`);
+    } finally {
+      setLoading(false);
+      loadingRef.current = false;
+    }
+  }, [hasMore, cursor, buildParams]);
 
-  useEffect(() => { 
-    fetchProps(true); 
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.week, filters.season]); 
+  const refresh = useCallback(() => fetchProps(true), [fetchProps]);
 
-  return { props, loading, hasMore, loadMore: () => fetchProps(false), refresh };
+  const deleteProp = useCallback(async (id: string) => {
+    let snapshot: NormalizedProp[] = [];
+    setProps(prev => { snapshot = prev; return prev.filter(p => p.id !== id); });
+    try {
+      const res = await fetch(`/api/all-props/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Delete failed');
+      toast.success('Prop deleted.');
+    } catch {
+      toast.error('Delete failed — reverting.');
+      setProps(snapshot);
+    }
+  }, []);
+
+  useEffect(() => { fetchProps(); }, [fetchProps]);
+
+  return { props, loading, error, hasMore, loadMore, refresh, deleteProp, allProps: props, propTypes, fetchProps };
 }

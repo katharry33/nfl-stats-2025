@@ -245,7 +245,7 @@ export function calculateHitPct(
   propNorm: string,
   line: number,
   overUnder: string,
-  excludeWeek: number,
+  excludeWeek?: number,
   beforeDate?: string
 ): number | null {
   const isOver  = overUnder.toLowerCase().includes('over');
@@ -259,7 +259,7 @@ export function calculateHitPct(
     // Filter by date if available, otherwise by week
     if (beforeDate) {
       if (!g.date || g.date >= beforeDate) continue;
-    } else {
+    } else if (excludeWeek != null) {
       if (g.week === excludeWeek) continue;
     }
 

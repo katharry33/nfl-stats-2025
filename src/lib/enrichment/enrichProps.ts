@@ -16,19 +16,20 @@ export interface EnrichOptions {
   skipEnriched?: boolean;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
 // enrichPropsForWeek — fills weeklyProps_{season} for a given week
+// ─────────────────────────────────────────────────────────────────────────────
 export async function enrichPropsForWeek(options: EnrichOptions): Promise<number> {
   const { week, season, skipEnriched = true } = options;
-  const seasonToUse = season;
 
-  console.log(`\n🏈 Enriching Week ${week} (season ${season}, PFR season ${seasonToUse})`);
+  console.log(`\n🏈 Enriching Week ${week} (season ${season})`);
   console.log('='.repeat(55));
 
   const [props, pfrIdMap, playerTeamMap, defenseMap] = await Promise.all([
     getPropsForWeek(season, week),
     getPfrIdMap(),
     getPlayerTeamMap(),
-    fetchAllDefenseStats(seasonToUse),
+    fetchAllDefenseStats(season),
   ]);
 
   console.log(`📋 ${props.length} props | 🛡️ ${Object.keys(defenseMap).length} defense entries`);
@@ -36,16 +37,13 @@ export async function enrichPropsForWeek(options: EnrichOptions): Promise<number
 
   const pfrCache = new Map<string, any[]>();
 
-  async function getLogs(playerName: string, pfrSeason: number = seasonToUse) {
+  async function getLogs(playerName: string, pfrSeason: number = season) {
     if (!playerName) return [];
     const cacheKey = `${playerName}::${pfrSeason}`;
     if (pfrCache.has(cacheKey)) return pfrCache.get(cacheKey)!;
     const pfrId = await getPfrId(playerName, pfrIdMap);
     if (!pfrId) { pfrCache.set(cacheKey, []); return []; }
-    if (!pfrIdMap[playerName]) {
-      pfrIdMap[playerName] = pfrId;
-      await savePfrId(playerName, pfrId);
-    }
+    if (!pfrIdMap[playerName]) { pfrIdMap[playerName] = pfrId; await savePfrId(playerName, pfrId); }
     const logs = await fetchSeasonLog(playerName, pfrId, pfrSeason);
     pfrCache.set(cacheKey, logs);
     return logs;
@@ -76,28 +74,39 @@ export async function enrichPropsForWeek(options: EnrichOptions): Promise<number
       if (t) update.team = t;
     }
 
-    // 1. Player average
+    // 1. Player average — prior season for weeks 1-3, rookie fallback to current
     let avg: number;
     if (isEarlySeason) {
-      avg = (await getPlayerSeasonAvg(playerName, propNorm, priorSeason)) ?? 0;
+      const priorAvg = await getPlayerSeasonAvg(playerName, propNorm, priorSeason);
+      if (priorAvg != null) {
+        avg = priorAvg;
+      } else {
+        // Rookie/new player — fall back to current season PFR logs
+        const currentLogs = await getLogs(playerName, season);
+        avg = currentLogs.length > 0 ? calculateAvg(currentLogs, propNorm, week, gameDate) : 0;
+      }
     } else {
-      const logs = await getLogs(playerName);
+      const logs = await getLogs(playerName, season);
       avg = calculateAvg(logs, propNorm, week, gameDate);
     }
     update.playerAvg = avg;
     if (!playerAvgCache.has(playerName)) playerAvgCache.set(playerName, {});
     playerAvgCache.get(playerName)![propNorm] = avg;
 
-    // 2. Season hit % — prior season logs for weeks 1-3
+    // 2. Season hit % — prior season for weeks 1-3, rookie fallback to current
     if (prop.overUnder) {
       if (isEarlySeason) {
         const priorLogs = await getLogs(playerName, priorSeason);
-        if (priorLogs.length > 0) {
-          const hitPct = calculateHitPct(priorLogs, propNorm, prop.line ?? 0, prop.overUnder);
+        const logsToUse = priorLogs.length > 0 ? priorLogs : await getLogs(playerName, season);
+        if (logsToUse.length > 0) {
+          const usePrior = priorLogs.length > 0;
+          const hitPct = usePrior
+            ? calculateHitPct(logsToUse, propNorm, prop.line ?? 0, prop.overUnder)
+            : calculateHitPct(logsToUse, propNorm, prop.line ?? 0, prop.overUnder, week, gameDate);
           if (hitPct != null) update.seasonHitPct = hitPct;
         }
       } else {
-        const logs = await getLogs(playerName);
+        const logs = await getLogs(playerName, season);
         if (logs.length > 0) {
           const hitPct = calculateHitPct(logs, propNorm, prop.line ?? 0, prop.overUnder, week, gameDate);
           if (hitPct != null) update.seasonHitPct = hitPct;
@@ -105,7 +114,7 @@ export async function enrichPropsForWeek(options: EnrichOptions): Promise<number
       }
     }
 
-    // 3. Defense stats
+    // 3. Defense stats — prior season for weeks 1-3
     const team = update.team ?? prop.team ?? '';
     if (team && prop.matchup) {
       const opponent = getOpponent(team, prop.matchup);
@@ -122,25 +131,33 @@ export async function enrichPropsForWeek(options: EnrichOptions): Promise<number
       }
     }
 
-    // 4. Scoring
-    const pAvg    = update.playerAvg;
+    // 4. Scoring — runs even if avg=0, skips only if truly missing
+    const pAvg    = update.playerAvg ?? 0;
     const oppRank = update.opponentRank ?? prop.opponentRank;
     const oppAvg  = update.opponentAvgVsStat ?? prop.opponentAvgVsStat;
 
-    if (pAvg != null && oppRank != null && oppAvg != null) {
+    if (oppRank != null && oppAvg != null) {
       const best    = pickBestOdds(prop.fdOdds, prop.dkOdds);
-      const scoring = computeScoring({ playerAvg: pAvg, opponentRank: oppRank, opponentAvgVsStat: oppAvg, line: prop.line ?? 0, seasonHitPct: update.seasonHitPct ?? prop.seasonHitPct ?? null, odds: best.odds, propNorm });
+      const scoring = computeScoring({
+        playerAvg: pAvg, opponentRank: oppRank, opponentAvgVsStat: oppAvg,
+        line: prop.line ?? 0, seasonHitPct: update.seasonHitPct ?? prop.seasonHitPct ?? null,
+        odds: best.odds, propNorm,
+      });
       Object.assign(update, scoring);
       if (best.odds != null) { update.bestOdds = best.odds; update.bestBook = best.book ?? undefined; }
     } else {
-      console.log(`  ⚠️  ${playerName} ${propNorm}: missing ${[pAvg == null ? 'playerAvg' : null, oppRank == null ? 'opponentRank' : null, oppAvg == null ? 'opponentAvgVsStat' : null].filter(Boolean).join(', ')} — skipping scoring`);
+      console.log(`  ⚠️  ${playerName} ${propNorm}: missing ${[
+        oppRank == null ? 'opponentRank' : null,
+        oppAvg  == null ? 'opponentAvg'  : null,
+      ].filter(Boolean).join(', ')}`);
     }
 
     updates.push({ id: prop.id, season, week, data: update });
     pass1++;
   }
-
   console.log(`✅ Pass 1: ${pass1} props queued`);
+
+  // ── PASS 2: Combo props ────────────────────────────────────────────────────
   console.log('\n📊 Pass 2: Combo props...');
   let pass2 = 0;
 
@@ -186,12 +203,15 @@ export async function enrichPropsForWeek(options: EnrichOptions): Promise<number
     if (prop.overUnder) {
       if (isEarlySeason) {
         const priorLogs = await getLogs(playerName, priorSeason);
-        if (priorLogs.length > 0) {
-          const hitPct = calculateHitPct(priorLogs, propNorm, prop.line ?? 0, prop.overUnder);
+        const logsToUse = priorLogs.length > 0 ? priorLogs : await getLogs(playerName, season);
+        if (logsToUse.length > 0) {
+          const hitPct = priorLogs.length > 0
+            ? calculateHitPct(logsToUse, propNorm, prop.line ?? 0, prop.overUnder)
+            : calculateHitPct(logsToUse, propNorm, prop.line ?? 0, prop.overUnder, week, gameDate);
           if (hitPct != null) update.seasonHitPct = hitPct;
         }
       } else {
-        const logs = await getLogs(playerName);
+        const logs = await getLogs(playerName, season);
         if (logs.length > 0) {
           const hitPct = calculateHitPct(logs, propNorm, prop.line ?? 0, prop.overUnder, week, gameDate);
           if (hitPct != null) update.seasonHitPct = hitPct;
@@ -201,7 +221,7 @@ export async function enrichPropsForWeek(options: EnrichOptions): Promise<number
 
     const oppRank = update.opponentRank ?? prop.opponentRank;
     const oppAvg  = update.opponentAvgVsStat ?? prop.opponentAvgVsStat;
-    if (comboAvg != null && oppRank != null && oppAvg != null) {
+    if (oppRank != null && oppAvg != null) {
       const best = pickBestOdds(prop.fdOdds, prop.dkOdds);
       Object.assign(update, computeScoring({ playerAvg: comboAvg, opponentRank: oppRank, opponentAvgVsStat: oppAvg, line: prop.line ?? 0, seasonHitPct: update.seasonHitPct ?? prop.seasonHitPct ?? null, odds: best.odds, propNorm }));
       if (best.odds != null) { update.bestOdds = best.odds; update.bestBook = best.book ?? undefined; }
@@ -210,13 +230,15 @@ export async function enrichPropsForWeek(options: EnrichOptions): Promise<number
     updates.push({ id: prop.id, season, week, data: update });
     pass2++;
   }
-
   console.log(`✅ Pass 2: ${pass2} combo props queued`);
   if (updates.length > 0) await updateProps(updates);
   console.log(`\n✅ Enrichment complete: ${updates.length} props updated`);
   return updates.length;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// enrichAllPropsCollection — fills allProps_{season}
+// ─────────────────────────────────────────────────────────────────────────────
 export interface EnrichAllOptions {
   season:        number;
   week?:         number;
@@ -225,11 +247,10 @@ export interface EnrichAllOptions {
 
 export async function enrichAllPropsCollection({ season, week, skipEnriched }: EnrichAllOptions) {
   console.log("📍 enrichAllPropsCollection called with:", { season, week, skipEnriched });
-
   try {
     const colName = `allProps_${season}`;
     console.log(`📡 Fetching from: ${colName}`);
-    if (!db) { console.error("❌ DB is undefined"); return 0; }
+    if (!db) { console.error("❌ DB undefined"); return 0; }
 
     const query = week ? db.collection(colName).where('week', '==', week) : db.collection(colName);
     const snapshot = await query.get();
@@ -240,7 +261,7 @@ export async function enrichAllPropsCollection({ season, week, skipEnriched }: E
       const r = d.data() as Record<string, any>;
       const pick = (...keys: string[]) => { for (const k of keys) { const v = r[k]; if (v != null && v !== '') return v; } return null; };
       return {
-        id: d.id,
+        id:                d.id,
         player:            pick('Player', 'player')                        ?? '',
         prop:              pick('Prop', 'prop')                            ?? '',
         line:              pick('Line', 'line')                            ?? 0,
@@ -248,7 +269,7 @@ export async function enrichAllPropsCollection({ season, week, skipEnriched }: E
         matchup:           pick('Matchup', 'matchup')                      ?? '',
         week:              pick('Week', 'week'),
         season:            pick('Season', 'season'),
-        overUnder:         pick('Over/Under?', 'Over/Under', 'overUnder')  ?? '',
+        overUnder:         pick('Over/Under?', 'Over/Under', 'overUnder', 'over under', 'overunder', 'Over Under')  ?? '',
         fdOdds:            pick('FdOdds', 'fdOdds'),
         dkOdds:            pick('DkOdds', 'dkOdds'),
         playerAvg:         pick('Player Avg', 'playerAvg'),
@@ -265,7 +286,6 @@ export async function enrichAllPropsCollection({ season, week, skipEnriched }: E
 
     console.log(`🛡️  Fetching defense stats for season ${season}...`);
     const defenseMap = await fetchAllDefenseStats(season);
-
     const [pfrIdMap, playerTeamMap] = await Promise.all([getPfrIdMap(), getPlayerTeamMap()]);
 
     const pfrCache = new Map<string, any[]>();
@@ -312,11 +332,18 @@ export async function enrichAllPropsCollection({ season, week, skipEnriched }: E
         if (t) update.team = t;
       }
 
-      // 1. Player average
+      // 1. Player average — with rookie fallback
       if (needsAvg || !skipEnriched) {
         let avg: number;
         if (isEarlySeason) {
-          avg = (await getPlayerSeasonAvg(playerName, propNorm, priorSeason)) ?? 0;
+          const priorAvg = await getPlayerSeasonAvg(playerName, propNorm, priorSeason);
+          if (priorAvg != null) {
+            avg = priorAvg;
+          } else {
+            // Rookie/new player — try current season logs
+            const currentLogs = await getLogs(playerName, season);
+            avg = currentLogs.length > 0 ? calculateAvg(currentLogs, propNorm, w, gameDate) : 0;
+          }
         } else {
           const logs = await getLogs(playerName, season);
           avg = calculateAvg(logs, propNorm, w, gameDate);
@@ -333,8 +360,11 @@ export async function enrichAllPropsCollection({ season, week, skipEnriched }: E
       if ((needsHit || !skipEnriched) && prop.overUnder) {
         if (isEarlySeason) {
           const priorLogs = await getLogs(playerName, priorSeason);
-          if (priorLogs.length > 0) {
-            const hitPct = calculateHitPct(priorLogs, propNorm, prop.line ?? 0, prop.overUnder);
+          const logsToUse = priorLogs.length > 0 ? priorLogs : await getLogs(playerName, season);
+          if (logsToUse.length > 0) {
+            const hitPct = priorLogs.length > 0
+              ? calculateHitPct(logsToUse, propNorm, prop.line ?? 0, prop.overUnder)
+              : calculateHitPct(logsToUse, propNorm, prop.line ?? 0, prop.overUnder, w, gameDate);
             if (hitPct != null) update.seasonHitPct = hitPct;
           }
         } else {
@@ -365,12 +395,12 @@ export async function enrichAllPropsCollection({ season, week, skipEnriched }: E
         }
       }
 
-      // 4. Scoring
+      // 4. Scoring — runs as long as defense is available (avg=0 is ok)
       if (needsScore || !skipEnriched) {
-        const pAvg    = update.playerAvg    ?? prop.playerAvg;
+        const pAvg    = (update.playerAvg ?? prop.playerAvg) ?? 0;
         const oppRank = update.opponentRank ?? prop.opponentRank;
         const oppAvg  = update.opponentAvgVsStat ?? prop.opponentAvgVsStat;
-        if (pAvg != null && oppRank != null && oppAvg != null) {
+        if (oppRank != null && oppAvg != null) {
           const best = pickBestOdds(prop.fdOdds, prop.dkOdds);
           Object.assign(update, computeScoring({ playerAvg: pAvg, opponentRank: oppRank, opponentAvgVsStat: oppAvg, line: prop.line ?? 0, seasonHitPct: update.seasonHitPct ?? prop.seasonHitPct ?? null, odds: best.odds, propNorm }));
           if (best.odds != null) { update.bestOdds = best.odds; update.bestBook = best.book ?? undefined; }
@@ -424,8 +454,11 @@ export async function enrichAllPropsCollection({ season, week, skipEnriched }: E
       if (prop.overUnder) {
         if (isEarlySeason) {
           const priorLogs = await getLogs(playerName, priorSeason);
-          if (priorLogs.length > 0) {
-            const hitPct = calculateHitPct(priorLogs, propNorm, prop.line ?? 0, prop.overUnder);
+          const logsToUse = priorLogs.length > 0 ? priorLogs : await getLogs(playerName, season);
+          if (logsToUse.length > 0) {
+            const hitPct = priorLogs.length > 0
+              ? calculateHitPct(logsToUse, propNorm, prop.line ?? 0, prop.overUnder)
+              : calculateHitPct(logsToUse, propNorm, prop.line ?? 0, prop.overUnder, w, gameDate);
             if (hitPct != null) update.seasonHitPct = hitPct;
           }
         } else {
@@ -439,7 +472,7 @@ export async function enrichAllPropsCollection({ season, week, skipEnriched }: E
 
       const oppRank = update.opponentRank ?? prop.opponentRank;
       const oppAvg  = update.opponentAvgVsStat ?? prop.opponentAvgVsStat;
-      if (comboAvg != null && oppRank != null && oppAvg != null) {
+      if (oppRank != null && oppAvg != null) {
         const best = pickBestOdds(prop.fdOdds, prop.dkOdds);
         Object.assign(update, computeScoring({ playerAvg: comboAvg, opponentRank: oppRank, opponentAvgVsStat: oppAvg, line: prop.line ?? 0, seasonHitPct: update.seasonHitPct ?? prop.seasonHitPct ?? null, odds: best.odds, propNorm }));
         if (best.odds != null) { update.bestOdds = best.odds; update.bestBook = best.book ?? undefined; }
@@ -451,9 +484,7 @@ export async function enrichAllPropsCollection({ season, week, skipEnriched }: E
 
     console.log(`✅ Pass 2 queued: ${pass2} combo props`);
     console.log(`   Skipped (already enriched): ${skipped}`);
-
     if (updates.length > 0) await updateAllProps(season, updates);
-
     console.log(`\n✅ allProps enrichment complete: ${updates.length} props updated`);
     return updates.length;
 
