@@ -128,11 +128,11 @@ async function main() {
       gameStat:     stat,
       actualResult: result.toLowerCase(), // always stored lowercase: 'won' / 'lost'
 
-      // ── scoreDiff: actual performance vs player's season average ──────────
-      // This is the post-game "did they exceed expectations" metric.
-      // Formula: gameStat - playerAvg
+      // ── scoreDiff: player's season average vs the line ────────────────────
+      // Formula: playerAvg − line  (positive = player trends over, negative = under)
+      // This is a pre-game signal stored alongside post-game results for analysis.
       ...(prop.playerAvg != null
-        ? { scoreDiff: Math.round((stat - Number(prop.playerAvg)) * 10) / 10 }
+        ? { scoreDiff: Math.round((Number(prop.playerAvg) - prop.line) * 10) / 10 }
         : {}),
     };
 

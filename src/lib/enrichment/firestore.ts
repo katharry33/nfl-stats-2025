@@ -1,5 +1,3 @@
-// src/lib/enrichment/firestore.ts
-
 import { Timestamp } from 'firebase-admin/firestore';
 import { db } from '@/lib/firebase/admin';
 import type { NFLProp } from '@/lib/types';
@@ -301,15 +299,20 @@ export async function getTopValueBets(
 }
 
 // ─── PFR ID map ───────────────────────────────────────────────────────────────
+// Collection: static_pfrIdMap
+// Doc shape:  { player: "AJ Barner", pfrid: "BarnAJ00", _updatedat: "..." }
+//             NOTE: field is "pfrid" (all lowercase), not "pfrId"
+
 export async function getPfrIdMap(): Promise<Record<string, string>> {
-  const snapshot = await db.collection('static_pfrIdMap').get();
+  const snap = await db.collection('static_pfrIdMap').get();
   const map: Record<string, string> = {};
-  snapshot.docs.forEach(doc => {
-    const data = doc.data() as Record<string, any>;
-    const player = data.player ?? doc.id.replace(/_/g, ' ');
-    const pfrid  = data.pfrid ?? data.pfrId;
-    if (player && pfrid) map[player] = pfrid;
-  });
+  for (const doc of snap.docs) {
+    const r = doc.data();
+    // "pfrid" is the canonical field name in Firestore
+    const id     = r.pfrid ?? r.pfrId ?? r.PfrId ?? null;
+    const player = r.player ?? doc.id;
+    if (id && player) map[player] = id;
+  }
   return map;
 }
 
@@ -321,15 +324,19 @@ export async function savePfrId(playerName: string, pfrId: string): Promise<void
   );
 }
 
-// ─── getPlayerTeamMap ─────────────────────────────────────────────────────────
+// ─── Player → Team map ────────────────────────────────────────────────────────
+// Collection: static_playerTeamMapping
+// Doc shape:  { player: "Josh Allen", team: "BUF", _updatedat: "..." }
+
 export async function getPlayerTeamMap(): Promise<Record<string, string>> {
-  const snapshot = await db.collection('static_playerTeamMapping').get();
+  const snap = await db.collection('static_playerTeamMapping').get();
   const map: Record<string, string> = {};
-  snapshot.docs.forEach(doc => {
-    const data = doc.data() as Record<string, any>;
-    const p = data.player ?? data.playerName ?? doc.id.replace(/_/g, ' ');
-    if (p && data.team) map[p.toLowerCase().trim()] = data.team.toUpperCase();
-  });
+  for (const doc of snap.docs) {
+    const r      = doc.data();
+    const player = r.player ?? doc.id;
+    const team   = r.team ?? r.Team;
+    if (player && team) map[player.toLowerCase().trim()] = team;
+  }
   return map;
 }
 
@@ -345,76 +352,82 @@ function nameToDocKey(name: string): string {
     .replace(/__+/g, '__');     // collapse 3+ underscores to double
 }
 
-// ─── getPlayerSeasonAvg ───────────────────────────────────────────────────────
-// Looks up a player's per-game average for a propNorm from static_playerSeasonStats
-// Tries multiple doc ID formats before falling back to a query (avoids full scan)
+// ─── Player season avg (from static_playerSeasonStats) ───────────────────────
+// Collection: static_playerSeasonStats
+// Doc shape:  { player, team, season, rec_yds, recs, rush_yds, rush_att, games }
+//
+// Used for early-season enrichment (weeks 1-3) as prior-year average fallback.
+
 export async function getPlayerSeasonAvg(
   playerName: string,
-  propNorm: string,
-  season: number
+  propNorm:   string,
+  season:     number,
 ): Promise<number | null> {
-  const col = db.collection('static_playerSeasonStats');
-  const statKey = propNorm.replace(/\s/g, '_'); // "rec yds" → "rec_yds"
+  const statKey = propNorm.trim().replace(/ /g, '_').toLowerCase();
 
-  // Build candidate doc IDs to try — order matters (most likely first)
-  const candidates = [
-    `${nameToDocKey(playerName)}_${season}`,                             // "Derrick_Henry_2024"
-    `${nameToDocKey(playerName.replace(/\./g, ''))}_${season}`,         // without dots: "AJ_Brown_2024"
-    `${playerName.replace(/\s+/g, '_').replace(/\./g, '_')}_${season}`, // raw replace
-  ];
+  try {
+    const snap = await db.collection('static_playerSeasonStats')
+      .where('player', '==', playerName)
+      .where('season', '==', season)
+      .limit(1)
+      .get();
 
-  // Try each candidate doc ID
-  for (const docId of [...new Set(candidates)]) {
-    const doc = await col.doc(docId).get();
-    if (doc.exists) {
-      const val = doc.data()![statKey];
-      return val != null ? Number(val) : null;
-    }
+    if (snap.empty) return null;
+
+    const r     = snap.docs[0].data();
+    const total = r[statKey] ?? null;
+    const games = r.games    ?? null;
+
+    if (total == null || !games || games === 0) return null;
+
+    return Math.round((Number(total) / Number(games)) * 10) / 10;
+  } catch {
+    return null;
   }
-
-  // Fallback: query by player name (normalized comparison)
-  const norm = playerName.toLowerCase().replace(/\./g, '').replace(/'/g, '').trim();
-
-  // Try exact query first (fast, uses index)
-  const exactSnap = await col
-    .where('player', '==', playerName)
-    .where('season', '==', season)
-    .limit(1)
-    .get();
-
-  if (!exactSnap.empty) {
-    const val = exactSnap.docs[0].data()[statKey];
-    return val != null ? Number(val) : null;
-  }
-
-  // Last resort: scan season's docs (slow — only hits for unusual names)
-  const seasonSnap = await col.where('season', '==', season).get();
-  const match = seasonSnap.docs.find(d => {
-    const p = (d.data().player ?? '').toLowerCase().replace(/\./g, '').replace(/'/g, '').trim();
-    return p === norm;
-  });
-
-  if (!match) return null;
-  const val = match.data()[statKey];
-  return val != null ? Number(val) : null;
 }
 
-// ─── getTeamDefenseStats ──────────────────────────────────────────────────────
-// Looks up a team's defensive rank + avg-allowed for a propNorm from static_teamDefenseStats
+// ─── Team defense stats ───────────────────────────────────────────────────────
+// Collection: static_teamDefenseStats
+// Doc shape:  { team: "ARI", season: 2024, pass_yds_rank: 15, pass_yds_avg: 216.1, ... }
+//
+// Field naming convention: {propNorm_with_underscores}_{rank|avg}
+// normalizeProp produces space-separated ("pass yds") so we convert to underscores.
+
 export async function getTeamDefenseStats(
-  teamAbbr: string,
+  opponent: string,
   propNorm: string,
-  season: number
+  season:   number,
 ): Promise<{ rank: number; avg: number } | null> {
-  const docId = `${teamAbbr.toUpperCase()}_${season}`;
-  const doc   = await db.collection('static_teamDefenseStats').doc(docId).get();
-  if (!doc.exists) return null;
+  // Convert propNorm spaces to underscores to match Firestore field names
+  // "pass yds" → "pass_yds",  "rec yds" → "rec_yds",  "recs" → "recs"
+  const statKey = propNorm.trim().replace(/ /g, '_').toLowerCase();
 
-  const data = doc.data()!;
-  const key  = propNorm.replace(/\s/g, '_');
-  const rank = data[`${key}_rank`];
-  const avg  = data[`${key}_avg`];
+  try {
+    const snap = await db.collection('static_teamDefenseStats')
+      .where('team',   '==', opponent.toUpperCase())
+      .where('season', '==', season)
+      .limit(1)
+      .get();
 
-  if (rank == null || avg == null) return null;
-  return { rank: Number(rank), avg: Number(avg) };
+    if (snap.empty) return null;
+
+    const r    = snap.docs[0].data();
+    const rank = r[`${statKey}_rank`] ?? null;
+    const avg  = r[`${statKey}_avg`]  ?? null;
+
+    if (rank == null || avg == null) {
+      // Stat key not found — log available keys so you can debug new prop types
+      const availableStats = Object.keys(r)
+        .filter(k => k.endsWith('_rank'))
+        .map(k => k.replace('_rank', ''));
+      console.log(`  ⚠️  No defense stat "${statKey}" for ${opponent} ${season}. Available: ${availableStats.join(', ')}`);
+      return null;
+    }
+
+    return { rank: Number(rank), avg: Number(avg) };
+  } catch (err: any) {
+    console.warn(`  ⚠️  getTeamDefenseStats failed for ${opponent} ${propNorm} ${season}:`, err.message);
+    return null;
+  }
 }
+""

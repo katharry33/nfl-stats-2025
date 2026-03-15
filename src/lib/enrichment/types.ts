@@ -17,4 +17,5 @@ export interface PFRGame {
   receptions: number;
   recYds:     number;
   recTds:     number;
+  targets:    number;
 }

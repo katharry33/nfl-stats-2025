@@ -1,8 +1,8 @@
 // src/lib/enrichment/enrichProps.ts
 //
 // Two public entry points:
-//   enrichPropsForWeek()      → weeklyProps_{season}  (live TeamRankings defense)
-//   enrichAllPropsCollection() → allProps_{season}     (static Firestore defense)
+//   enrichPropsForWeek()       → weeklyProps_{season}  (live TeamRankings defense)
+//   enrichAllPropsCollection() → allProps              (static Firestore defense + schedule lookup)
 //
 // Both delegate to runEnrichmentBatch() → enrichPropCore() / enrichComboPropCore()
 // to eliminate the previous ~250-line duplication.
@@ -15,6 +15,7 @@ import {
 import { fetchSeasonLog, getPfrId, calculateAvg, calculateHitPct } from './pfr';
 import { fetchAllDefenseStats, lookupDefenseStats } from './defense';
 import { computeScoring, pickBestOdds } from './scoring';
+import { getScheduleForWeek, getGameForMatchup, inferOverUnder } from './schedule';
 import {
   getPropsForWeek, updateProps, getPfrIdMap, savePfrId,
   getPlayerTeamMap, updateAllProps, getPlayerSeasonAvg, getTeamDefenseStats,
@@ -113,8 +114,8 @@ async function enrichPropCore(
       }
     } else {
       const logs = await getLogs(playerName, season);
-      const c    = calculateAvg(logs, propNorm, week, gameDate);
-      avg = c > 0 ? c : logs.length > 0 ? c : null;
+      // calculateAvg returns null (not 0) when no qualifying games found
+      avg = calculateAvg(logs, propNorm, week, gameDate);
     }
 
     // Never overwrite with null/0 — missing data stays missing
@@ -130,8 +131,26 @@ async function enrichPropCore(
     playerAvgCache.get(playerName)![propNorm] = prop.playerAvg!;
   }
 
+  // ── 2b. Derive overUnder from playerAvg vs line ──────────────────────────
+  // If the prop has no overUnder (blank/missing from migration), compute it:
+  //   playerAvg > line → player trends Over → bet Over
+  //   playerAvg < line → player trends Under → bet Under
+  // This is stored back to Firestore so it's persisted for future use.
+  const resolvedAvg = (update.playerAvg ?? prop.playerAvg) ?? null;
+  let resolvedOU: 'Over' | 'Under' | null =
+    (prop.overUnder === 'Over' || prop.overUnder === 'Under') ? prop.overUnder : null;
+
+  if (!resolvedOU && resolvedAvg != null && prop.line != null) {
+    resolvedOU = resolvedAvg > Number(prop.line) ? 'Over' : 'Under';
+    // Write as 'overunder' (lowercase) to match existing Firestore field name
+    (update as any).overunder = resolvedOU;
+  } else if (!resolvedOU) {
+    const inferred = inferOverUnder(propNorm);
+    if (inferred) { resolvedOU = inferred; (update as any).overunder = inferred; }
+  }
+
   // ── 3. Season hit % ──────────────────────────────────────────────────────
-  if ((needsHit || !skipEnriched) && prop.overUnder) {
+  if ((needsHit || !skipEnriched) && resolvedOU) {
     const priorLogs   = isEarlySeason ? await getLogs(playerName, priorSeason) : [];
     const currentLogs = await getLogs(playerName, season);
     const logsToUse   = isEarlySeason
@@ -141,8 +160,8 @@ async function enrichPropCore(
     if (logsToUse.length > 0) {
       const usePriorStraight = isEarlySeason && priorLogs.length > 0;
       const hitPct = usePriorStraight
-        ? calculateHitPct(logsToUse, propNorm, prop.line, prop.overUnder as 'Over' | 'Under')
-        : calculateHitPct(logsToUse, propNorm, prop.line, prop.overUnder as 'Over' | 'Under', week, gameDate);
+        ? calculateHitPct(logsToUse, propNorm, prop.line, resolvedOU as 'Over' | 'Under')
+        : calculateHitPct(logsToUse, propNorm, prop.line, resolvedOU as 'Over' | 'Under', week, gameDate);
 
       // Only store genuinely computed values.
       // 0 almost always means "no qualifying games found" — treat as missing.
@@ -213,7 +232,13 @@ async function enrichComboPropCore(
 
   if (skipEnriched && prop.playerAvg != null && prop.confidenceScore != null) return null;
 
-  const components = splitComboProp(propNorm);
+  const rawComponents = splitComboProp(propNorm);
+  // splitComboProp's internal componentMap lookup is typed as Record<string,string>
+  // but TypeScript infers the mapped array as (string|undefined)[] — filter it here
+  // so the rest of this function sees a clean string[].
+  const components: string[] | null = rawComponents
+    ? (rawComponents.filter((c): c is string => c != null))
+    : null;
   const playerAvgs = playerAvgCache.get(playerName);
 
   if (!components || !playerAvgs || !components.every(c => playerAvgs[c] !== undefined)) {
@@ -456,71 +481,133 @@ export interface EnrichAllOptions {
 }
 
 /**
- * Enrich allProps_{season}, optionally filtered to a single week.
- * Always uses static Firestore defense data — safe for historical backfill
- * where live TeamRankings data is unavailable.
+ * Enrich the `allProps` collection (merged historical store, season field per doc).
+ * Falls back to allProps_{season} if allProps is empty for that season.
+ *
+ * Extra steps vs weeklyProps enrichment:
+ *   1. Full collection scan + in-memory season filter — avoids Firestore composite
+ *      index requirement that causes NOT_FOUND (code 5) on .where() queries.
+ *   2. Schedule pre-pass — looks up gameDate + gameTime from static_schedule.
+ *   3. overUnder is derived INSIDE enrichPropCore after playerAvg is computed:
+ *      playerAvg > line → Over, playerAvg < line → Under.
+ *      Falls back to prop-type inference if no avg available.
+ *   4. Static Firestore defense throughout — safe for historical backfill.
  */
 export async function enrichAllPropsCollection(opts: EnrichAllOptions): Promise<number> {
   const { season, week, skipEnriched = true } = opts;
-  console.log(`\n📍 enrichAllPropsCollection: season=${season} week=${week ?? 'all'}`);
+  console.log(`\n📍 enrichAllPropsCollection: season=${season} week=${week ?? 'all'} skipEnriched=${skipEnriched}`);
 
   if (!db) { console.error('❌ DB undefined'); return 0; }
 
+  // ── Query allProps_{season} directly ────────────────────────────────────
+  // Collections are named allProps_2024, allProps_2025, etc. — no unsuffixed collection.
+  // Full scan + in-memory filter avoids composite index requirements.
   const colName  = `allProps_${season}`;
-  const query    = week
-    ? db.collection(colName).where('week', '==', week)
-    : db.collection(colName);
-  const snapshot = await query.get();
+  const snapshot = await db.collection(colName).get();
+  const writeCollection = colName;
 
-  console.log(`📸 ${snapshot.size} docs in ${colName}${week ? ` week ${week}` : ''}`);
-  if (snapshot.empty) return 0;
+  let docs = snapshot.docs;
+  if (week != null) {
+    docs = docs.filter(d => {
+      const r = d.data();
+      return (r.week ?? r.Week) === week;
+    });
+  }
 
-  // Normalise legacy field names on the way in
-  const rawProps = snapshot.docs.map(d => {
+  console.log(`📸 ${docs.length} docs in ${colName}${week != null ? ` week=${week}` : ''}`);
+  if (docs.length === 0) { console.log('Nothing to enrich.'); return 0; }
+
+  // ── Normalise docs ────────────────────────────────────────────────────────
+  const pick = (r: Record<string, any>, ...keys: string[]): any => {
+    for (const k of keys) { const v = r[k]; if (v != null && v !== '') return v; }
+    return null;
+  };
+
+  const rawProps = docs.map(d => {
     const r = d.data() as Record<string, any>;
-
-    // Multi-key resolver — returns first non-null/empty value
-    const pick = (...keys: string[]): any => {
-      for (const k of keys) {
-        const v = r[k];
-        if (v != null && v !== '') return v;
-      }
-      return null;
-    };
-
     return {
       id:                d.id,
-      player:            pick('player', 'Player')                                    ?? '',
-      prop:              pick('prop', 'Prop')                                        ?? '',
-      line:              pick('line', 'Line')                                        ?? 0,
-      team:              pick('team', 'Team')                                        ?? '',
-      matchup:           pick('matchup', 'Matchup')                                  ?? '',
-      week:              pick('week', 'Week'),
-      season:            pick('season', 'Season'),
-      overUnder:         pick('overUnder', 'Over/Under?', 'Over/Under', 'over under') ?? '',
-      fdOdds:            pick('fdOdds', 'FdOdds'),
-      dkOdds:            pick('dkOdds', 'DkOdds'),
-      playerAvg:         pick('playerAvg', 'Player Avg'),
-      opponentRank:      pick('opponentRank', 'Opponent Rank'),
-      opponentAvgVsStat: pick('opponentAvgVsStat', 'Opponent Avg vs Stat'),
-      // Note the canonical field name — NOT "prop.seasonHitPct%"
-      seasonHitPct:      pick('seasonHitPct'),
-      confidenceScore:   pick('confidenceScore', 'Confidence Score'),
-      gameDate:          pick('gameDate', 'Game Date')                               ?? '',
-    } as NFLProp & { id: string };
+      player:            pick(r, 'player', 'Player')                                              ?? '',
+      prop:              pick(r, 'prop', 'Prop')                                                  ?? '',
+      line:              pick(r, 'line', 'Line')                                                  ?? 0,
+      team:              pick(r, 'team', 'Team')                                                  ?? '',
+      matchup:           pick(r, 'matchup', 'Matchup')                                            ?? '',
+      week:              pick(r, 'week', 'Week')                                                  ?? week,
+      season:            pick(r, 'season', 'Season')                                              ?? season,
+      // overUnder intentionally left blank here — will be computed from avg vs line
+      overUnder:         pick(r, 'overUnder', 'Over/Under?', 'Over/Under', 'overunder', 'over under') ?? '',
+      fdOdds:            pick(r, 'fdOdds', 'FdOdds')                                              ?? null,
+      dkOdds:            pick(r, 'dkOdds', 'DkOdds')                                              ?? null,
+      playerAvg:         pick(r, 'playerAvg', 'Player Avg')                                       ?? null,
+      opponentRank:      pick(r, 'opponentRank', 'Opponent Rank')                                 ?? null,
+      opponentAvgVsStat: pick(r, 'opponentAvgVsStat', 'Opponent Avg vs Stat')                     ?? null,
+      seasonHitPct:      pick(r, 'seasonHitPct')                                                  ?? null,
+      confidenceScore:   pick(r, 'confidenceScore', 'Confidence Score')                           ?? null,
+      gameDate:          pick(r, 'gameDate', 'Game Date')                                         ?? '',
+      gameTime:          pick(r, 'gameTime', 'Game Time')                                         ?? '',
+    } as NFLProp & { id: string; gameTime?: string };
   });
 
   const [pfrIdMap, playerTeamMap] = await Promise.all([getPfrIdMap(), getPlayerTeamMap()]);
 
+  // ── Pre-pass: schedule lookup (gameDate / gameTime only) ─────────────────
+  console.log('\n📅 Pre-pass: schedule lookup…');
+  const scheduleFixes: Array<{ id: string; data: Record<string, any> }> = [];
+  let fixedDates = 0;
+
+  const weekGroups = new Map<number, (typeof rawProps[0])[]>();
+  for (const prop of rawProps) {
+    if (prop.gameDate) continue; // already has a date
+    const w = (prop.week as number) ?? week ?? 0;
+    if (!w) continue;
+    if (!weekGroups.has(w)) weekGroups.set(w, []);
+    weekGroups.get(w)!.push(prop);
+  }
+
+  for (const [w, propsInWeek] of weekGroups) {
+    for (const prop of propsInWeek) {
+      if (!prop.matchup) continue;
+      const game = await getGameForMatchup(prop.matchup, season, w);
+      if (game?.gameDate) {
+        const fix: Record<string, any> = { gameDate: game.gameDate };
+        if (game.gameTime) fix.gameTime = game.gameTime;
+        scheduleFixes.push({ id: prop.id!, data: fix });
+        (prop as any).gameDate = game.gameDate; // update in-memory
+        fixedDates++;
+      }
+    }
+  }
+
+  if (scheduleFixes.length > 0) {
+    for (let i = 0; i < scheduleFixes.length; i += 400) {
+      const batch = db.batch();
+      for (const { id, data } of scheduleFixes.slice(i, i + 400)) {
+        batch.update(db.collection(writeCollection).doc(id), data);
+      }
+      await batch.commit();
+    }
+    console.log(`✅ Pre-pass: ${fixedDates} game dates added`);
+  } else {
+    console.log('✅ Pre-pass: all docs already have dates (or no schedule found)');
+  }
+
+  // ── Main enrichment batch ─────────────────────────────────────────────────
   return runEnrichmentBatch({
     rawProps,
     pfrIdMap,
     playerTeamMap,
-    // Always use static Firestore defense for historical data
     getDefense: (opp, stat, s) => getTeamDefenseStats(opp, stat, s),
     skipEnriched,
     season,
-    defaultWeek: week ?? 10,
-    writeUpdates: updates => updateAllProps(season, updates),
+    defaultWeek: week ?? 1,
+    writeUpdates: async (updates) => {
+      for (let i = 0; i < updates.length; i += 400) {
+        const batch = db.batch();
+        for (const { id, data } of updates.slice(i, i + 400)) {
+          batch.update(db.collection(writeCollection).doc(id), data);
+        }
+        await batch.commit();
+      }
+    },
   });
 }

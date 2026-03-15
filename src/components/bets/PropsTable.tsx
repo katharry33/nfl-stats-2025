@@ -120,16 +120,16 @@ function getHit(p: any): boolean | null {
 }
 
 /**
- * Score Diff = gameStat − playerAvg (post-game: how far above/below average the player ran)
- * Falls back to the stored `scoreDiff` field if gameStat is not yet available.
+ * Score Diff = playerAvg − line
+ * Pre-game signal: how far above (positive) or below (negative) the line
+ * the player's season average sits. Positive = player trends over the line.
  */
 function getScoreDiff(p: any): number | null {
-  const gs  = getGameStat(p);
-  const avg = p.playerAvg != null ? Number(p.playerAvg) : null;
-  if (gs != null && avg != null && !isNaN(avg)) {
-    return Math.round((gs - avg) * 10) / 10;
+  const avg  = p.playerAvg != null ? Number(p.playerAvg) : null;
+  const line = p.line       != null ? Number(p.line)      : null;
+  if (avg != null && line != null && !isNaN(avg) && !isNaN(line)) {
+    return Math.round((avg - line) * 10) / 10;
   }
-  // Pre-game or missing: use stored value if present
   return p.scoreDiff != null ? Number(p.scoreDiff) : null;
 }
 
@@ -760,10 +760,6 @@ export function PropsTable({
                                   ? (scoreDiff > 0 ? '+' : '') + fmtNum(scoreDiff)
                                   : '—'}
                               </span>
-                              {/* Only show "vs avg" label when we have a real post-game diff */}
-                              {scoreDiff != null && gameStat != null && (
-                                <p className="text-[8px] text-zinc-700 font-mono mt-0.5">vs avg</p>
-                              )}
                             </td>
                           );
 
