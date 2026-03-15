@@ -2,10 +2,10 @@
 import 'dotenv/config';
 import { db } from '@/lib/firebase/admin';
 import { getPfrIdMap, getPlayerTeamMap, getPlayerSeasonAvg, getTeamDefenseStats } from '@/lib/enrichment/firestore';
-import { getPfrId, fetchSeasonLog, calculateAvg, calculateHitPct } from '@/lib/enrichment/pfr';
-import { fetchAllDefenseStats, lookupDefenseStats } from '@/lib/enrichment/defense';
-import { normalizeProp, getOpponent, normalizePlayerName } from '@/lib/enrichment/normalize';
-import { computeScoring, pickBestOdds } from '@/lib/enrichment/scoring';
+import { getPfrId, fetchSeasonLog, calculateAvg, calculateHitPct } from '@/lib/enrichment/nfl/pfr';
+import { fetchAllDefenseStats, lookupDefenseStats } from '@/lib/enrichment/nfl/defense';
+import { normalizeProp, getOpponent, normalizePlayerName } from '@/lib/enrichment/shared/normalize';
+import { computeScoring, pickBestOdds } from '@/lib/enrichment/shared/scoring';
 
 const args      = process.argv.slice(2);
 const WEEK      = parseInt(args.find(a => a.startsWith('--week='))?.split('=')[1] ?? '1', 10);

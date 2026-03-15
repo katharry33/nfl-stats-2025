@@ -1,6 +1,6 @@
 // src/lib/enrichment/defense.ts
 
-import type { DefenseMap } from './types';
+import type { DefenseMap } from '../types';
 
 const TEAM_RANKINGS_CONFIG = [
   { propNorm: 'pass yds', url: 'https://www.teamrankings.com/nfl/stat/opponent-passing-yards-per-game' },

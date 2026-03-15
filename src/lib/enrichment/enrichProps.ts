@@ -11,10 +11,10 @@ import type { NFLProp } from './types';
 import { db } from '@/lib/firebase/admin';
 import {
   normalizeProp, getOpponent, normalizePlayerName, splitComboProp,
-} from './normalize';
-import { fetchSeasonLog, getPfrId, calculateAvg, calculateHitPct } from './pfr';
-import { fetchAllDefenseStats, lookupDefenseStats } from './defense';
-import { computeScoring, pickBestOdds } from './scoring';
+} from './shared/normalize';
+import { fetchSeasonLog, getPfrId, calculateAvg, calculateHitPct } from './nfl/pfr';
+import { fetchAllDefenseStats, lookupDefenseStats } from './nfl/defense';
+import { computeScoring, pickBestOdds } from './shared/scoring';
 import { getScheduleForWeek, getGameForMatchup, inferOverUnder } from './schedule';
 import {
   getPropsForWeek, updateProps, getPfrIdMap, savePfrId,

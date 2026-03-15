@@ -50,11 +50,7 @@ function BonusCard({ bonus, onEdit, onMarkUsed, onDelete }: {
   const urgentExpiry = expiresInHrs !== null && expiresInHrs > 0 && expiresInHrs < 24;
 
   return (
-    <div className={`relative rounded-2xl border transition-all duration-300 ${
-      isActive 
-        ? 'bg-[#0f1115] border-white/5 hover:border-white/10' 
-        : 'bg-black/40 border-white/5 opacity-50'
-    } p-5`}>
+    <div className={`relative rounded-2xl border transition-all duration-300 ${isActive ? 'bg-[#0f1115] border-white/5 hover:border-white/10' : 'bg-black/40 border-white/5 opacity-50'} p-5`}>
       {urgentExpiry && <div className="absolute top-0 left-0 right-0 h-1 bg-red-500/50 rounded-t-2xl shadow-[0_0_10px_rgba(239,68,68,0.2)]" />}
 
       <div className="flex items-start justify-between">
@@ -86,6 +82,12 @@ function BonusCard({ bonus, onEdit, onMarkUsed, onDelete }: {
                 </span>
               )}
               {usedAt && <span className="text-[10px] text-blue-500 font-bold uppercase">Used: {format(usedAt, 'MM/dd')}</span>}
+            </div>
+            <div className="flex gap-1 mt-2">
+              {bonus.eligibleTypes?.map(t => (
+                <span key={t} className="text-[8px] px-1 bg-white/5 text-zinc-500 rounded border border-white/5">{t}</span>
+              ))}
+              {bonus.minOdds && <span className="text-[8px] px-1 bg-white/5 text-zinc-500 rounded border border-white/5">Min: {bonus.minOdds}</span>}
             </div>
           </div>
         </div>
@@ -128,8 +130,44 @@ export default function BonusesPage() {
   useEffect(() => {
     const q = query(collection(db, 'bonuses'), orderBy('createdAt', 'desc'));
     return onSnapshot(q, snapshot => {
-      const updated = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Bonus));
-      setBonuses(updated);
+      let bonuses = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Bonus));
+
+      const getBonusPriority = (bonus: Bonus) => {
+        if (bonus.status === 'active') {
+          const expiry = resolveFirestoreDate(bonus.expirationDate);
+          if (expiry) {
+            const expiresInMs = expiry.getTime() - Date.now();
+            if (expiresInMs > 0 && expiresInMs < 24 * 3600 * 1000) {
+              return 3; // 1. Urgent
+            }
+          }
+          return 2; // 2. Active, not urgent
+        }
+        return 1; // 3. Used or Expired
+      };
+
+      bonuses.sort((a, b) => {
+        const priorityA = getBonusPriority(a);
+        const priorityB = getBonusPriority(b);
+
+        if (priorityA !== priorityB) {
+          return priorityB - priorityA;
+        }
+
+        // For urgent items, sort by expiration date (sooner first)
+        if (priorityA === 3) {
+             const expiryA = resolveFirestoreDate(a.expirationDate)?.getTime() ?? 0;
+             const expiryB = resolveFirestoreDate(b.expirationDate)?.getTime() ?? 0;
+             return expiryA - expiryB;
+        }
+
+        // For other priorities, sort by creation date (newest first)
+        const dateA = resolveFirestoreDate(a.createdAt)?.getTime() ?? 0;
+        const dateB = resolveFirestoreDate(b.createdAt)?.getTime() ?? 0;
+        return dateB - dateA;
+      });
+
+      setBonuses(bonuses);
       setIsLoading(false);
     });
   }, []);

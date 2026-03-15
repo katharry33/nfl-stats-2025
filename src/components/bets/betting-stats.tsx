@@ -4,8 +4,6 @@ import type { Bet } from '@/lib/types';
 import { DollarSign, Percent, TrendingUp, TrendingDown, Minus, Target, Hash } from 'lucide-react';
 import { toDecimal } from '@/lib/utils/odds';
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
 function parseBoost(raw: any): number {
   if (!raw || raw === 'None' || raw === '') return 0;
   if (typeof raw === 'number') return raw;
@@ -13,15 +11,23 @@ function parseBoost(raw: any): number {
   return isNaN(n) ? 0 : n;
 }
 
-// Only counts real-money bets. Bonus bets are excluded entirely from profit/ROI
-// because including their winnings in the numerator but not their "stake" in the
-// denominator artificially inflates ROI. They show in a separate counter.
+// Only counts real parent bets. Rules:
+//   1. Bonus bets → $0 (not real money)
+//   2. Imported leg docs (ID contains '_leg_') → $0
+//      These are DraftKings import artifacts where each parlay leg gets its own
+//      doc with the FULL parlay odds. Counting them inflates profit by leg-count×.
+//      Profit is tracked on the parent bet doc, not individual legs.
+//   3. Won bets → use stored payout first, then odds (capped at ±10000)
+//   4. Lost bets → -stake
+//   5. Cashed → cashOutAmount - stake
 function calcRealProfit(bet: any): number {
-  if (Boolean(bet.isBonusBet)) return 0; // excluded — not real money
+  if (Boolean(bet.isBonusBet)) return 0;
+
+  // Skip imported leg documents — they duplicate the parent bet's P&L
+  const id = String(bet.id ?? '');
+  if (id.includes('_leg_')) return 0;
 
   const stake  = Number(bet.stake || bet.wager) || 0;
-  const odds   = Number(bet.odds) || 0;
-  const boost  = parseBoost(bet.boost);
   const status = (bet.status ?? '').toLowerCase();
 
   if (status === 'lost' || status === 'loss') return -stake;
@@ -32,9 +38,16 @@ function calcRealProfit(bet: any): number {
   }
 
   if (status === 'won' || status === 'win') {
-    if (!odds || !stake) return 0;
-    const payout = stake * toDecimal(odds) * (1 + boost / 100);
-    return payout - stake;
+    if (!stake) return 0;
+    // Use stored payout when present — what the book actually paid
+    const storedPayout = Number(bet.payout) || 0;
+    if (storedPayout > 0) return storedPayout - stake;
+    // Fall back to odds, capped at ±10000 to block corrupt migration values
+    const rawOdds = Number(bet.odds) || 0;
+    const odds    = Math.max(-10000, Math.min(10000, rawOdds));
+    if (!odds) return 0;
+    const boost = parseBoost(bet.boost);
+    return stake * toDecimal(odds) * (1 + boost / 100) - stake;
   }
 
   return 0;
@@ -77,9 +90,13 @@ function StatCard({ title, value, sub, icon: Icon, color, format = 'number' }: {
 
 export function BettingStats({ bets }: { bets: Bet[] }) {
   const stats = useMemo(() => {
-    // Only real-money bets for performance stats
-    const realBets = bets.filter(b => !Boolean((b as any).isBonusBet));
-    const bonusBets = bets.filter(b => Boolean((b as any).isBonusBet));
+    // Exclude imported leg docs from all financial calculations.
+    // _leg_ docs are DraftKings import artifacts — each parlay leg gets its own
+    // doc with the full parlay stake/odds, so counting them multiplies P&L by leg count.
+    const isLegDoc = (b: any) => String(b.id ?? '').includes('_leg_');
+
+    const realBets  = bets.filter(b => !Boolean((b as any).isBonusBet) && !isLegDoc(b));
+    const bonusBets = bets.filter(b =>  Boolean((b as any).isBonusBet));
 
     const realSettled = realBets.filter(b => {
       const s = (b.status ?? '').toLowerCase();
@@ -87,9 +104,7 @@ export function BettingStats({ bets }: { bets: Bet[] }) {
     });
     const realWon  = realSettled.filter(b => ['won','win','cashed'].includes((b.status ?? '').toLowerCase()));
     const realLost = realSettled.filter(b => ['lost','loss'].includes((b.status ?? '').toLowerCase()));
-
-    // All bets (including bonus) for pending count
-    const pending = bets.filter(b => (b.status ?? '').toLowerCase() === 'pending');
+    const pending  = bets.filter(b => (b.status ?? '').toLowerCase() === 'pending');
 
     const totalWagered = realSettled.reduce((sum, b: any) =>
       sum + (Number(b.stake || b.wager) || 0), 0);
@@ -101,18 +116,22 @@ export function BettingStats({ bets }: { bets: Bet[] }) {
 
     const pendingStake = pending.reduce((sum, b: any) => sum + (Number(b.stake || b.wager) || 0), 0);
 
-    // Avg odds across real settled bets only
-    const oddsVals = realSettled.map(b => Number(b.odds)).filter(o => o !== 0 && isFinite(o));
-    const avgOdds  = oddsVals.length > 0
+    const oddsVals = realSettled.map(b => Number((b as any).odds)).filter(o => {
+      // Exclude corrupted odds values from average
+      return o !== 0 && isFinite(o) && Math.abs(o) <= 10000;
+    });
+    const avgOdds = oddsVals.length > 0
       ? Math.round(oddsVals.reduce((s, o) => s + o, 0) / oddsVals.length)
       : null;
 
     return {
       totalWagered, netProfit, winRate, roi,
-      wonCount: realWon.length, lostCount: realLost.length,
-      pendingCount: pending.length, pendingStake,
+      wonCount:     realWon.length,
+      lostCount:    realLost.length,
+      pendingCount: pending.length,
+      pendingStake,
       settledCount: realSettled.length,
-      bonusCount: bonusBets.length,
+      bonusCount:   bonusBets.length,
       avgOdds,
     };
   }, [bets]);

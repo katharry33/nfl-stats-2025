@@ -9,9 +9,9 @@
 import 'dotenv/config';
 import { db } from '@/lib/firebase/admin';
 import { getPfrIdMap } from '@/lib/enrichment/firestore';
-import { fetchSeasonLog, getPfrId, getStatFromGame } from '@/lib/enrichment/pfr';
-import { normalizeProp, splitComboProp } from '@/lib/enrichment/normalize';
-import { determineResult, calculateProfitLoss } from '@/lib/enrichment/scoring';
+import { fetchSeasonLog, getPfrId, getStatFromGame } from '@/lib/enrichment/nfl/pfr';
+import { normalizeProp, splitComboProp } from '@/lib/enrichment/shared/normalize';
+import { determineResult, calculateProfitLoss } from '@/lib/enrichment/shared/scoring';
 import type { PFRGame } from '@/lib/enrichment/types';
 import { FieldValue } from 'firebase-admin/firestore';
 

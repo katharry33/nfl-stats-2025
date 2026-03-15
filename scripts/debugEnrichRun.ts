@@ -2,11 +2,11 @@
 // scripts/debugEnrichRun.ts — run enrichment on ONE prop and trace every step
 import 'dotenv/config';
 import { db } from '@/lib/firebase/admin';
-import { normalizeProp, getOpponent } from '@/lib/enrichment/normalize';
-import { getPfrId, fetchSeasonLog, calculateAvg, calculateHitPct } from '@/lib/enrichment/pfr';
+import { normalizeProp, getOpponent } from '@/lib/enrichment/shared/normalize';
+import { getPfrId, fetchSeasonLog, calculateAvg, calculateHitPct } from '@/lib/enrichment/nfl/pfr';
 import { getPfrIdMap, getPlayerSeasonAvg, getTeamDefenseStats, getPlayerTeamMap, updateAllProps } from '@/lib/enrichment/firestore';
-import { fetchAllDefenseStats, lookupDefenseStats } from '@/lib/enrichment/defense';
-import { computeScoring, pickBestOdds } from '@/lib/enrichment/scoring';
+import { fetchAllDefenseStats, lookupDefenseStats } from '@/lib/enrichment/nfl/defense';
+import { computeScoring, pickBestOdds } from '@/lib/enrichment/shared/scoring';
 
 async function main() {
   // Pick one week 2 prop to trace

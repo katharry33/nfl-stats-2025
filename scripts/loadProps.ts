@@ -14,9 +14,9 @@ if (!getApps().length) {
   }
 }
 
-import { fetchBettingProsProps } from '@/lib/enrichment/bettingpros';
+import { fetchBettingProsProps } from '@/lib/enrichment/nfl/bettingpros';
 import { saveProps, getPlayerTeamMap } from '@/lib/enrichment/firestore';
-import { normalizePlayerName } from '@/lib/enrichment/normalize';
+import { normalizePlayerName } from '@/lib/enrichment/shared/normalize';
 import type { NFLProp } from '@/lib/types';
 
 // BettingPros returns this shape; optional fields added by richer scrapers

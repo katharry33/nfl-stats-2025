@@ -1,4 +1,28 @@
 // src/lib/types.ts
+import { z } from 'zod';
+
+// ─── Zod Schemas ────────────────────────────────────────────────────────────────
+export const BonusSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  boost: z.number(),
+  betType: z.string(),
+  maxWager: z.number(),
+  expirationDate: z.any(),
+  description: z.string().optional(),
+  winLogic: z.string().optional(),
+  status: z.enum(['active', 'used', 'expired']),
+  usedAt: z.any().optional(),
+  createdAt: z.any().optional(),
+  book: z.enum(['draftkings', 'fanduel', 'betmgm', 'caesars', 'custom']).optional(),
+  eligibleTypes: z.array(z.string()).default([]),
+  minOdds: z.string().optional(),
+});
+
+
+// ─── Inferred Types ─────────────────────────────────────────────────────────────
+export type Bonus = z.infer<typeof BonusSchema>;
+
 
 // ─── Core prop as stored in Firestore ────────────────────────────────────────
 export interface NFLProp {
@@ -72,6 +96,8 @@ export interface BetLeg {
   week?:     number;
   season?:   number;
   status?:   'pending' | 'won' | 'lost' | 'push';
+  book?: string;
+  bestBook?: string;
 }
 
 // ─── Bet slip item (leg + metadata) ──────────────────────────────────────────
@@ -115,20 +141,6 @@ export interface PFRGame {
   recTds:     number;
 }
 
-export interface Bonus {
-  id: string;
-  name: string;
-  boost: number;
-  betType: string;
-  maxWager: number;
-  expirationDate: any; // Date or Timestamp
-  description?: string;
-  winLogic?: string;
-  status: 'active' | 'used' | 'expired';
-  usedAt?: any;
-  createdAt?: any;
-}
-
 export function resolveFirestoreDate(date: any): Date | null {
   if (!date) return null;
   if (date instanceof Date) return date;
@@ -136,14 +148,15 @@ export function resolveFirestoreDate(date: any): Date | null {
   if (typeof date === 'string' || typeof date === 'number') return new Date(date);
   return null;
 }
-
 export interface Bet {
   id: string;
   type: 'straight' | 'parlay' | 'teaser';
   status: 'pending' | 'won' | 'lost' | 'void';
   amount: number;
   toWin: number;
-  placedAt: any; // Firestore Timestamp or ISO string
+  placedAt: any;
+  bonusId?: string; // Track which bonus was used
+  appliedBoost?: number; // Store the boost % at time of bet
   legs: {
     propId: string;
     player: string;
@@ -151,7 +164,7 @@ export interface Bet {
     line: number;
     selection: 'Over' | 'Under';
     odds: number;
-    gameStat?: number;     // Syncs with your enrichment data
-    actualResult?: string; // Syncs with your enrichment data
+    gameStat?: number;
+    actualResult?: string;
   }[];
 }

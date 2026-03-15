@@ -7,6 +7,8 @@ import {
 import type { Bet } from '@/lib/types';
 import { toast } from 'sonner';
 import { getWeekFromDate } from '@/lib/utils/nfl-week';
+import { SweetSpotBadge } from '@/components/bets/SweetSpotBadge';
+import { scoreProp, type ScoringCriteria } from '@/lib/utils/sweetSpotScore';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type SortKey     = 'week' | 'gameDate' | 'odds' | 'stake' | 'status' | 'payout';
@@ -143,10 +145,11 @@ function StakeCell({ bet }: { bet: any }) {
 }
 
 // ─── Inline Row Editor ────────────────────────────────────────────────────────
-function InlineEditor({ bet, onSave, onCancel }: {
+function InlineEditor({ bet, onSave, onCancel, scoreLeg }: {
   bet: Bet;
   onSave: (u: any) => Promise<void>;
   onCancel: () => void;
+  scoreLeg: (leg: any) => any;
 }) {
   const b = bet as any;
   const [status,        setStatus]        = useState(b.status ?? 'pending');
@@ -249,36 +252,42 @@ function InlineEditor({ bet, onSave, onCancel }: {
           <p className="text-[9px] font-black text-zinc-600 uppercase tracking-widest">
             Legs — tap result to update · 🗑 to remove
           </p>
-          {legs.map(leg => (
-            <div key={leg.id} className="bg-black/30 border border-white/[0.06] rounded-xl p-3 space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="text-white text-xs font-black italic uppercase truncate">{leg.player || '—'}</p>
-                  <p className="text-zinc-600 text-[10px] font-mono">
-                    {leg.prop} · {leg.line} {leg.selection}{leg.odds ? ` · ${fmtOdds(leg.odds)}` : ''}
-                  </p>
+          {legs.map(leg => {
+            const legResult = scoreLeg(leg);
+            return(
+              <div key={leg.id} className="bg-black/30 border border-white/[0.06] rounded-xl p-3 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-white text-xs font-black italic uppercase truncate">{leg.player || '—'}</p>
+                    <p className="text-zinc-600 text-[10px] font-mono">
+                      {leg.prop} · {leg.line} {leg.selection}{leg.odds ? ` · ${fmtOdds(leg.odds)}` : ''}
+                    </p>
+                  </div>
+                  {legResult && legResult.tier !== 'cold' && (
+                    <SweetSpotBadge result={legResult} size="sm" />
+                  )}
+                  <button onClick={() => removeLeg(leg.id)}
+                    className="text-zinc-700 hover:text-red-400 transition-colors shrink-0 p-1 rounded-lg hover:bg-red-500/10">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
                 </div>
-                <button onClick={() => removeLeg(leg.id)}
-                  className="text-zinc-700 hover:text-red-400 transition-colors shrink-0 p-1 rounded-lg hover:bg-red-500/10">
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {LEG_STATUSES.map(r => {
+                    const Icon = r.icon;
+                    const active = (leg.status || 'pending') === r.value;
+                    return (
+                      <button key={r.value} onClick={() => updateLegStatus(leg.id, r.value)}
+                        className={`flex items-center gap-1 px-2 py-0.5 rounded-lg border text-[9px] font-black uppercase transition-all ${
+                          active ? r.cls : 'border-white/[0.08] text-zinc-600 hover:border-white/20 hover:text-zinc-400'
+                        }`}>
+                        <Icon className="h-3 w-3" />{r.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {LEG_STATUSES.map(r => {
-                  const Icon = r.icon;
-                  const active = (leg.status || 'pending') === r.value;
-                  return (
-                    <button key={r.value} onClick={() => updateLegStatus(leg.id, r.value)}
-                      className={`flex items-center gap-1 px-2 py-0.5 rounded-lg border text-[9px] font-black uppercase transition-all ${
-                        active ? r.cls : 'border-white/[0.08] text-zinc-600 hover:border-white/20 hover:text-zinc-400'
-                      }`}>
-                      <Icon className="h-3 w-3" />{r.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
@@ -317,14 +326,15 @@ function SortTh({ label, col, sortKey, sortDir, onSort }: {
 
 // ─── Main Table ───────────────────────────────────────────────────────────────
 interface BetsTableProps {
-  bets:     Bet[];
-  loading:  boolean;
-  onDelete: (ids: string[]) => void;
-  onSave:   (updated: Bet) => Promise<void>;
-  onEdit?:  (bet: Bet) => void;
+  bets:               Bet[];
+  loading:            boolean;
+  onDelete:           (ids: string[]) => void;
+  onSave:             (bet: Bet) => Promise<void>;
+  onEdit:             (bet: Bet) => void;
+  sweetSpotCriteria?: ScoringCriteria | null;
 }
 
-export function BetsTable({ bets, loading, onDelete, onSave, onEdit }: BetsTableProps) {
+export function BetsTable({ bets, loading, onDelete, onSave, onEdit, sweetSpotCriteria }: BetsTableProps) {
   const [sortKey,       setSortKey]       = useState<SortKey>('gameDate');
   const [sortDir,       setSortDir]       = useState<SortDir>('desc');
   const [statusFilter,  setStatusFilter]  = useState<StatusFilter>('all');
@@ -334,6 +344,35 @@ export function BetsTable({ bets, loading, onDelete, onSave, onEdit }: BetsTable
   const [selected,      setSelected]      = useState<Set<string>>(new Set());
   const [page,          setPage]          = useState(0);
   const PAGE_SIZE = 25;
+
+  function scoreLeg(leg: any) {
+    if (!sweetSpotCriteria) return null;
+    return scoreProp({
+      prop:            leg.prop,
+      overUnder:       leg.overUnder ?? leg.selection,
+      scoreDiff:       leg.scoreDiff       ?? null,
+      confidenceScore: leg.confidenceScore ?? null,
+      opponentRank:    leg.opponentRank    ?? null,
+      bestEdgePct:     leg.bestEdgePct     ?? null,
+      kellyPct:        leg.kellyPct        ?? null,
+    }, sweetSpotCriteria);
+  }
+
+  // Also score the whole bet (single bets) using the primary leg's data:
+  function scoreBet(bet: Bet) {
+    if (!sweetSpotCriteria) return null;
+    const primaryLeg = (bet as any).legs?.[0] ?? bet;
+    return scoreProp({
+      prop:            (bet as any).prop ?? primaryLeg?.prop,
+      overUnder:       (bet as any).overUnder ?? primaryLeg?.overUnder ?? primaryLeg?.selection,
+      scoreDiff:       (bet as any).scoreDiff       ?? primaryLeg?.scoreDiff       ?? null,
+      confidenceScore: (bet as any).confidenceScore ?? primaryLeg?.confidenceScore ?? null,
+      opponentRank:    (bet as any).opponentRank    ?? primaryLeg?.opponentRank    ?? null,
+      bestEdgePct:     (bet as any).bestEdgePct     ?? primaryLeg?.bestEdgePct     ?? null,
+      kellyPct:        (bet as any).kellyPct        ?? primaryLeg?.kellyPct        ?? null,
+      legCount:        (bet as any).legs?.length    ?? 1,
+    }, sweetSpotCriteria);
+  }
 
   const handleSort = useCallback((key: SortKey) => {
     if (key === sortKey) setSortDir(d => d === 'desc' ? 'asc' : 'desc');
@@ -496,6 +535,7 @@ export function BetsTable({ bets, loading, onDelete, onSave, onEdit }: BetsTable
                 <SortTh label="Stake"  col="stake"    sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                 <SortTh label="Status" col="status"   sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                 <SortTh label="Payout" col="payout"   sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                <th className="px-2 py-2.5 w-8" />
                 <th className="px-3 py-2.5 w-20" />
               </tr>
             </thead>
@@ -512,6 +552,8 @@ export function BetsTable({ bets, loading, onDelete, onSave, onEdit }: BetsTable
                 const subLabel = legs.length > 1
                   ? legs.slice(0, 3).map((l: any) => l.player).filter(Boolean).join(', ') + (legs.length > 3 ? '…' : '')
                   : `${legs[0]?.prop ?? ''} ${legs[0]?.line ?? ''} ${legs[0]?.selection ?? ''}`.trim();
+                
+                const betResult = scoreBet(bet);
 
                 return (
                   <React.Fragment key={bet.id}>
@@ -519,7 +561,9 @@ export function BetsTable({ bets, loading, onDelete, onSave, onEdit }: BetsTable
                       onClick={() => setExpandedId(isExpanded ? null : (bet.id ?? null))}
                       className={`border-t border-white/[0.04] cursor-pointer transition-colors
                         ${isSelected ? 'bg-[#FFD700]/[0.03]' : idx % 2 === 0 ? 'bg-black/10' : ''}
-                        ${isExpanded ? 'bg-[#FFD700]/[0.02]' : 'hover:bg-white/[0.02]'}`}>
+                        ${isExpanded ? 'bg-[#FFD700]/[0.02]' : 'hover:bg-white/[0.02]'}
+                        ${betResult?.tier === 'bullseye' ? 'shadow-[inset_2px_0_0_0_#FFD700]' : ''}
+                        ${betResult?.tier === 'hot'      ? 'shadow-[inset_2px_0_0_0_#f97316]' : ''}`}>
 
                       {/* Checkbox */}
                       <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
@@ -573,6 +617,13 @@ export function BetsTable({ bets, loading, onDelete, onSave, onEdit }: BetsTable
                         </span>
                       </td>
 
+                      {/* Sweet Spot */}
+                      <td className="px-2 py-2 w-8" onClick={e => e.stopPropagation()}>
+                        {betResult && betResult.tier !== 'cold' && (
+                          <SweetSpotBadge result={betResult} size="sm" />
+                        )}
+                      </td>
+
                       {/* Actions */}
                       <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
                         <div className="flex items-center gap-1">
@@ -593,8 +644,8 @@ export function BetsTable({ bets, loading, onDelete, onSave, onEdit }: BetsTable
 
                     {isExpanded && (
                       <tr>
-                        <td colSpan={9} className="p-0">
-                          <InlineEditor bet={bet} onSave={handleInlineSave} onCancel={() => setExpandedId(null)} />
+                        <td colSpan={10} className="p-0">
+                          <InlineEditor bet={bet} onSave={handleInlineSave} onCancel={() => setExpandedId(null)} scoreLeg={scoreLeg} />
                         </td>
                       </tr>
                     )}

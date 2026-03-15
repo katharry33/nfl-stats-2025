@@ -7,6 +7,8 @@ import {
   Loader2, Settings2, Search, X, ChevronsUpDown, GripVertical,
 } from 'lucide-react';
 import type { NormalizedProp } from '@/hooks/useAllProps';
+import { SweetSpotBadge } from '@/components/bets/SweetSpotBadge';
+import { scoreProp, type ScoringCriteria } from '@/lib/utils/sweetSpotScore';
 
 // ─── Column definitions ───────────────────────────────────────────────────────
 interface ColDef { id: string; label: string; default: boolean; }
@@ -380,17 +382,20 @@ function PropDetail({ prop }: { prop: NormalizedProp }) {
 
 // ─── PropsTable ───────────────────────────────────────────────────────────────
 interface PropsTableProps {
-  props:          NormalizedProp[];
-  isLoading:      boolean;
-  onAddToBetSlip: (prop: NormalizedProp) => void;
-  slipIds?:       Set<string>;
-  onDelete?:      (id: string) => Promise<void>;
+  props:            NormalizedProp[];
+  isLoading:        boolean;
+  onAddToBetSlip:   (prop: NormalizedProp) => void;
+  slipIds?:         Set<string>;
+  onDelete?:        (id: string) => Promise<void>;
+  showSweetSpots?:  boolean;
+  sweetSpotCriteria?: ScoringCriteria | null;
 }
 
 const PAGE_SIZE = 50;
 
 export function PropsTable({
   props = [], isLoading, onAddToBetSlip, slipIds = new Set(), onDelete,
+  showSweetSpots, sweetSpotCriteria,
 }: PropsTableProps) {
   // Column order persisted to localStorage
   const [colOrder,   setColOrder]   = useState<string[]>(loadColOrder);
@@ -403,6 +408,19 @@ export function PropsTable({
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selected,   setSelected]   = useState<Set<string>>(new Set());
   const [page,       setPage]       = useState(0);
+
+  const score = useCallback((p: NormalizedProp) => {
+    if (!showSweetSpots || !sweetSpotCriteria) return null;
+    return scoreProp({
+      prop:            p.prop,
+      overUnder:       p.overUnder,
+      scoreDiff:       p.scoreDiff,
+      confidenceScore: p.confidenceScore,
+      opponentRank:    p.opponentRank,
+      bestEdgePct:     p.bestEdgePct,
+      kellyPct:        p.kellyPct,
+    }, sweetSpotCriteria);
+  }, [showSweetSpots, sweetSpotCriteria]);
 
   const visibleSet = useMemo(() => new Set(colOrder), [colOrder]);
 
@@ -627,6 +645,8 @@ export function PropsTable({
                   }
                 })}
 
+                {showSweetSpots && <th className="px-2 py-2.5 w-8" />}
+
                 {/* Actions column */}
                 <th className="px-3 py-2.5 w-20" />
               </tr>
@@ -641,8 +661,9 @@ export function PropsTable({
                 const gameStat     = getGameStat(prop);
                 const hit          = getHit(prop);
                 const actualResult = getActualResult(prop);
-                const scoreDiff    = getScoreDiff(prop);
+                const scoreDiffVal = getScoreDiff(prop);
                 const isOver       = prop.overUnder?.toLowerCase() === 'over';
+                const sweetSpotResult = score(prop);
 
                 return (
                   <React.Fragment key={id}>
@@ -650,8 +671,10 @@ export function PropsTable({
                       onClick={() => setExpandedId(isExpanded ? null : id)}
                       className={`border-t border-white/[0.04] cursor-pointer transition-colors
                         ${isSelected  ? 'bg-[#FFD700]/[0.03]' : idx % 2 === 0 ? 'bg-black/10' : ''}
-                        ${isExpanded  ? 'bg-[#FFD700]/[0.02]' : 'hover:bg-white/[0.02]'}`}
-                    >
+                        ${isExpanded  ? 'bg-[#FFD700]/[0.02]' : 'hover:bg-white/[0.02]'}
+                        ${sweetSpotResult?.tier === 'bullseye' ? 'shadow-[inset_2px_0_0_0_#FFD700]' : ''}
+                        ${sweetSpotResult?.tier === 'hot'      ? 'shadow-[inset_2px_0_0_0_#f97316]' : ''}`}>
+
                       {/* Checkbox */}
                       <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
                         <input
@@ -755,9 +778,9 @@ export function PropsTable({
 
                           case 'scoreDiff': return (
                             <td key={colId} className="px-3 py-3 text-center">
-                              <span className={`font-mono text-xs font-bold ${scoreDiffCls(scoreDiff)}`}>
-                                {scoreDiff != null
-                                  ? (scoreDiff > 0 ? '+' : '') + fmtNum(scoreDiff)
+                              <span className={`font-mono text-xs font-bold ${scoreDiffCls(scoreDiffVal)}`}>
+                                {scoreDiffVal != null
+                                  ? (scoreDiffVal > 0 ? '+' : '') + fmtNum(scoreDiffVal)
                                   : '—'}
                               </span>
                             </td>
@@ -862,6 +885,15 @@ export function PropsTable({
                         }
                       })}
 
+                      {/* Sweet Spot Badge */}
+                      {showSweetSpots && (
+                        <td className="px-2 py-2 w-8" onClick={e => e.stopPropagation()}>
+                          {sweetSpotResult && sweetSpotResult.tier !== 'cold' && (
+                            <SweetSpotBadge result={sweetSpotResult} size="sm" />
+                          )}
+                        </td>
+                      )}
+
                       {/* Actions */}
                       <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
                         <div className="flex items-center gap-1">
@@ -891,7 +923,7 @@ export function PropsTable({
 
                     {isExpanded && (
                       <tr>
-                        <td colSpan={colOrder.length + 3} className="p-0">
+                        <td colSpan={colOrder.length + (showSweetSpots ? 3 : 2)} className="p-0">
                           <PropDetail prop={prop} />
                         </td>
                       </tr>
@@ -903,7 +935,7 @@ export function PropsTable({
               {paginated.length === 0 && !isLoading && (
                 <tr>
                   <td
-                    colSpan={colOrder.length + 3}
+                    colSpan={colOrder.length + (showSweetSpots ? 3 : 2)}
                     className="px-6 py-16 text-center text-zinc-700 text-sm font-black uppercase italic"
                   >
                     No props match filters

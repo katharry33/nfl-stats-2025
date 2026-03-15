@@ -20,7 +20,7 @@
 //   --dry-run         Print counts but do not write to Firestore
 
 import 'dotenv/config';
-import { db } from '@/lib/firebase/admin';
+import { db } from '../src/lib/firebase/admin';
 import { FieldValue } from 'firebase-admin/firestore';
 
 const args      = process.argv.slice(2);

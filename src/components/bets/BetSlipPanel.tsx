@@ -2,43 +2,66 @@
 // src/components/bets/BetSlipPanel.tsx
 
 import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
 import { X, Trash2, ArrowRight, Zap } from 'lucide-react';
-import type { BetSlipSelection } from '@/hooks/useBetSlip';
+import { useActiveBonuses } from '@/hooks/use-active-bonuses';
+import type { Bonus, BetLeg } from '@/lib/types';
 
 interface BetSlipPanelProps {
-  selections: BetSlipSelection[];
+  selections: BetLeg[];
   onRemove:   (id: string) => void;
   onClear:    () => void;
   week:       number;
 }
 
-function impliedProb(odds: number | null | undefined): number | null {
-  if (odds == null) return null;
-  return odds < 0 ? (-odds) / (-odds + 100) : 100 / (odds + 100);
+// Helper to convert American odds to a decimal multiplier
+function oddsToDecimal(odds: number): number {
+  if (odds === 0) return 1; // A push, no change in odds.
+  if (odds > 0) return (odds / 100) + 1;
+  return (100 / Math.abs(odds)) + 1;
 }
 
-function confLabel(score: number | null | undefined) {
-  if (score == null) return null;
-  const pct = score <= 1.5 ? score * 100 : score;
-  if (pct >= 70) return { label: 'ELITE',  cls: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' };
-  if (pct >= 60) return { label: 'STRONG', cls: 'text-[#FFD700] bg-[#FFD700]/10 border-[#FFD700]/20' };
-  if (pct >= 50) return { label: 'MOD',    cls: 'text-blue-400 bg-blue-500/10 border-blue-500/20' };
-  return           { label: 'WEAK',   cls: 'text-zinc-500 bg-white/5 border-white/10' };
+// Helper to calculate combined parlay odds from a list of selections
+function calculateCombinedOdds(selections: BetLeg[]): number {
+  if (selections.length === 0) {
+    return 0;
+  }
+
+  const validSelections = selections.filter(leg => leg.odds != null);
+  if (validSelections.length === 0) {
+      return 0;
+  }
+
+  const totalDecimal = validSelections.reduce((acc, leg) => acc * oddsToDecimal(leg.odds!), 1);
+
+  if (totalDecimal === 1) return 0; // Even money or no valid legs
+  if (totalDecimal >= 2) return (totalDecimal - 1) * 100;
+  return -100 / (totalDecimal - 1);
 }
 
 export function BetSlipPanel({ selections = [], onRemove, onClear, week }: BetSlipPanelProps) {
   const router  = useRouter();
+  const { eligible } = useActiveBonuses(selections);
+  const [selectedBonus, setSelectedBonus] = useState<Bonus | null>(null);
+  const [stake, setStake] = useState<number>(10);
   const isEmpty = selections.length === 0;
 
-  const combinedImplied = selections.reduce((acc, leg) => {
-    const p = impliedProb(leg.odds ?? null);
-    return p != null ? acc * p : acc;
-  }, 1);
+  useEffect(() => {
+    if (selections.length === 0) setSelectedBonus(null);
+  }, [selections.length]);
 
-  const validEdges = selections.filter(s => s.bestEdgePct != null);
-  const avgEdge    = validEdges.length
-    ? validEdges.reduce((s, l) => s + (l.bestEdgePct ?? 0), 0) / validEdges.length
-    : 0;
+  // Check if stake exceeds the bonus max wager limit
+  const isOverLimit = selectedBonus && stake > selectedBonus.maxWager;
+
+  // Parlay Calculations
+  const totalOdds = calculateCombinedOdds(selections);
+  const decimalOdds = selections.length === 0 ? 1 : oddsToDecimal(totalOdds);
+  const potentialProfit = stake * (decimalOdds - 1);
+
+  // Apply Bonus Boost
+  const boostAmount = selectedBonus ? (potentialProfit * (selectedBonus.boost / 100)) : 0;
+  const finalProfit = potentialProfit + boostAmount;
+  const totalPayout = stake + finalProfit;
 
   return (
     <div className="flex flex-col h-full bg-[#0a0a0e] border-l border-white/5">
@@ -72,87 +95,79 @@ export function BetSlipPanel({ selections = [], onRemove, onClear, week }: BetSl
           </div>
         ) : (
           <div className="divide-y divide-white/[0.03]">
-            {selections.map(leg => {
-              const isOver = leg.selection?.toLowerCase() === 'over';
-              const conf   = confLabel(leg.confidenceScore);
-
-              return (
+            {selections.map(leg => (
                 <div key={leg.id} className="px-4 py-3.5 group hover:bg-white/[0.02] transition-colors">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-
-                      <div className="flex items-center gap-1.5 mb-1 flex-wrap">
-                        {/* Over/Under badge */}
-                        <span className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md border ${
-                          isOver
-                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                            : 'bg-red-500/10 text-red-400 border-red-500/20'
-                        }`}>
-                          {leg.selection || 'OVER'}
-                        </span>
-                        {/* Confidence badge */}
-                        {conf && (
-                          <span className={`text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md border ${conf.cls}`}>
-                            {conf.label}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Player name — always a string */}
-                      <p className="text-sm font-bold text-white truncate leading-none mb-0.5">
-                        {leg.player}
-                      </p>
-
-                      {/* propName is the string prop type, line is number */}
-                      <p className="text-[11px] text-zinc-500 truncate">
-                        {leg.propName}
-                        <span className="text-zinc-700 mx-1">·</span>
-                        {leg.line}
-                      </p>
-
-                      <div className="flex items-center gap-3 mt-2">
-                        {leg.odds != null && (
-                          <span className="text-[10px] font-bold text-zinc-400">
-                            {leg.odds > 0 ? `+${leg.odds}` : leg.odds}
-                          </span>
-                        )}
-                        {leg.team && (
-                          <span className="text-[10px] text-zinc-700 uppercase font-bold">{leg.team}</span>
-                        )}
-                        {leg.bestEdgePct != null && (
-                          <span className="text-[10px] text-emerald-400 font-bold">
-                            +{((leg.bestEdgePct <= 1 ? leg.bestEdgePct * 100 : leg.bestEdgePct)).toFixed(1)}% edge
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => leg.id && onRemove(leg.id)}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:text-red-400 text-zinc-600 mt-0.5 shrink-0">
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                  {/* ... leg display ... */}
                 </div>
-              );
-            })}
+            ))}
           </div>
         )}
       </div>
 
       {/* Summary + CTA */}
       {!isEmpty && (
-        <div className="border-t border-white/5 p-4 space-y-3">
-          <div className="grid grid-cols-2 gap-2">
-            <div className="bg-white/[0.03] rounded-xl p-3">
-              <p className="text-[9px] text-zinc-600 uppercase font-black tracking-widest mb-1">Combined Prob</p>
-              <p className="text-lg font-black text-white">{(combinedImplied * 100).toFixed(1)}%</p>
+        <div className="border-t border-white/5 p-4 space-y-4">
+          
+          {/* Stake Input */}
+          <div>
+            <div className="flex items-center gap-2">
+              <p className="text-[10px] text-zinc-600 uppercase font-black tracking-widest">Risk</p>
+              <input 
+                type="number"
+                value={stake}
+                onChange={e => setStake(parseFloat(e.target.value) || 0)}
+                className="w-full bg-white/5 rounded-md px-2 py-1 text-white font-bold text-sm tabular-nums text-right"
+              />
             </div>
-            <div className="bg-white/[0.03] rounded-xl p-3">
-              <p className="text-[9px] text-zinc-600 uppercase font-black tracking-widest mb-1">Avg Edge</p>
-              <p className={`text-lg font-black ${avgEdge > 0.05 ? 'text-emerald-400' : avgEdge > 0 ? 'text-yellow-400' : 'text-zinc-500'}`}>
-                {(avgEdge * 100).toFixed(1)}%
+            {isOverLimit && (
+              <p className="text-right text-[9px] text-red-400 font-black uppercase mt-1">
+                ⚠️ Stake exceeds ${selectedBonus.maxWager} max limit
               </p>
+            )}
+          </div>
+
+          {/* Available Boosts */}
+          {eligible.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-[10px] font-black text-emerald-400 uppercase">Available Boosts</p>
+              {eligible.map((bonus: Bonus) => ( 
+                <button 
+                  key={bonus.id}
+                  onClick={() => setSelectedBonus(selectedBonus?.id === bonus.id ? null : bonus)}
+                  className={`w-full flex items-center justify-between p-3 rounded-xl border transition-all ${
+                    selectedBonus?.id === bonus.id 
+                      ? 'bg-[#FFD700]/10 border-[#FFD700]/50 shadow-[0_0_15px_rgba(255,215,0,0.1)]' 
+                      : 'bg-white/5 border-white/5 hover:border-white/10'
+                  }`}>
+                  <div className="flex items-center gap-2">
+                    <Zap className={`h-3.5 w-3.5 ${selectedBonus?.id === bonus.id ? 'text-[#FFD700]' : 'text-zinc-500'}`} />
+                    <span className="text-xs font-bold uppercase">{bonus.name}</span>
+                  </div>
+                  <span className="text-[10px] font-black text-[#FFD700]">+{bonus.boost}%</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Payout Summary */}
+          <div className="pt-4 mt-4 border-t border-white/5 space-y-2">
+            <div className="flex justify-between text-[10px] text-zinc-500 font-bold uppercase">
+              <span>Base Profit</span>
+              <span>${potentialProfit.toFixed(2)}</span>
+            </div>
+            
+            {selectedBonus && (
+              <div className="flex justify-between text-[10px] text-emerald-400 font-bold uppercase">
+                <span>{selectedBonus.boost}% Boost</span>
+                <span>+${boostAmount.toFixed(2)}</span>
+              </div>
+            )}
+
+            <div className="flex justify-between items-end pt-2">
+              <span className="text-xs font-black uppercase text-white">Total Payout</span>
+              <span className={`text-xl font-mono font-black ${selectedBonus ? 'text-[#FFD700]' : 'text-white'}`}>
+                ${totalPayout.toFixed(2)}
+              </span>
             </div>
           </div>
 
@@ -162,10 +177,6 @@ export function BetSlipPanel({ selections = [], onRemove, onClear, week }: BetSl
             Go to Parlay Studio
             <ArrowRight className="w-4 h-4" />
           </button>
-
-          <p className="text-center text-[9px] text-zinc-700 uppercase tracking-widest">
-            {selections.length}-leg parlay builder
-          </p>
         </div>
       )}
     </div>

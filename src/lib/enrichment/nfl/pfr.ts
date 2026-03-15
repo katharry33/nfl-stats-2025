@@ -2,8 +2,8 @@
 // Pro Football Reference scraper - ported from Apps Script
 // Uses Node 18+ native fetch. No external deps needed.
 
-import type { PFRGame } from './types';
-import { normalizeProp, splitComboProp } from './normalize';
+import type { PFRGame } from '../types';
+import { normalizeProp, splitComboProp } from '../shared/normalize';
 
 const PFR_CACHE = new Map<string, PFRGame[]>();
 

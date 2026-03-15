@@ -17,9 +17,44 @@
 //   npx tsx scripts/postGameAll.ts --season=2025 --dry-run   # preview only
 
 import 'dotenv/config';
-import { db } from '@/lib/firebase/admin';
+import { initializeApp, cert, getApps, getApp, applicationDefault } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
 import { FieldValue } from 'firebase-admin/firestore';
-import { determineResult, calculateProfitLoss } from '@/lib/enrichment/scoring';
+import path from 'path';
+import fs from 'fs';
+
+// ─── Firebase init ────────────────────────────────────────────────────────────
+function getCredential() {
+  const key = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+  if (key) { try { return cert(key.startsWith('{') ? JSON.parse(key) : key); } catch {} }
+  const projectId   = process.env.FIREBASE_PROJECT_ID;
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+  const privateKey  = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+  if (projectId && clientEmail && privateKey) return cert({ projectId, clientEmail, privateKey });
+  const keyPath = path.resolve(process.cwd(), 'serviceAccountKey.json');
+  if (fs.existsSync(keyPath)) {
+    try { return cert(JSON.parse(fs.readFileSync(keyPath, 'utf-8'))); } catch {}
+  }
+  return applicationDefault();
+}
+const app = getApps().length ? getApp()
+  : initializeApp({ credential: getCredential(), projectId: process.env.FIREBASE_PROJECT_ID ?? 'studio-8723557452-72ba7' });
+const db = getFirestore(app);
+
+// ─── Inlined: determineResult + calculateProfitLoss ───────────────────────────
+function determineResult(actualStat: number, line: number, overUnder: string): 'won' | 'lost' | 'push' {
+  const ou = overUnder.toLowerCase();
+  if (Math.abs(actualStat - line) < 0.001) return 'push';
+  if (ou === 'over')  return actualStat > line ? 'won' : 'lost';
+  if (ou === 'under') return actualStat < line ? 'won' : 'lost';
+  return 'lost';
+}
+function calculateProfitLoss(betAmount: number, odds: number, result: string): number {
+  if (result === 'push') return 0;
+  if (result === 'lost') return -betAmount;
+  const payout = odds > 0 ? (odds / 100) * betAmount : (100 / Math.abs(odds)) * betAmount;
+  return Math.round(payout * 100) / 100;
+}
 
 // ─── CLI ──────────────────────────────────────────────────────────────────────
 const args    = process.argv.slice(2);
