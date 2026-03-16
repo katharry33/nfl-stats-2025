@@ -105,7 +105,7 @@ export function SidebarNav() {
   const slipCount = selections?.length ?? 0;
 
   return (
-    <aside className="fixed top-0 left-0 h-screen w-56 bg-[#060606] border-r border-white/[0.06] flex flex-col z-40">
+    <aside className="hidden md:flex flex-col w-56 h-screen fixed top-0 left-0 bg-[#060606] border-r border-white/[0.06] z-40">
 
       {/* Logo */}
       <div className="px-4 py-5 border-b border-white/[0.06]">
