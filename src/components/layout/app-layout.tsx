@@ -1,9 +1,9 @@
 'use client';
 
-import { ClerkProvider } from '@clerk/nextjs';
-import { FirebaseProvider } from '@/context/AuthContext';
-import { BetSlipProvider } from '@/context/betslip-context';
-import { WalletProvider } from '@/context/wallet-context';
+// ⚠️  This file is the LAYOUT SHELL ONLY.
+// Auth, BetSlip, and Wallet providers must live in app/layout.tsx — NOT here.
+// Adding them here causes duplicate context trees and broken hook reads.
+
 import { MobileNavProvider } from '@/context/MobileNavContext';
 import { SidebarNav } from '@/components/nav/SidebarNav';
 import { MobileBottomNav } from '@/components/nav/MobileBottomNav';
@@ -13,34 +13,27 @@ import { Toaster } from 'sonner';
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   return (
-    <ClerkProvider>
-      <FirebaseProvider>
-        <WalletProvider>
-          <BetSlipProvider>
-            <MobileNavProvider>
+    <MobileNavProvider>
 
-              {/* Top-of-page progress bar on route changes */}
-              <NavigationProgress />
+      {/* Teal progress bar on every client-side route change */}
+      <NavigationProgress />
 
-              {/* Desktop sidebar — hidden on mobile via CSS */}
-              <SidebarNav />
+      {/* Desktop: fixed left sidebar (hidden on mobile) */}
+      <SidebarNav />
 
-              {/* Main content
-                  · Desktop : offset by sidebar width (ml-56)
-                  · Mobile  : full-width + bottom padding for tab bar */}
-              <main className="md:ml-56 min-h-screen pb-20 md:pb-0">
-                <Toaster position="top-right" />
-                {children}
-              </main>
+      {/* Page content
+          · md:ml-56 offsets right of the sidebar on desktop
+          · pb-20    clears the fixed bottom tab bar on mobile
+          · min-h-screen ensures short pages still fill the viewport    */}
+      <main className="md:ml-56 min-h-screen pb-20 md:pb-0">
+        <Toaster position="top-right" richColors />
+        {children}
+      </main>
 
-              {/* Mobile nav surfaces — md:hidden keeps them off desktop */}
-              <MobileBottomNav />
-              <MobileDrawer />
+      {/* Mobile-only — md:hidden removes from desktop layout entirely */}
+      <MobileBottomNav />
+      <MobileDrawer />
 
-            </MobileNavProvider>
-          </BetSlipProvider>
-        </WalletProvider>
-      </FirebaseProvider>
-    </ClerkProvider>
+    </MobileNavProvider>
   );
 }

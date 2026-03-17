@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/lib/firebase/provider";
 import { BetSlipProvider } from "@/context/betslip-context";
+import { WalletProvider } from "@/context/wallet-context";
 import { AppLayout } from "@/components/layout/app-layout";
+
 export const metadata: Metadata = {
   title: "SweetSpot",
   description: "Personalized betting insights.",
@@ -13,14 +15,24 @@ export const metadata: Metadata = {
   },
 };
 
+// Provider order matters:
+//   AuthProvider  (Firebase auth — outermost)
+//     WalletProvider  (needs auth)
+//       BetSlipProvider  (needs auth, used by nav badges)
+//         AppLayout  (consumes all of the above via hooks)
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="dark" suppressHydrationWarning>
-      <body className="bg-background text-foreground antialiased selection:bg-primary/30">
+    // NOTE: removed className="dark" — app now uses light theme by default.
+    // Add it back (or toggle it dynamically) only if you add a dark mode switch.
+    <html lang="en" suppressHydrationWarning>
+      <body className="bg-background text-foreground antialiased selection:bg-primary/20">
         <AuthProvider>
-          <BetSlipProvider>
-            <AppLayout>{children}</AppLayout>
-          </BetSlipProvider>
+          <WalletProvider>
+            <BetSlipProvider>
+              <AppLayout>{children}</AppLayout>
+            </BetSlipProvider>
+          </WalletProvider>
         </AuthProvider>
       </body>
     </html>

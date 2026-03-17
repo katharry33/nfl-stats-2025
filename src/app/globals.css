@@ -1,156 +1,126 @@
 @import "tailwindcss";
 
 /* =========================================
-   BASE COLOR SYSTEM
-   Defined BEFORE @theme inline so the
-   hsl(var(--x)) references resolve correctly
+   BASE COLOR SYSTEM — Light Grey + Teal
    ========================================= */
 
 @layer base {
 
   :root {
 
-    /* Slate analytics theme */
+    /* ── Surfaces ── */
+    --background:       210 20% 96%;    /* #f0f2f5  cool light grey page bg  */
+    --foreground:       220 25% 14%;    /* #1c2133  near-black text           */
 
-    --background: 215 28% 6%;
-    --foreground: 210 20% 96%;
+    --card:             0 0% 100%;      /* #ffffff  white cards               */
+    --card-foreground:  220 25% 14%;
 
-    --card: 215 20% 10%;
-    --card-foreground: 210 20% 96%;
+    --popover:          0 0% 100%;
+    --popover-foreground: 220 25% 14%;
 
-    --popover: 215 20% 10%;
-    --popover-foreground: 210 20% 96%;
+    /* ── Primary — teal ── */
+    --primary:          174 65% 36%;    /* #1fa896  deep teal                 */
+    --primary-foreground: 0 0% 100%;
 
-    /* Primary accent (teal) */
+    /* ── Secondary surfaces ── */
+    --secondary:        210 18% 91%;    /* #e4e8ef  slightly darker grey      */
+    --secondary-foreground: 220 25% 14%;
 
-    --primary: 174 72% 45%;
-    --primary-foreground: 210 20% 96%;
+    --muted:            210 16% 93%;    /* #eaecf0  muted surface             */
+    --muted-foreground: 220 12% 50%;    /* #757d8a  subdued text              */
 
-    /* Secondary surfaces */
+    /* ── Accent — emerald green ── */
+    --accent:           158 60% 42%;    /* #29a874  emerald for positive EV   */
+    --accent-foreground: 0 0% 100%;
 
-    --secondary: 215 16% 18%;
-    --secondary-foreground: 210 20% 96%;
-
-    --muted: 215 16% 18%;
-    --muted-foreground: 215 12% 60%;
-
-    --accent: 215 16% 18%;
-    --accent-foreground: 210 20% 96%;
-
-    /* Destructive */
-
-    --destructive: 0 72% 55%;
+    /* ── Destructive — soft red ── */
+    --destructive:      0 65% 55%;      /* #d94040  kept subtle               */
     --destructive-foreground: 0 0% 100%;
 
-    /* Inputs & borders */
+    /* ── Chrome ── */
+    --border:           220 13% 87%;    /* #d6dae3  light border              */
+    --input:            220 13% 87%;
+    --ring:             174 65% 36%;    /* focus ring = primary teal          */
 
-    --border: 215 14% 20%;
-    --input: 215 14% 20%;
+    /* ── Betting semantics ── */
+    --profit:           158 60% 38%;    /* emerald green — positive           */
+    --loss:             0 62% 52%;      /* muted red — loss                   */
+    --edge:             196 80% 42%;    /* cyan-teal — moderate edge          */
 
-    /* Focus */
-
-    --ring: 174 72% 45%;
-
-    /* Betting semantic colors */
-
-    --profit: 158 64% 40%;
-    --loss: 0 72% 55%;
-    --edge: 217 91% 60%;
-
-    /* Radius */
-
-    --radius: 1rem;
+    --radius: 0.75rem;
   }
 
+  /* Dark mode kept identical to light for now —
+     swap these values if you add a dark toggle later */
   .dark {
-
-    --background: 215 28% 6%;
-    --foreground: 210 20% 96%;
-
-    --card: 215 20% 10%;
-    --card-foreground: 210 20% 96%;
-
-    --popover: 215 20% 10%;
-    --popover-foreground: 210 20% 96%;
-
-    --primary: 174 72% 45%;
-    --primary-foreground: 210 20% 96%;
-
-    --secondary: 215 16% 18%;
-    --secondary-foreground: 210 20% 96%;
-
-    --muted: 215 16% 18%;
-    --muted-foreground: 215 12% 60%;
-
-    --accent: 215 16% 18%;
-    --accent-foreground: 210 20% 96%;
-
-    --destructive: 0 72% 55%;
+    --background:       220 20% 9%;
+    --foreground:       210 20% 95%;
+    --card:             220 18% 13%;
+    --card-foreground:  210 20% 95%;
+    --popover:          220 18% 13%;
+    --popover-foreground: 210 20% 95%;
+    --primary:          174 65% 42%;
+    --primary-foreground: 0 0% 100%;
+    --secondary:        220 15% 18%;
+    --secondary-foreground: 210 20% 95%;
+    --muted:            220 15% 18%;
+    --muted-foreground: 215 12% 55%;
+    --accent:           158 55% 42%;
+    --accent-foreground: 0 0% 100%;
+    --destructive:      0 65% 52%;
     --destructive-foreground: 0 0% 100%;
-
-    --border: 215 14% 20%;
-    --input: 215 14% 20%;
-
-    --ring: 174 72% 45%;
-
-    --profit: 158 64% 40%;
-    --loss: 0 72% 55%;
-    --edge: 217 91% 60%;
+    --border:           220 13% 22%;
+    --input:            220 13% 22%;
+    --ring:             174 65% 42%;
+    --profit:           158 58% 42%;
+    --loss:             0 60% 50%;
+    --edge:             196 75% 45%;
   }
 }
 
 /* =========================================
-   THEME TOKENS (Tailwind v4)
-   `inline` required — without it, v4 wraps
-   each value in its own CSS variable, making
-   hsl(var(--border)) a double-var that never
-   resolves, and `border-border` / `bg-card`
-   etc. fail to register as utilities.
+   THEME TOKENS — Tailwind v4
+   `inline` is required so hsl(var(--x))
+   resolves at build time, not as a double-var
    ========================================= */
 
 @theme inline {
 
-  /* Core UI colors */
+  --color-background:             hsl(var(--background));
+  --color-foreground:             hsl(var(--foreground));
 
-  --color-background:           hsl(var(--background));
-  --color-foreground:           hsl(var(--foreground));
+  --color-card:                   hsl(var(--card));
+  --color-card-foreground:        hsl(var(--card-foreground));
 
-  --color-card:                 hsl(var(--card));
-  --color-card-foreground:      hsl(var(--card-foreground));
+  --color-popover:                hsl(var(--popover));
+  --color-popover-foreground:     hsl(var(--popover-foreground));
 
-  --color-popover:              hsl(var(--popover));
-  --color-popover-foreground:   hsl(var(--popover-foreground));
+  --color-primary:                hsl(var(--primary));
+  --color-primary-foreground:     hsl(var(--primary-foreground));
 
-  --color-primary:              hsl(var(--primary));
-  --color-primary-foreground:   hsl(var(--primary-foreground));
+  --color-secondary:              hsl(var(--secondary));
+  --color-secondary-foreground:   hsl(var(--secondary-foreground));
 
-  --color-secondary:            hsl(var(--secondary));
-  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted:                  hsl(var(--muted));
+  --color-muted-foreground:       hsl(var(--muted-foreground));
 
-  --color-muted:                hsl(var(--muted));
-  --color-muted-foreground:     hsl(var(--muted-foreground));
+  --color-accent:                 hsl(var(--accent));
+  --color-accent-foreground:      hsl(var(--accent-foreground));
 
-  --color-accent:               hsl(var(--accent));
-  --color-accent-foreground:    hsl(var(--accent-foreground));
-
-  --color-destructive:          hsl(var(--destructive));
+  --color-destructive:            hsl(var(--destructive));
   --color-destructive-foreground: hsl(var(--destructive-foreground));
 
-  --color-border:               hsl(var(--border));
-  --color-input:                hsl(var(--input));
-  --color-ring:                 hsl(var(--ring));
+  --color-border:                 hsl(var(--border));
+  --color-input:                  hsl(var(--input));
+  --color-ring:                   hsl(var(--ring));
 
-  /* Betting semantics */
+  --color-profit:                 hsl(var(--profit));
+  --color-loss:                   hsl(var(--loss));
+  --color-edge:                   hsl(var(--edge));
 
-  --color-profit:               hsl(var(--profit));
-  --color-loss:                 hsl(var(--loss));
-  --color-edge:                 hsl(var(--edge));
-
-  /* Radius */
-
-  --radius-lg:                  var(--radius);
-  --radius-md:                  calc(var(--radius) - 2px);
-  --radius-sm:                  calc(var(--radius) - 4px);
+  --radius-lg:                    var(--radius);
+  --radius-md:                    calc(var(--radius) - 2px);
+  --radius-sm:                    calc(var(--radius) - 4px);
 }
 
 /* =========================================
@@ -168,13 +138,9 @@
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 
-  input,
-  textarea,
-  select {
-    @apply text-foreground bg-background;
+  input, textarea, select {
+    @apply text-foreground bg-card;
   }
-
-  /* Fix autofill background issue */
 
   input:-webkit-autofill,
   input:-webkit-autofill:hover,
@@ -185,7 +151,7 @@
 }
 
 /* =========================================
-   CUSTOM SCROLLBARS
+   UTILITIES
    ========================================= */
 
 @layer utilities {
@@ -197,19 +163,12 @@
     display: none;
   }
 
-  .custom-scrollbar::-webkit-scrollbar {
-    width: 6px;
-  }
-
-  .custom-scrollbar::-webkit-scrollbar-track {
-    @apply bg-background;
-  }
-
+  .custom-scrollbar::-webkit-scrollbar       { width: 4px; }
+  .custom-scrollbar::-webkit-scrollbar-track { @apply bg-background; }
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: hsl(var(--muted));
+    background: hsl(var(--border));
     border-radius: 9999px;
   }
-
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background: hsl(var(--primary));
   }
