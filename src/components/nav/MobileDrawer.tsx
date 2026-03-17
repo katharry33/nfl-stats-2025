@@ -46,7 +46,7 @@ function DrawerNavItem({ href, label, icon: Icon, badge, isSweetSpot = false, on
         }
       `}
     >
-      <Icon className={`h-4 w-4 flex-shrink-0 ${isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground/70'}`} />
+      <Icon className={`h-4 w-4 shrink-0 ${isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground/70'}`} />
       <span className="text-[11px] font-semibold tracking-wide flex-1">{label}</span>
       {badge != null && badge > 0 && (
         <span className="bg-primary text-primary-foreground text-[9px] font-bold rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center">{badge}</span>
@@ -90,12 +90,12 @@ export function MobileDrawer() {
         `}
       >
         {/* Handle */}
-        <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
+        <div className="flex justify-center pt-3 pb-1 'shrink-0'">
           <div className="w-10 h-1 rounded-full bg-border" />
         </div>
 
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border flex-shrink-0">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border 'shrink-0'">
           <SweetSpotLogo />
           <button onClick={closeDrawer} aria-label="Close menu"
             className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
@@ -127,7 +127,7 @@ export function MobileDrawer() {
         </nav>
 
         {/* Bankroll footer */}
-        <div className="px-3 py-3 border-t border-border flex-shrink-0">
+        <div className="px-3 py-3 border-t border-border 'shrink-0'">
           <Link href="/wallet" onClick={closeDrawer} className="block group">
             <div className="bg-primary/5 border border-primary/15 group-hover:border-primary/30 rounded-lg px-3 py-2.5 transition-colors">
               <div className="flex items-center justify-between mb-0.5">
@@ -141,7 +141,7 @@ export function MobileDrawer() {
           </Link>
         </div>
 
-        <div className="h-[env(safe-area-inset-bottom)] flex-shrink-0" />
+        <div className="h-[env(safe-area-inset-bottom)] 'shrink-0'" />
       </div>
     </div>
   );

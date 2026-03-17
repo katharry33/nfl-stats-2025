@@ -256,7 +256,7 @@ function ColumnPicker({
         className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[9px] font-black uppercase transition-all ${
           open
             ? 'bg-[#FFD700]/10 border-[#FFD700]/30 text-[#FFD700]'
-            : 'border-white/[0.08] text-zinc-600 hover:text-white'
+            : 'border-white/8 text-zinc-600 hover:text-white'
         }`}
       >
         <Settings2 className="h-3.5 w-3.5" />
@@ -269,7 +269,7 @@ function ColumnPicker({
           <div className="absolute right-0 top-9 z-20 w-52 bg-[#0f1115] border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[480px]">
 
             {/* Visible / draggable */}
-            <div className="px-3 pt-2.5 pb-1.5 border-b border-white/[0.06]">
+            <div className="px-3 pt-2.5 pb-1.5 border-b border-white/6">
               <p className="text-[8px] font-black uppercase text-zinc-700 tracking-widest">
                 Visible · drag to reorder
               </p>
@@ -283,9 +283,9 @@ function ColumnPicker({
                   onDragEnter={() => handleDragEnter(c.id)}
                   onDragEnd={handleDragEnd}
                   onDragOver={e => e.preventDefault()}
-                  className="flex items-center gap-2 px-2 py-1.5 rounded-xl hover:bg-white/[0.04] cursor-grab active:cursor-grabbing group select-none"
+                  className="flex items-center gap-2 px-2 py-1.5 rounded-xl hover:bg-white/4 cursor-grab active:cursor-grabbing group select-none"
                 >
-                  <GripVertical className="h-3 w-3 text-zinc-700 group-hover:text-zinc-500 flex-shrink-0" />
+                  <GripVertical className="h-3 w-3 text-zinc-700 group-hover:text-zinc-500 shrink-0" />
                   <span className="flex-1 text-xs font-bold text-zinc-300">{c.label}</span>
                   <button
                     onClick={() => onToggle(c.id)}
@@ -300,7 +300,7 @@ function ColumnPicker({
             {/* Hidden */}
             {hiddenCols.length > 0 && (
               <>
-                <div className="px-3 pt-2.5 pb-1.5 border-t border-white/[0.06]">
+                <div className="px-3 pt-2.5 pb-1.5 border-t border-white/6">
                   <p className="text-[8px] font-black uppercase text-zinc-700 tracking-widest">
                     Hidden · click to add
                   </p>
@@ -310,7 +310,7 @@ function ColumnPicker({
                     <button
                       key={c.id}
                       onClick={() => onToggle(c.id)}
-                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-xl hover:bg-white/[0.04] transition-colors group"
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-xl hover:bg-white/4 transition-colors group"
                     >
                       <Plus className="h-3 w-3 text-zinc-700 group-hover:text-[#FFD700]" />
                       <span className="text-xs font-bold text-zinc-600 group-hover:text-zinc-300">
@@ -323,10 +323,10 @@ function ColumnPicker({
             )}
 
             {/* Reset */}
-            <div className="border-t border-white/[0.06] p-1">
+            <div className="border-t border-white/6 p-1">
               <button
                 onClick={() => onReorder([...DEFAULT_COL_ORDER])}
-                className="w-full px-2 py-1.5 text-[9px] font-black uppercase text-zinc-700 hover:text-zinc-400 transition-colors rounded-xl hover:bg-white/[0.04]"
+                className="w-full px-2 py-1.5 text-[9px] font-black uppercase text-zinc-700 hover:text-zinc-400 transition-colors rounded-xl hover:bg-white/4"
               >
                 Reset to defaults
               </button>
@@ -524,7 +524,7 @@ export function PropsTable({
               value={search}
               onChange={e => { setSearch(e.target.value); setPage(0); }}
               placeholder="Player or team…"
-              className="pl-7 pr-7 py-1.5 w-40 bg-black/40 border border-white/[0.08] text-white text-xs font-mono rounded-xl outline-none focus:ring-1 focus:ring-[#FFD700]/30 placeholder:text-zinc-700"
+              className="pl-7 pr-7 py-1.5 w-40 bg-black/40 border border-white/8 text-white text-xs font-mono rounded-xl outline-none focus:ring-1 focus:ring-[#FFD700]/30 placeholder:text-zinc-700"
             />
             {search && (
               <button
@@ -539,7 +539,7 @@ export function PropsTable({
           <select
             value={fMatchup}
             onChange={e => { setFMatchup(e.target.value); setPage(0); }}
-            className="py-1.5 px-2.5 bg-black/40 border border-white/[0.08] text-zinc-300 text-xs font-mono rounded-xl outline-none focus:ring-1 focus:ring-[#FFD700]/30"
+            className="py-1.5 px-2.5 bg-black/40 border border-white/8 text-zinc-300 text-xs font-mono rounded-xl outline-none focus:ring-1 focus:ring-[#FFD700]/30"
           >
             <option value="">All Matchups</option>
             {matchupOptions.map(m => <option key={m} value={m}>{m}</option>)}
@@ -548,13 +548,13 @@ export function PropsTable({
           <select
             value={fProp}
             onChange={e => { setFProp(e.target.value); setPage(0); }}
-            className="py-1.5 px-2.5 bg-black/40 border border-white/[0.08] text-zinc-300 text-xs font-mono rounded-xl outline-none focus:ring-1 focus:ring-[#FFD700]/30"
+            className="py-1.5 px-2.5 bg-black/40 border border-white/8 text-zinc-300 text-xs font-mono rounded-xl outline-none focus:ring-1 focus:ring-[#FFD700]/30"
           >
             <option value="">All Props</option>
             {propOptions.map(p => <option key={p} value={p}>{p}</option>)}
           </select>
 
-          <div className="flex rounded-xl overflow-hidden border border-white/[0.08]">
+          <div className="flex rounded-xl overflow-hidden border border-white/8">
             {(['', 'Over', 'Under'] as const).map(v => (
               <button
                 key={v}
@@ -948,11 +948,11 @@ export function PropsTable({
 
         {/* Pagination */}
         {totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-white/[0.04] bg-black/20">
+          <div className="flex items-center justify-between px-4 py-3 border-t 'border-white/4' bg-black/20">
             <button
               onClick={() => setPage(p => Math.max(0, p - 1))}
               disabled={page === 0}
-              className="px-3 py-1.5 rounded-xl border border-white/[0.08] text-zinc-500 hover:text-white text-xs font-black uppercase disabled:opacity-30 transition-colors"
+              className="px-3 py-1.5 rounded-xl border 'border-white/8' text-zinc-500 hover:text-white text-xs font-black uppercase disabled:opacity-30 transition-colors"
             >
               ← Prev
             </button>
@@ -962,7 +962,7 @@ export function PropsTable({
             <button
               onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
               disabled={page === totalPages - 1}
-              className="px-3 py-1.5 rounded-xl border border-white/[0.08] text-zinc-500 hover:text-white text-xs font-black uppercase disabled:opacity-30 transition-colors"
+              className="px-3 py-1.5 rounded-xl border 'border-white/8' text-zinc-500 hover:text-white text-xs font-black uppercase disabled:opacity-30 transition-colors"
             >
               Next →
             </button>

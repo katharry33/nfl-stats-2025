@@ -39,10 +39,10 @@ const RESULTS: {
   value: LegResult; label: string; icon: React.ReactNode;
   active: string; inactive: string;
 }[] = [
-  { value: 'won',     label: 'Win',     icon: <CheckCircle2 className="h-3.5 w-3.5" />, active: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40', inactive: 'border-white/[0.08] text-zinc-600 hover:border-white/20 hover:text-zinc-300' },
-  { value: 'lost',    label: 'Loss',    icon: <XCircle      className="h-3.5 w-3.5" />, active: 'bg-red-500/20 text-red-400 border-red-500/40',             inactive: 'border-white/[0.08] text-zinc-600 hover:border-white/20 hover:text-zinc-300' },
-  { value: 'pending', label: 'Pending', icon: <Clock        className="h-3.5 w-3.5" />, active: 'bg-[#FFD700]/10 text-[#FFD700] border-[#FFD700]/30',       inactive: 'border-white/[0.08] text-zinc-600 hover:border-white/20 hover:text-zinc-300' },
-  { value: 'void',    label: 'Void',    icon: <XCircle      className="h-3.5 w-3.5" />, active: 'bg-white/[0.06] text-zinc-400 border-white/20',             inactive: 'border-white/[0.08] text-zinc-600 hover:border-white/20 hover:text-zinc-300' },
+  { value: 'won',     label: 'Win',     icon: <CheckCircle2 className="h-3.5 w-3.5" />, active: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40', inactive: 'border-border text-muted-foreground hover:border-white/20 hover:text-zinc-300' },
+  { value: 'lost',    label: 'Loss',    icon: <XCircle      className="h-3.5 w-3.5" />, active: 'bg-red-500/20 text-red-400 border-red-500/40',             inactive: 'border-border text-muted-foreground hover:border-white/20 hover:text-zinc-300' },
+  { value: 'pending', label: 'Pending', icon: <Clock        className="h-3.5 w-3.5" />, active: 'bg-[#FFD700]/10 text-[#FFD700] border-[#FFD700]/30',       inactive: 'border-border text-muted-foreground hover:border-white/20 hover:text-zinc-300' },
+  { value: 'void',    label: 'Void',    icon: <XCircle      className="h-3.5 w-3.5" />, active: 'bg-white/[0.06] text-zinc-400 border-white/20',             inactive: 'border-border text-muted-foreground hover:border-white/20 hover:text-zinc-300' },
 ];
 
 const BET_TYPES = ['Single','Anytime TD','SGP','Round Robin','SGPX','Spread','Moneyline','Total Points','Parlay'];
@@ -55,31 +55,31 @@ function DuplicateModal({ duplicates, onSaveAnyway, onCancel }: {
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm px-4">
-      <div className="bg-[#0f1115] border border-[#FFD700]/20 rounded-3xl p-6 max-w-sm w-full shadow-2xl space-y-4">
+      <div className="bg-card border border-[#FFD700]/20 rounded-3xl p-6 max-w-sm w-full shadow-2xl space-y-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-[#FFD700]/10 flex items-center justify-center flex-shrink-0">
             <AlertTriangle className="h-5 w-5 text-[#FFD700]" />
           </div>
           <div>
-            <h2 className="text-white font-black text-sm italic uppercase">Already in Betting Log</h2>
-            <p className="text-zinc-600 text-xs mt-0.5">
+            <h2 className="text-foreground font-black text-sm italic uppercase">Already in Betting Log</h2>
+            <p className="text-muted-foreground text-xs mt-0.5">
               {duplicates.length} leg{duplicates.length > 1 ? 's' : ''} found for this week
             </p>
           </div>
         </div>
         <div className="space-y-1.5 max-h-40 overflow-y-auto">
           {duplicates.map((d: any, i: number) => (
-            <div key={i} className="flex items-center gap-2 bg-black/40 border border-white/[0.06] rounded-xl px-3 py-2">
+            <div key={i} className="flex items-center gap-2 bg-black/40 border border-border rounded-xl px-3 py-2">
               <span className="text-[#FFD700] text-[9px] font-black uppercase bg-[#FFD700]/10 px-1.5 py-0.5 rounded">DUP</span>
-              <div className="text-xs text-white font-bold">{d.player}</div>
-              <div className="text-[10px] text-zinc-600 ml-auto capitalize">{d.prop}</div>
+              <div className="text-xs text-foreground font-bold">{d.player}</div>
+              <div className="text-[10px] text-muted-foreground ml-auto capitalize">{d.prop}</div>
             </div>
           ))}
         </div>
-        <p className="text-zinc-600 text-xs">These legs are already logged for this week. Saving again will create a duplicate.</p>
+        <p className="text-muted-foreground text-xs">These legs are already logged for this week. Saving again will create a duplicate.</p>
         <div className="flex gap-2 pt-1">
           <button onClick={onCancel}
-            className="flex-1 py-2.5 rounded-2xl border border-white/[0.08] text-zinc-400 text-xs font-black uppercase hover:bg-white/[0.04] transition-colors">
+            className="flex-1 py-2.5 rounded-2xl border border-border text-zinc-400 text-xs font-black uppercase hover:bg-white/[0.04] transition-colors">
             Cancel
           </button>
           <button onClick={onSaveAnyway}
@@ -100,18 +100,18 @@ function LegCard({ leg, index, onUpdate, onRemove }: {
   onRemove: (id: string) => void;
 }) {
   return (
-    <div className="bg-[#0f1115] border border-white/[0.06] rounded-2xl overflow-hidden hover:border-white/10 transition-colors">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
+    <div className="bg-card border border-border rounded-2xl overflow-hidden hover:border-white/10 transition-colors">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <div className="flex items-center gap-3 min-w-0">
           <span className="w-6 h-6 rounded-full bg-[#FFD700]/10 border border-[#FFD700]/20 text-[10px] font-black text-[#FFD700] flex items-center justify-center shrink-0">
             {index + 1}
           </span>
           <div className="min-w-0">
-            <p className="text-white font-black text-sm italic uppercase tracking-tight truncate">{leg.player}</p>
-            <p className="text-zinc-600 text-xs truncate">{leg.matchup || '—'}</p>
+            <p className="text-foreground font-black text-sm italic uppercase tracking-tight truncate">{leg.player}</p>
+            <p className="text-muted-foreground text-xs truncate">{leg.matchup || '—'}</p>
           </div>
         </div>
-        <button onClick={() => onRemove(leg.id)} className="text-zinc-700 hover:text-red-400 transition-colors ml-3 shrink-0">
+        <button onClick={() => onRemove(leg.id)} className="text-muted-foreground/70 hover:text-red-400 transition-colors ml-3 shrink-0">
           <Trash2 className="h-4 w-4" />
         </button>
       </div>
@@ -120,37 +120,37 @@ function LegCard({ leg, index, onUpdate, onRemove }: {
         {/* Prop + Over/Under + Odds */}
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2">
-            <span className="text-zinc-500 text-xs">{leg.prop}</span>
+            <span className="text-muted-foreground text-xs">{leg.prop}</span>
             <input type="number" value={leg.line} 
               onChange={e => onUpdate(leg.id, { line: parseFloat(e.target.value) || 0 })}
-              className="w-16 bg-black/40 border border-white/[0.08] text-white font-mono text-xs rounded-xl px-2 py-1.5 text-center focus:ring-1 focus:ring-[#FFD700]/30 outline-none" />
+              className="w-16 bg-black/40 border border-border text-foreground font-mono text-xs rounded-xl px-2 py-1.5 text-center focus:ring-1 focus:ring-[#FFD700]/30 outline-none" />
           </div>
-          <div className="flex rounded-xl overflow-hidden border border-white/[0.08] ml-auto">
+          <div className="flex rounded-xl overflow-hidden border border-border ml-auto">
             {(['Over', 'Under'] as const).map((s: any) => (
               <button key={s} onClick={() => onUpdate(leg.id, { selection: s })}
                 className={`px-3 py-1.5 text-[11px] font-black uppercase transition-colors ${
                   leg.selection === s
-                    ? s === 'Over' ? 'bg-blue-600 text-white' : 'bg-orange-600 text-white'
-                    : 'bg-black/40 text-zinc-600 hover:bg-white/[0.04]'
+                    ? s === 'Over' ? 'bg-blue-600 text-foreground' : 'bg-orange-600 text-foreground'
+                    : 'bg-black/40 text-muted-foreground hover:bg-white/[0.04]'
                 }`}>{s}</button>
             ))}
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="text-[9px] text-zinc-600 uppercase font-black">Odds</span>
+            <span className="text-[9px] text-muted-foreground uppercase font-black">Odds</span>
             <input type="number" value={leg.odds}
               onChange={e => onUpdate(leg.id, { odds: parseInt(e.target.value) || -110 })}
-              className="w-24 bg-black/40 border border-white/[0.08] text-white font-mono text-xs rounded-xl px-2.5 py-1.5
+              className="w-24 bg-black/40 border border-border text-foreground font-mono text-xs rounded-xl px-2.5 py-1.5
                 focus:ring-1 focus:ring-[#FFD700]/30 outline-none text-center" />
           </div>
         </div>
 
         {/* Live bet */}
-        <div className="flex items-center justify-between py-2 border-t border-white/[0.04]">
+        <div className="flex items-center justify-between py-2 border-t border-border">
           <label className="flex items-center gap-2 cursor-pointer group">
             <input type="checkbox" checked={leg.isLive || false}
               onChange={e => onUpdate(leg.id, { isLive: e.target.checked })}
               className="w-4 h-4 rounded border-white/20 bg-black accent-[#FFD700] cursor-pointer" />
-            <span className="text-[9px] uppercase font-black text-zinc-600 group-hover:text-zinc-400 transition-colors">
+            <span className="text-[9px] uppercase font-black text-muted-foreground group-hover:text-zinc-400 transition-colors">
               Live Bet
             </span>
           </label>
@@ -163,7 +163,7 @@ function LegCard({ leg, index, onUpdate, onRemove }: {
 
         {/* Result */}
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[9px] uppercase font-black text-zinc-600 w-12 shrink-0">Result</span>
+          <span className="text-[9px] uppercase font-black text-muted-foreground w-12 shrink-0">Result</span>
           <div className="flex gap-1.5 flex-wrap">
             {RESULTS.map((r: any) => (
               <button key={r.value} onClick={() => onUpdate(leg.id, { result: r.value })}
@@ -354,7 +354,7 @@ export default function ParlayStudioPage() {
 
   if (!isInitialized) {
     return (
-      <div className="min-h-screen bg-[#060606] flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-[#FFD700]" />
       </div>
     );
@@ -362,10 +362,10 @@ export default function ParlayStudioPage() {
 
   if (isInitialized && legs.length === 0 && selections.length === 0) {
     return (
-      <div className="min-h-screen bg-[#060606] flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center space-y-3">
-          <Layers className="h-10 w-10 text-zinc-700 mx-auto" />
-          <p className="text-zinc-500 text-sm">No legs in your bet slip.</p>
+          <Layers className="h-10 w-10 text-muted-foreground/70 mx-auto" />
+          <p className="text-muted-foreground text-sm">No legs in your bet slip.</p>
           <button onClick={() => router.push('/all-props')}
             className="text-[#FFD700] text-xs hover:underline flex items-center gap-1 mx-auto font-bold">
             <ChevronLeft className="h-3 w-3" /> Back to Historical Props
@@ -376,7 +376,7 @@ export default function ParlayStudioPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#060606]">
+    <div className="min-h-screen bg-background">
       {dupModal && (
         <DuplicateModal
           duplicates={dupLegs}
@@ -390,25 +390,25 @@ export default function ParlayStudioPage() {
         {/* Header */}
         <div className="flex items-center gap-3">
           <button onClick={() => router.back()}
-            className="flex items-center gap-1 text-zinc-600 hover:text-white text-xs transition-colors font-bold">
+            className="flex items-center gap-1 text-muted-foreground hover:text-foreground text-xs transition-colors font-bold">
             <ChevronLeft className="h-4 w-4" /> Back
           </button>
           <div>
-            <h1 className="text-2xl font-black text-white italic uppercase tracking-tighter">Parlay Studio</h1>
-            <p className="text-zinc-600 text-[10px] font-mono">{legs.length} leg{legs.length !== 1 ? 's' : ''}</p>
+            <h1 className="text-2xl font-black text-foreground italic uppercase tracking-tighter">Parlay Studio</h1>
+            <p className="text-muted-foreground text-[10px] font-mono">{legs.length} leg{legs.length !== 1 ? 's' : ''}</p>
           </div>
         </div>
 
         {/* Step 1 */}
         <section className="space-y-3">
           <div className="flex items-center justify-between">
-            <h2 className="text-[10px] uppercase font-black text-zinc-600 tracking-widest flex items-center gap-2">
+            <h2 className="text-[10px] uppercase font-black text-muted-foreground tracking-widest flex items-center gap-2">
               <span className="w-5 h-5 rounded-full bg-[#FFD700] text-black text-[10px] font-black flex items-center justify-center">1</span>
               Review Legs
             </h2>
             {legs.length > 1 && (
               <button onClick={() => { setLegs([]); clearSlip(); }}
-                className="text-[10px] text-zinc-700 hover:text-red-400 font-black uppercase transition-colors">
+                className="text-[10px] text-muted-foreground/70 hover:text-red-400 font-black uppercase transition-colors">
                 Clear All
               </button>
             )}
@@ -420,7 +420,7 @@ export default function ParlayStudioPage() {
 
           {legs.length > 1 && (
             <div className="flex items-center justify-between px-4 py-3 rounded-2xl bg-[#FFD700]/5 border border-[#FFD700]/10">
-              <span className="text-xs text-zinc-600 font-mono">Auto parlay ({legs.length} legs)</span>
+              <span className="text-xs text-muted-foreground font-mono">Auto parlay ({legs.length} legs)</span>
               <span className="text-sm font-black font-mono text-[#FFD700]">{fmtAmerican(parlayOdds)}</span>
             </div>
           )}
@@ -439,20 +439,20 @@ export default function ParlayStudioPage() {
         {/* Step 2 */}
         {detailsOpen && legs.length > 0 && (
           <section ref={detailsRef} className="space-y-4 pt-1">
-            <h2 className="text-[10px] uppercase font-black text-zinc-600 tracking-widest flex items-center gap-2">
+            <h2 className="text-[10px] uppercase font-black text-muted-foreground tracking-widest flex items-center gap-2">
               <span className="w-5 h-5 rounded-full bg-[#FFD700] text-black text-[10px] font-black flex items-center justify-center">2</span>
               Bet Details
             </h2>
 
-            <div className="bg-[#0f1115] border border-white/[0.06] rounded-3xl p-5 space-y-4">
+            <div className="bg-card border border-border rounded-3xl p-5 space-y-4">
 
               {/* Bet Type */}
               <div className="space-y-1.5">
-                <label className="text-[10px] uppercase font-black text-zinc-600 flex items-center gap-1">
+                <label className="text-[10px] uppercase font-black text-muted-foreground flex items-center gap-1">
                   <Layers className="h-3 w-3" /> Bet Category
                 </label>
                 <select value={selectedType} onChange={e => setSelectedType(e.target.value)}
-                  className="w-full bg-black/40 border border-white/[0.08] text-white rounded-xl px-3 py-2.5 text-sm
+                  className="w-full bg-black/40 border border-border text-foreground rounded-xl px-3 py-2.5 text-sm
                     outline-none focus:ring-1 focus:ring-[#FFD700]/30">
                   {BET_TYPES.map((t: any) => <option key={t} value={t}>{t}</option>)}
                 </select>
@@ -460,20 +460,20 @@ export default function ParlayStudioPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] uppercase font-black text-zinc-600 flex items-center gap-1">
+                  <label className="text-[10px] uppercase font-black text-muted-foreground flex items-center gap-1">
                     <DollarSign className="h-3 w-3" /> Stake ($)
                   </label>
                   <input type="number" step="0.01" value={stake} onChange={e => setStake(e.target.value)}
                     placeholder="0.00"
-                    className="w-full bg-black/40 border border-white/[0.08] text-white rounded-xl px-3 py-2.5 text-sm
+                    className="w-full bg-black/40 border border-border text-foreground rounded-xl px-3 py-2.5 text-sm
                       focus:ring-1 focus:ring-[#FFD700]/30 outline-none" />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] uppercase font-black text-zinc-600 flex items-center gap-1">
+                  <label className="text-[10px] uppercase font-black text-muted-foreground flex items-center gap-1">
                     <Zap className="h-3 w-3 text-[#FFD700]" /> Boost %
                   </label>
                   <select value={boost} onChange={e => setBoost(e.target.value)}
-                    className="w-full bg-black/40 border border-white/[0.08] text-white rounded-xl px-3 py-2.5 text-sm
+                    className="w-full bg-black/40 border border-border text-foreground rounded-xl px-3 py-2.5 text-sm
                       outline-none focus:ring-1 focus:ring-[#FFD700]/30">
                     <option value="">None</option>
                     {[5,10,15,20,25,30,33,35,40,50,100].map((p: any) => (
@@ -485,7 +485,7 @@ export default function ParlayStudioPage() {
 
               {/* Overall Odds */}
               <div className="space-y-1.5">
-                <label className="text-[10px] uppercase font-black text-zinc-600 flex justify-between items-center">
+                <label className="text-[10px] uppercase font-black text-muted-foreground flex justify-between items-center">
                   <span className="flex items-center gap-1"><TrendingUp className="h-3 w-3" /> Overall Odds</span>
                   <span className="text-[#FFD700] font-mono">{fmtAmerican(parlayOdds)} (Auto)</span>
                 </label>
@@ -494,7 +494,7 @@ export default function ParlayStudioPage() {
                   value={manualOdds}
                   onChange={e => setManualOdds(e.target.value)}
                   placeholder={String(parlayOdds)}
-                  className="w-full bg-black/40 border border-white/[0.08] text-white rounded-xl px-3 py-2.5 text-sm font-mono text-center
+                  className="w-full bg-black/40 border border-border text-foreground rounded-xl px-3 py-2.5 text-sm font-mono text-center
                     focus:ring-1 focus:ring-[#FFD700]/30 outline-none"
                 />
               </div>
@@ -522,19 +522,19 @@ export default function ParlayStudioPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] uppercase font-black text-zinc-600">Game Date</label>
+                  <label className="text-[10px] uppercase font-black text-muted-foreground">Game Date</label>
                   <input type="date" value={gameDate} onChange={e => handleDateChange(e.target.value)}
-                    className="w-full bg-black/40 border border-white/[0.08] text-zinc-200 rounded-xl px-3 py-2.5 text-sm
+                    className="w-full bg-black/40 border border-border text-zinc-200 rounded-xl px-3 py-2.5 text-sm
                       focus:ring-1 focus:ring-[#FFD700]/30 outline-none [color-scheme:dark]" />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] uppercase font-black text-zinc-600 flex justify-between">
+                  <label className="text-[10px] uppercase font-black text-muted-foreground flex justify-between">
                     NFL Week
                     {week && <span className="text-[#FFD700] font-mono">WK {week}</span>}
                   </label>
                   <input type="number" min={1} max={22} value={week}
                     onChange={e => setWeek(e.target.value)} placeholder="1–22"
-                    className="w-full bg-black/40 border border-white/[0.08] text-white rounded-xl px-3 py-2.5 text-sm
+                    className="w-full bg-black/40 border border-border text-foreground rounded-xl px-3 py-2.5 text-sm
                       font-mono focus:ring-1 focus:ring-[#FFD700]/30 outline-none" />
                 </div>
               </div>
@@ -542,7 +542,7 @@ export default function ParlayStudioPage() {
               {/* Payout preview */}
               {stakeNum > 0 && (
                 <div className="flex items-center justify-between px-4 py-3 bg-[#FFD700]/5 border border-[#FFD700]/10 rounded-2xl">
-                  <span className="text-xs text-zinc-500 font-mono">Potential {isBonusBet ? 'Profit' : 'Payout'}</span>
+                  <span className="text-xs text-muted-foreground font-mono">Potential {isBonusBet ? 'Profit' : 'Payout'}</span>
                   <span className="text-lg font-black font-mono text-[#FFD700]">${potentialPayout.toFixed(2)}</span>
                 </div>
               )}

@@ -50,7 +50,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-2 mb-4">
       <div className="h-px flex-1 bg-white/[0.06]" />
-      <span className="text-[9px] font-black uppercase tracking-[0.25em] text-zinc-600 px-2">{children}</span>
+      <span className="text-[9px] font-black uppercase tracking-[0.25em] text-muted-foreground px-2">{children}</span>
       <div className="h-px flex-1 bg-white/[0.06]" />
     </div>
   );
@@ -60,7 +60,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null;
   return (
     <div className="bg-[#0a0c0f] border border-white/10 rounded-xl px-3 py-2 shadow-2xl">
-      <p className="text-[9px] font-black uppercase text-zinc-500 mb-1">{label}</p>
+      <p className="text-[9px] font-black uppercase text-muted-foreground mb-1">{label}</p>
       {payload.map((p: any, i: number) => (
         <p key={i} className="text-xs font-mono font-bold" style={{ color: p.color ?? GOLD }}>
           {typeof p.value === 'number' ? `${p.value.toFixed(1)}%` : p.value}
@@ -110,16 +110,16 @@ export default function MarketInsightsPage() {
   };
 
   if (loading) return (
-    <div className="min-h-screen bg-[#060606] flex items-center justify-center">
+    <div className="min-h-screen bg-background flex items-center justify-center">
       <div className="flex flex-col items-center gap-3">
         <div className="h-8 w-8 rounded-full border-2 border-[#FFD700]/30 border-t-[#FFD700] animate-spin" />
-        <p className="text-[9px] font-black uppercase tracking-widest text-zinc-600">Analyzing patterns…</p>
+        <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Analyzing patterns…</p>
       </div>
     </div>
   );
 
   if (!data) return (
-    <div className="min-h-screen bg-[#060606] flex items-center justify-center text-zinc-600 text-sm">
+    <div className="min-h-screen bg-background flex items-center justify-center text-muted-foreground text-sm">
       Failed to load insights
     </div>
   );
@@ -127,23 +127,23 @@ export default function MarketInsightsPage() {
   const { meta, propTypeSummary, confAccuracy, rankImpact, scoreDiffImpact, weeklyTrend, edgeAccuracy } = data;
 
   return (
-    <div className="min-h-screen bg-[#060606] text-white p-4 md:p-8">
+    <div className="min-h-screen bg-background text-foreground p-4 md:p-8">
       <div className="max-w-[1400px] mx-auto space-y-8">
 
         {/* ── Header ── */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
             <h1 className="text-2xl font-black italic uppercase tracking-tight">Market Insights</h1>
-            <p className="text-zinc-600 text-[10px] font-bold uppercase tracking-widest mt-1">
+            <p className="text-muted-foreground text-[10px] font-bold uppercase tracking-widest mt-1">
               {meta.scoredProps.toLocaleString()} scored props · {meta.overallHitRate.toFixed(1)}% overall hit rate
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex rounded-xl overflow-hidden border border-white/[0.08]">
+            <div className="flex rounded-xl overflow-hidden border border-border">
               {(['all', '2024', '2025'] as const).map(s => (
                 <button key={s} onClick={() => setSeason(s)}
                   className={`px-3 py-1.5 text-[9px] font-black uppercase transition-colors ${
-                    season === s ? 'bg-[#FFD700]/20 text-[#FFD700]' : 'bg-black/40 text-zinc-600 hover:text-zinc-400'
+                    season === s ? 'bg-[#FFD700]/20 text-[#FFD700]' : 'bg-black/40 text-muted-foreground hover:text-zinc-400'
                   }`}>
                   {s === 'all' ? 'All' : s === '2024' ? '2024–25' : '2025–26'}
                 </button>
@@ -163,13 +163,13 @@ export default function MarketInsightsPage() {
                 : '—',
               sub: 'at 75%+ confidence', icon: Zap, color: '#10b981' },
           ].map(({ label, value, sub, icon: Icon, color }) => (
-            <div key={label} className="bg-[#0f1115] border border-white/[0.06] rounded-2xl p-4">
+            <div key={label} className="bg-card border border-border rounded-2xl p-4">
               <div className="flex items-center gap-2 mb-2">
                 <Icon className="h-3 w-3" style={{ color }} />
-                <span className="text-[8px] font-black uppercase tracking-widest text-zinc-600">{label}</span>
+                <span className="text-[8px] font-black uppercase tracking-widest text-muted-foreground">{label}</span>
               </div>
               <p className="text-xl font-black italic uppercase truncate" style={{ color }}>{value}</p>
-              <p className="text-[9px] text-zinc-600 font-mono mt-0.5">{sub}</p>
+              <p className="text-[9px] text-muted-foreground font-mono mt-0.5">{sub}</p>
             </div>
           ))}
         </div>
@@ -178,7 +178,7 @@ export default function MarketInsightsPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
           {/* Prop Type Breakdown */}
-          <div className="bg-[#0f1115] border border-white/[0.06] rounded-2xl p-5">
+          <div className="bg-card border border-border rounded-2xl p-5">
             <SectionLabel>Hit Rate by Prop Type</SectionLabel>
             <div className="space-y-3">
               {propTypeSummary.slice(0, 8).map(p => (
@@ -186,7 +186,7 @@ export default function MarketInsightsPage() {
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-bold text-zinc-300 uppercase">{p.prop}</span>
                     <div className="flex items-center gap-3">
-                      <span className="text-[9px] text-zinc-600 font-mono">{p.total} games</span>
+                      <span className="text-[9px] text-muted-foreground font-mono">{p.total} games</span>
                       <span className="text-xs font-black font-mono" style={{ color: hitColor(p.hitRate) }}>
                         {p.hitRate.toFixed(0)}%
                       </span>
@@ -194,10 +194,10 @@ export default function MarketInsightsPage() {
                   </div>
                   <StatBar value={p.hitRate} color={hitColor(p.hitRate)} />
                   <div className="flex gap-4">
-                    <span className="text-[8px] text-zinc-700 font-mono">
+                    <span className="text-[8px] text-muted-foreground/70 font-mono">
                       Over {p.overHitRate.toFixed(0)}% ({p.overTotal})
                     </span>
-                    <span className="text-[8px] text-zinc-700 font-mono">
+                    <span className="text-[8px] text-muted-foreground/70 font-mono">
                       Under {p.underHitRate.toFixed(0)}% ({p.underTotal})
                     </span>
                   </div>
@@ -207,7 +207,7 @@ export default function MarketInsightsPage() {
           </div>
 
           {/* Weekly trend */}
-          <div className="bg-[#0f1115] border border-white/[0.06] rounded-2xl p-5">
+          <div className="bg-card border border-border rounded-2xl p-5">
             <SectionLabel>Hit Rate by Week</SectionLabel>
             <ResponsiveContainer width="100%" height={240}>
               <LineChart data={weeklyTrend} margin={{ left: -20, right: 8 }}>
@@ -230,9 +230,9 @@ export default function MarketInsightsPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
           {/* Confidence score accuracy */}
-          <div className="bg-[#0f1115] border border-white/[0.06] rounded-2xl p-5">
+          <div className="bg-card border border-border rounded-2xl p-5">
             <SectionLabel>Confidence Score vs Actual</SectionLabel>
-            <p className="text-[9px] text-zinc-600 mb-4 font-mono">Does higher confidence = more hits?</p>
+            <p className="text-[9px] text-muted-foreground mb-4 font-mono">Does higher confidence = more hits?</p>
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={confAccuracy} margin={{ left: -20, right: 4 }}>
                 <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.03)" />
@@ -248,16 +248,16 @@ export default function MarketInsightsPage() {
           </div>
 
           {/* Opponent rank impact */}
-          <div className="bg-[#0f1115] border border-white/[0.06] rounded-2xl p-5">
+          <div className="bg-card border border-border rounded-2xl p-5">
             <SectionLabel>Opponent Defense Rank</SectionLabel>
-            <p className="text-[9px] text-zinc-600 mb-4 font-mono">Does weak defense = more overs?</p>
+            <p className="text-[9px] text-muted-foreground mb-4 font-mono">Does weak defense = more overs?</p>
             <div className="space-y-4 mt-6">
               {rankImpact.map(r => (
                 <div key={r.bucket} className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <span className="text-[9px] font-bold text-zinc-400 uppercase">{r.bucket}</span>
                     <div className="flex items-center gap-2">
-                      <span className="text-[8px] text-zinc-600 font-mono">{r.total}</span>
+                      <span className="text-[8px] text-muted-foreground font-mono">{r.total}</span>
                       <span className="text-xs font-black font-mono" style={{ color: hitColor(r.hitRate) }}>
                         {r.hitRate.toFixed(0)}%
                       </span>
@@ -270,16 +270,16 @@ export default function MarketInsightsPage() {
           </div>
 
           {/* Edge accuracy */}
-          <div className="bg-[#0f1115] border border-white/[0.06] rounded-2xl p-5">
+          <div className="bg-card border border-border rounded-2xl p-5">
             <SectionLabel>Edge % vs Hit Rate</SectionLabel>
-            <p className="text-[9px] text-zinc-600 mb-4 font-mono">Does positive edge predict results?</p>
+            <p className="text-[9px] text-muted-foreground mb-4 font-mono">Does positive edge predict results?</p>
             <div className="space-y-4 mt-6">
               {edgeAccuracy.map(e => (
                 <div key={e.bucket} className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <span className="text-[9px] font-bold text-zinc-400 uppercase">{e.bucket}</span>
                     <div className="flex items-center gap-2">
-                      <span className="text-[8px] text-zinc-600 font-mono">{e.total}</span>
+                      <span className="text-[8px] text-muted-foreground font-mono">{e.total}</span>
                       <span className="text-xs font-black font-mono" style={{ color: hitColor(e.hitRate) }}>
                         {e.hitRate.toFixed(0)}%
                       </span>
@@ -293,9 +293,9 @@ export default function MarketInsightsPage() {
         </div>
 
         {/* ── Score diff impact ── */}
-        <div className="bg-[#0f1115] border border-white/[0.06] rounded-2xl p-5">
+        <div className="bg-card border border-border rounded-2xl p-5">
           <SectionLabel>Score Diff (Player Avg − Line) vs Hit Rate</SectionLabel>
-          <p className="text-[9px] text-zinc-600 mb-4 font-mono">
+          <p className="text-[9px] text-muted-foreground mb-4 font-mono">
             Positive = player averages above the line. Does a higher score diff predict a hit?
           </p>
           <ResponsiveContainer width="100%" height={180}>
@@ -310,11 +310,11 @@ export default function MarketInsightsPage() {
                 const d = scoreDiffImpact.find(s => s.bucket === label);
                 return (
                   <div className="bg-[#0a0c0f] border border-white/10 rounded-xl px-3 py-2 shadow-2xl">
-                    <p className="text-[9px] font-black uppercase text-zinc-500 mb-1">{label}</p>
+                    <p className="text-[9px] font-black uppercase text-muted-foreground mb-1">{label}</p>
                     <p className="text-xs font-mono font-bold" style={{ color: hitColor(payload[0].value as number) }}>
                       {(payload[0].value as number).toFixed(1)}% hit rate
                     </p>
-                    <p className="text-[9px] text-zinc-600 font-mono">{d?.total} games</p>
+                    <p className="text-[9px] text-muted-foreground font-mono">{d?.total} games</p>
                   </div>
                 );
               }} />
@@ -332,27 +332,27 @@ export default function MarketInsightsPage() {
           {/* Filters */}
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-zinc-600" />
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search player…"
-                className="pl-7 pr-3 py-1.5 w-40 bg-black/40 border border-white/[0.08] text-white text-xs font-mono rounded-xl outline-none focus:ring-1 focus:ring-[#FFD700]/30 placeholder:text-zinc-700" />
+                className="pl-7 pr-3 py-1.5 w-40 bg-black/40 border border-border text-foreground text-xs font-mono rounded-xl outline-none focus:ring-1 focus:ring-[#FFD700]/30 placeholder:text-muted-foreground/70" />
             </div>
             <select value={propFilter} onChange={e => setPropFilter(e.target.value)}
-              className="py-1.5 px-2.5 bg-black/40 border border-white/[0.08] text-zinc-300 text-xs font-mono rounded-xl outline-none focus:ring-1 focus:ring-[#FFD700]/30">
+              className="py-1.5 px-2.5 bg-black/40 border border-border text-zinc-300 text-xs font-mono rounded-xl outline-none focus:ring-1 focus:ring-[#FFD700]/30">
               <option value="">All Prop Types</option>
               {propOptions.map(p => <option key={p} value={p}>{p}</option>)}
             </select>
-            <span className="text-zinc-700 text-[10px] font-mono ml-auto">{filteredPlayers.length} patterns</span>
+            <span className="text-muted-foreground/70 text-[10px] font-mono ml-auto">{filteredPlayers.length} patterns</span>
           </div>
 
           {/* Table */}
-          <div className="rounded-2xl border border-white/[0.06] overflow-hidden">
+          <div className="rounded-2xl border border-border overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full border-collapse">
-                <thead className="bg-black/40 border-b border-white/[0.06]">
+                <thead className="bg-black/40 border-b border-border">
                   <tr>
-                    <th className="px-4 py-2.5 text-left text-[9px] font-black uppercase tracking-widest text-zinc-600">Player</th>
-                    <th className="px-4 py-2.5 text-left text-[9px] font-black uppercase tracking-widest text-zinc-600">Prop</th>
-                    <th className="px-4 py-2.5 text-center text-[9px] font-black uppercase tracking-widest text-zinc-600 cursor-pointer hover:text-zinc-400"
+                    <th className="px-4 py-2.5 text-left text-[9px] font-black uppercase tracking-widest text-muted-foreground">Player</th>
+                    <th className="px-4 py-2.5 text-left text-[9px] font-black uppercase tracking-widest text-muted-foreground">Prop</th>
+                    <th className="px-4 py-2.5 text-center text-[9px] font-black uppercase tracking-widest text-muted-foreground cursor-pointer hover:text-zinc-400"
                       onClick={() => toggleSort('hitRate')}>
                       <span className="flex items-center justify-center gap-1">
                         Hit %
@@ -361,7 +361,7 @@ export default function MarketInsightsPage() {
                           : null}
                       </span>
                     </th>
-                    <th className="px-4 py-2.5 text-center text-[9px] font-black uppercase tracking-widest text-zinc-600 cursor-pointer hover:text-zinc-400"
+                    <th className="px-4 py-2.5 text-center text-[9px] font-black uppercase tracking-widest text-muted-foreground cursor-pointer hover:text-zinc-400"
                       onClick={() => toggleSort('total')}>
                       <span className="flex items-center justify-center gap-1">
                         Sample
@@ -370,20 +370,20 @@ export default function MarketInsightsPage() {
                           : null}
                       </span>
                     </th>
-                    <th className="px-4 py-2.5 text-center text-[9px] font-black uppercase tracking-widest text-zinc-600">Avg Line</th>
-                    <th className="px-4 py-2.5 text-center text-[9px] font-black uppercase tracking-widest text-zinc-600">Direction</th>
-                    <th className="px-4 py-2.5 text-center text-[9px] font-black uppercase tracking-widest text-zinc-600">Avg Conf</th>
+                    <th className="px-4 py-2.5 text-center text-[9px] font-black uppercase tracking-widest text-muted-foreground">Avg Line</th>
+                    <th className="px-4 py-2.5 text-center text-[9px] font-black uppercase tracking-widest text-muted-foreground">Direction</th>
+                    <th className="px-4 py-2.5 text-center text-[9px] font-black uppercase tracking-widest text-muted-foreground">Avg Conf</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredPlayers.slice(0, 50).map((p, i) => (
                     <tr key={`${p.player}|${p.prop}`}
-                      className={`border-t border-white/[0.04] ${i % 2 === 0 ? 'bg-black/10' : ''} hover:bg-white/[0.02] transition-colors`}>
+                      className={`border-t border-border ${i % 2 === 0 ? 'bg-black/10' : ''} hover:bg-white/[0.02] transition-colors`}>
                       <td className="px-4 py-2.5">
-                        <p className="text-xs font-black italic uppercase text-white">{p.player}</p>
+                        <p className="text-xs font-black italic uppercase text-foreground">{p.player}</p>
                       </td>
                       <td className="px-4 py-2.5">
-                        <span className="text-[9px] text-zinc-500 uppercase font-bold">{p.prop}</span>
+                        <span className="text-[9px] text-muted-foreground uppercase font-bold">{p.prop}</span>
                       </td>
                       <td className="px-4 py-2.5 text-center">
                         <div className="flex flex-col items-center gap-1">
@@ -412,20 +412,20 @@ export default function MarketInsightsPage() {
                           }`}>
                             {p.dominantOU}
                           </span>
-                        ) : <span className="text-zinc-700 text-xs">—</span>}
+                        ) : <span className="text-muted-foreground/70 text-xs">—</span>}
                       </td>
                       <td className="px-4 py-2.5 text-center">
                         {p.avgConf != null ? (
                           <span className="text-[10px] font-mono" style={{ color: hitColor(p.avgConf) }}>
                             {p.avgConf.toFixed(0)}%
                           </span>
-                        ) : <span className="text-zinc-700 text-xs">—</span>}
+                        ) : <span className="text-muted-foreground/70 text-xs">—</span>}
                       </td>
                     </tr>
                   ))}
                   {filteredPlayers.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="px-6 py-12 text-center text-zinc-700 text-sm font-black uppercase italic">
+                      <td colSpan={7} className="px-6 py-12 text-center text-muted-foreground/70 text-sm font-black uppercase italic">
                         No patterns match
                       </td>
                     </tr>
@@ -434,7 +434,7 @@ export default function MarketInsightsPage() {
               </table>
             </div>
             {filteredPlayers.length > 50 && (
-              <div className="px-4 py-3 border-t border-white/[0.04] bg-black/20 text-center text-zinc-600 text-[10px] font-mono">
+              <div className="px-4 py-3 border-t border-border bg-black/20 text-center text-muted-foreground text-[10px] font-mono">
                 Showing 50 of {filteredPlayers.length} — use filters to narrow
               </div>
             )}

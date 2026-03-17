@@ -205,7 +205,7 @@ export default function BetBuilderTable({
             {/* Player header row */}
             <div
               onClick={() => togglePlayer(playerName)}
-              className="px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-white/[0.02] transition-colors"
+              className="px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-white/2 transition-colors"
             >
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-xl bg-black border border-white/10 flex items-center justify-center font-black text-[9px] text-[#FFD700] italic shrink-0">
@@ -257,8 +257,8 @@ export default function BetBuilderTable({
                       return (
                         <tr
                           key={prop.id || i}
-                          className={`border-t border-white/[0.03] transition-colors ${
-                            active ? 'bg-[#FFD700]/5' : 'hover:bg-white/[0.02]'
+                          className={`border-t border-white/3 transition-colors ${
+                            active ? 'bg-[#FFD700]/5' : 'hover:bg-white/2'
                           }`}
                         >
                           {activeCols.map(col => {

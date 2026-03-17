@@ -60,14 +60,14 @@ export default function AllPropsPage() {
   }, [addLeg, slipIds]);
 
   return (
-    <main className="min-h-screen bg-[#060606] text-white p-4 md:p-8">
+    <main className="min-h-screen bg-background text-foreground p-4 md:p-8">
       <div className="max-w-[1600px] mx-auto space-y-5">
 
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-black tracking-tight text-white italic uppercase">Historical Props</h1>
-            <p className="text-zinc-500 text-sm mt-0.5">
+            <h1 className="text-2xl font-black tracking-tight text-foreground italic uppercase">Historical Props</h1>
+            <p className="text-muted-foreground text-sm mt-0.5">
               {loading && props.length === 0
                 ? 'Loading…'
                 : `${props.length.toLocaleString()} props shown`}
@@ -79,15 +79,15 @@ export default function AllPropsPage() {
             <input
               type="number" min={1} max={22} placeholder="Week #" value={weekFilter}
               onChange={e => setWeekFilter(e.target.value)}
-              className="w-20 py-2 px-3 bg-black/40 border border-white/[0.08] text-white text-xs font-mono rounded-xl outline-none focus:ring-1 focus:ring-[#FFD700]/30"
+              className="w-20 py-2 px-3 bg-black/40 border border-border text-foreground text-xs font-mono rounded-xl outline-none focus:ring-1 focus:ring-[#FFD700]/30"
             />
 
             {/* Season toggle */}
-            <div className="flex rounded-xl overflow-hidden border border-white/[0.08]">
+            <div className="flex rounded-xl overflow-hidden border border-border">
               {SEASON_OPTIONS.map(s => (
                 <button key={s.value} onClick={() => setSeasonFilter(s.value)}
                   className={`px-2.5 py-2 text-[9px] font-black uppercase whitespace-nowrap transition-colors ${
-                    seasonFilter === s.value ? 'bg-[#FFD700]/20 text-[#FFD700]' : 'bg-black/40 text-zinc-600 hover:text-zinc-400'
+                    seasonFilter === s.value ? 'bg-[#FFD700]/20 text-[#FFD700]' : 'bg-black/40 text-muted-foreground hover:text-zinc-400'
                   }`}>
                   {s.label}
                 </button>
@@ -102,13 +102,13 @@ export default function AllPropsPage() {
 
             {/* Manual */}
             <button onClick={() => setShowManual(true)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-white/[0.08] text-zinc-500 hover:text-white text-xs font-black uppercase transition-colors">
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border text-muted-foreground hover:text-foreground text-xs font-black uppercase transition-colors">
               <Plus className="h-3.5 w-3.5" /> Manual
             </button>
 
             {/* Refresh */}
             <button onClick={() => refresh()} disabled={loading}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-white/[0.08] text-zinc-500 hover:text-white text-xs font-black uppercase transition-colors disabled:opacity-40">
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border text-muted-foreground hover:text-foreground text-xs font-black uppercase transition-colors disabled:opacity-40">
               <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
               Refresh
             </button>
@@ -137,7 +137,7 @@ export default function AllPropsPage() {
             <button
               onClick={loadMore}
               disabled={loading}
-              className="px-6 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl border border-white/10 transition-all disabled:opacity-50"
+              className="px-6 py-2 bg-zinc-800 hover:bg-zinc-700 text-foreground rounded-xl border border-white/10 transition-all disabled:opacity-50"
             >
               {loading ? 'Loading More...' : 'Load More'}
             </button>

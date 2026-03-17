@@ -1,37 +1,33 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import {
-  X, Save, Trash2, TrendingUp, DollarSign, Calendar,
-  Loader2, ChevronDown, ChevronUp, CheckCircle2, XCircle, Clock, Zap,
-} from 'lucide-react';
+import { X, Save, Trash2, TrendingUp, DollarSign, Calendar, Loader2, ChevronDown, ChevronUp, CheckCircle2, XCircle, Clock, Zap } from 'lucide-react';
 import type { Bet } from '@/lib/types';
 import { toDecimal, toAmerican } from '@/lib/utils/odds';
 import { getWeekFromDate } from '@/lib/utils/nfl-week';
 
 interface EditBetModalProps {
-  bet:     Bet;
-  isOpen:  boolean;
-  userId?: string;
-  onClose: () => void;
-  onSave?: (updated: Bet) => Promise<void>;
-  onDelete?: (id: string) => void;
+  bet: Bet; isOpen: boolean; userId?: string;
+  onClose: () => void; onSave?: (updated: Bet) => Promise<void>; onDelete?: (id: string) => void;
 }
 
 const LEG_STATUSES = [
-  { value: 'won',     label: 'Win',     icon: CheckCircle2, cls: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' },
-  { value: 'lost',    label: 'Loss',    icon: XCircle,      cls: 'bg-red-500/20 text-red-400 border-red-500/40' },
-  { value: 'pending', label: 'Pending', icon: Clock,        cls: 'bg-[#FFD700]/10 text-[#FFD700] border-[#FFD700]/30' },
-  { value: 'void',    label: 'Void',    icon: XCircle,      cls: 'bg-white/[0.06] text-zinc-400 border-white/20' },
+  { value: 'won',     label: 'Win',     icon: CheckCircle2, cls: 'bg-profit/10 text-profit border-profit/30' },
+  { value: 'lost',    label: 'Loss',    icon: XCircle,      cls: 'bg-loss/10 text-loss border-loss/30' },
+  { value: 'pending', label: 'Pending', icon: Clock,        cls: 'bg-primary/10 text-primary border-primary/30' },
+  { value: 'void',    label: 'Void',    icon: XCircle,      cls: 'bg-secondary text-muted-foreground border-border' },
 ];
 
 function calcParlayOdds(legs: any[]): number {
-  if (!legs || legs.length === 0) return 0;
+  if (!legs?.length) return 0;
   const dec = legs.reduce((acc, leg) => {
     if (leg.status === 'void') return acc;
     return acc * toDecimal(Number(leg.odds) || -110);
   }, 1);
   return dec > 1 ? Math.round(toAmerican(dec)) : 0;
 }
+
+const INPUT = 'w-full bg-secondary border border-border rounded-xl px-4 py-3 text-foreground font-mono text-sm outline-none focus:ring-1 focus:ring-primary/30';
+const SELECT = 'w-full bg-secondary border border-border rounded-xl px-4 py-3 text-foreground text-sm outline-none focus:ring-1 focus:ring-primary/30';
 
 export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }: EditBetModalProps) {
   const [formData,      setFormData]      = useState<any>(bet);
@@ -42,7 +38,6 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
   const [legsExpanded,  setLegsExpanded]  = useState(true);
   const [oddsManual,    setOddsManual]    = useState(false);
 
-  // Reset when bet changes (key={bet.id} on parent ensures full remount)
   useEffect(() => {
     setFormData(bet);
     setLegs(Array.isArray((bet as any).legs) ? [...(bet as any).legs] : []);
@@ -51,7 +46,6 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
     setLegsExpanded(true);
   }, [bet]);
 
-  // Auto-calculate parlay odds unless user overrode manually
   useEffect(() => {
     if (legs.length > 1 && !oddsManual) {
       const calc = calcParlayOdds(legs);
@@ -68,17 +62,12 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
     if (year < 2000 || year > 2100) return;
     const newDate = new Date(`${val}T12:00:00.000Z`);
     if (isNaN(newDate.getTime())) return;
-    set({
-      gameDate: newDate.toISOString(),
-      week:     getWeekFromDate(val) ?? formData.week,
-      season:   newDate.getUTCFullYear(),
-    });
+    set({ gameDate: newDate.toISOString(), week: getWeekFromDate(val) ?? formData.week, season: newDate.getUTCFullYear() });
   };
 
   const handleLegChange = (index: number, fields: any) =>
     setLegs(prev => prev.map((leg, i) => i === index ? { ...leg, ...fields } : leg));
 
-  // Track deleted leg IDs so the route can remove them from Firestore
   const handleDeleteLeg = (index: number) => {
     const leg = legs[index];
     if (leg?.id) setDeletedLegIds(prev => [...prev, leg.id]);
@@ -96,35 +85,17 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
     return formData.isBonusBet ? raw - stake : raw;
   };
 
-  // Modal is a pure form — the parent's onSave (→ updateBet) handles the fetch.
-  // This prevents the double-save bug where both modal and updateBet POSTed.
   const handleSave = async () => {
     if (!onSave) return;
     setIsSaving(true);
-    try {
-      await onSave({
-        ...formData,
-        userId,
-        legs,
-        deletedLegIds,
-      } as Bet);
-      onClose();
-    } catch {
-      // onSave shows its own toast on error
-    } finally {
-      setIsSaving(false);
-    }
+    try { await onSave({ ...formData, userId, legs, deletedLegIds } as Bet); onClose(); }
+    catch {} finally { setIsSaving(false); }
   };
 
   const handleDelete = async () => {
     if (!bet.id || !onDelete) return;
     setIsDeleting(true);
-    try {
-      await onDelete(bet.id);
-      onClose();
-    } finally {
-      setIsDeleting(false);
-    }
+    try { await onDelete(bet.id); onClose(); } finally { setIsDeleting(false); }
   };
 
   if (!isOpen) return null;
@@ -133,59 +104,55 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
   const isParlay = legs.length > 1;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
-      <div className="bg-[#0f1115] border border-white/10 w-full max-w-lg rounded-[2.5rem] overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 'z-100' flex items-center justify-center bg-foreground/40 backdrop-blur-sm p-4">
+      <div className="bg-card border border-border w-full max-w-lg rounded-2xl overflow-hidden shadow-xl flex flex-col max-h-[90vh]">
 
         {/* Header */}
-        <div className="flex items-center justify-between px-8 py-5 border-b border-white/5 shrink-0">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-border shrink-0">
           <div>
-            <h2 className="text-white font-black text-xl italic uppercase tracking-tighter">Edit Bet</h2>
-            <p className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest">ID: {bet.id?.slice(-8)}</p>
+            <h2 className="text-foreground font-semibold text-lg">Edit Bet</h2>
+            <p className="text-muted-foreground text-[10px] font-mono mt-0.5">ID: {bet.id?.slice(-8)}</p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-full transition-colors text-zinc-500 hover:text-white">
-            <X className="h-5 w-5" />
+          <button onClick={onClose}
+            className="p-2 hover:bg-secondary rounded-lg transition-colors text-muted-foreground hover:text-foreground">
+            <X className="h-4 w-4" />
           </button>
         </div>
 
-        {/* Scrollable body */}
-        <div className="overflow-y-auto flex-1 p-6 space-y-5">
+        {/* Body */}
+        <div className="overflow-y-auto flex-1 p-6 space-y-4">
 
-          {/* Odds + Stake */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-zinc-500 uppercase flex items-center gap-1">
-                <TrendingUp className="h-3 w-3" /> Overall Odds
-                {isParlay && !oddsManual && <span className="text-[8px] text-[#FFD700]/50 font-mono ml-1">(AUTO)</span>}
+              <label className="text-[10px] font-semibold text-muted-foreground uppercase flex items-center gap-1">
+                <TrendingUp className="h-3 w-3" /> Odds
+                {isParlay && !oddsManual && <span className="text-[8px] text-primary/60 ml-1">(auto)</span>}
               </label>
               <input type="number" value={formData.odds ?? ''}
                 onChange={e => { set({ odds: Number(e.target.value) }); setOddsManual(true); }}
-                onFocus={() => setOddsManual(true)}
-                className="w-full bg-black/40 border border-white/[0.08] rounded-2xl px-4 py-3 text-[#FFD700] font-mono text-sm outline-none focus:ring-1 focus:ring-[#FFD700]/40" />
+                className={INPUT} />
               {isParlay && oddsManual && (
                 <button onClick={() => setOddsManual(false)}
-                  className="text-[9px] text-zinc-600 hover:text-[#FFD700] transition-colors">
+                  className="text-[10px] text-muted-foreground hover:text-primary transition-colors">
                   ↺ Use calculated odds
                 </button>
               )}
             </div>
             <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-zinc-500 uppercase flex items-center gap-1">
+              <label className="text-[10px] font-semibold text-muted-foreground uppercase flex items-center gap-1">
                 <DollarSign className="h-3 w-3" /> Stake ($)
               </label>
               <input type="number" value={formData.stake ?? ''}
-                onChange={e => set({ stake: Number(e.target.value) })}
-                className="w-full bg-black/40 border border-white/[0.08] rounded-2xl px-4 py-3 text-white font-mono text-sm outline-none focus:ring-1 focus:ring-white/20" />
+                onChange={e => set({ stake: Number(e.target.value) })} className={INPUT} />
             </div>
           </div>
 
-          {/* Boost + Week */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-zinc-500 uppercase flex items-center gap-1">
-                <Zap className="h-3 w-3 text-[#FFD700]" /> Boost %
+              <label className="text-[10px] font-semibold text-muted-foreground uppercase flex items-center gap-1">
+                <Zap className="h-3 w-3 text-primary" /> Boost %
               </label>
-              <select value={formData.boost ?? ''} onChange={e => set({ boost: e.target.value })}
-                className="w-full bg-black/40 border border-white/[0.08] rounded-2xl px-4 py-3 text-white text-sm outline-none focus:ring-1 focus:ring-[#FFD700]/30">
+              <select value={formData.boost ?? ''} onChange={e => set({ boost: e.target.value })} className={SELECT}>
                 <option value="">None</option>
                 {[5,10,15,20,25,30,33,35,40,50,100].map(p => (
                   <option key={p} value={String(p)}>{p}%</option>
@@ -193,29 +160,27 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
               </select>
             </div>
             <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-zinc-500 uppercase">NFL Week</label>
+              <label className="text-[10px] font-semibold text-muted-foreground uppercase">NFL Week</label>
               <input type="number" min={1} max={22} value={formData.week ?? ''}
-                onChange={e => set({ week: e.target.value })} placeholder="1–22"
-                className="w-full bg-black/40 border border-white/[0.08] rounded-2xl px-4 py-3 text-white font-mono text-sm outline-none focus:ring-1 focus:ring-white/20" />
+                onChange={e => set({ week: e.target.value })} placeholder="1–22" className={INPUT} />
             </div>
           </div>
 
-          {/* Game Date + Status */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-zinc-500 uppercase flex items-center gap-1">
+              <label className="text-[10px] font-semibold text-muted-foreground uppercase flex items-center gap-1">
                 <Calendar className="h-3 w-3" /> Game Date
               </label>
               <input type="date"
                 value={typeof formData.gameDate === 'string' ? formData.gameDate.split('T')[0] : ''}
                 onChange={handleDateChange}
-                className="w-full bg-black/40 border border-white/[0.08] rounded-2xl px-4 py-3 text-white text-sm outline-none [color-scheme:dark]" />
+                className={`${INPUT} 'scheme-light`} />
             </div>
             <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-zinc-500 uppercase">Status</label>
+              <label className="text-[10px] font-semibold text-muted-foreground uppercase">Status</label>
               <select value={formData.status ?? 'pending'}
                 onChange={e => set({ status: e.target.value, payout: e.target.value === 'cashed' ? formData.payout : null })}
-                className="w-full bg-black/40 border border-white/[0.08] rounded-2xl px-4 py-3 text-white text-sm outline-none">
+                className={SELECT}>
                 <option value="pending">Pending</option>
                 <option value="won">Won</option>
                 <option value="lost">Lost</option>
@@ -225,39 +190,35 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
             </div>
           </div>
 
-          {/* Cashed Out Amount */}
           {formData.status === 'cashed' && (
             <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-zinc-500 uppercase flex items-center gap-1">
+              <label className="text-[10px] font-semibold text-muted-foreground uppercase flex items-center gap-1">
                 <DollarSign className="h-3 w-3" /> Cashed Out Amount
               </label>
               <input type="number" value={formData.payout ?? ''}
-                onChange={e => set({ payout: Number(e.target.value) })}
-                className="w-full bg-black/40 border border-white/[0.08] rounded-2xl px-4 py-3 text-white font-mono text-sm outline-none focus:ring-1 focus:ring-white/20" />
+                onChange={e => set({ payout: Number(e.target.value) })} className={INPUT} />
             </div>
           )}
 
-          {/* Bonus Bet + Ghost Parlay */}
           <div className="grid grid-cols-2 gap-3">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" checked={formData.isBonusBet ?? false}
-                onChange={e => set({ isBonusBet: e.target.checked })}
-                className="h-4 w-4 rounded border-zinc-700 bg-black/40" />
-              <span className="text-sm text-white">Bonus Bet</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" checked={formData.isGhostParlay ?? false}
-                onChange={e => set({ isGhostParlay: e.target.checked })}
-                className="h-4 w-4 rounded border-zinc-700 bg-black/40" />
-              <span className="text-sm text-white">Ghost Parlay</span>
-            </label>
+            {[
+              { key: 'isBonusBet',    label: 'Bonus Bet'    },
+              { key: 'isGhostParlay', label: 'Ghost Parlay' },
+            ].map(f => (
+              <label key={f.key} className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={formData[f.key] ?? false}
+                  onChange={e => set({ [f.key]: e.target.checked })}
+                  className="h-4 w-4 rounded border-border accent-primary" />
+                <span className="text-sm text-foreground">{f.label}</span>
+              </label>
+            ))}
           </div>
 
           {/* Legs */}
           {legs.length > 0 && (
             <div className="space-y-2">
               <button onClick={() => setLegsExpanded(p => !p)}
-                className="w-full flex items-center justify-between text-[10px] font-black text-zinc-500 uppercase tracking-widest hover:text-zinc-300 transition-colors">
+                className="w-full flex items-center justify-between text-[10px] font-semibold text-muted-foreground uppercase tracking-wide hover:text-foreground transition-colors">
                 <span>Legs ({legs.length})</span>
                 {legsExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
               </button>
@@ -265,55 +226,55 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
               {legsExpanded && (
                 <div className="space-y-2">
                   {legs.map((leg, i) => (
-                    <div key={leg.id || i} className="bg-black/30 border border-white/[0.06] rounded-2xl p-4 space-y-3">
+                    <div key={leg.id || i} className="bg-secondary border border-border rounded-xl p-4 space-y-3">
                       <div className="flex items-center gap-2">
-                        <span className="w-5 h-5 rounded-full bg-[#FFD700]/10 border border-[#FFD700]/20 text-[9px] font-black text-[#FFD700] flex items-center justify-center shrink-0">
+                        <span className="w-5 h-5 rounded-full bg-primary/10 border border-primary/20 text-[9px] font-bold text-primary flex items-center justify-center shrink-0">
                           {i + 1}
                         </span>
                         <div className="min-w-0 flex-1">
-                          <p className="text-white font-black text-xs uppercase italic truncate">{leg.player || '—'}</p>
-                          <p className="text-zinc-600 text-[10px] font-mono">{leg.prop}</p>
+                          <p className="text-foreground font-semibold text-xs truncate">{leg.player || '—'}</p>
+                          <p className="text-muted-foreground text-[10px] font-mono">{leg.prop}</p>
                         </div>
                         <button onClick={() => handleDeleteLeg(i)}
-                          className="p-1.5 text-zinc-600 hover:text-red-500 hover:bg-red-500/10 rounded-full transition-colors">
+                          className="p-1.5 text-muted-foreground hover:text-loss hover:bg-loss/10 rounded-lg transition-colors">
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </div>
 
                       <div className="flex items-center gap-2 flex-wrap">
                         <div className="flex items-center gap-1.5">
-                          <span className="text-[9px] text-zinc-600 uppercase font-black">Line</span>
+                          <span className="text-[10px] text-muted-foreground font-semibold">Line</span>
                           <input type="number" step="0.5" value={leg.line ?? ''}
                             onChange={e => handleLegChange(i, { line: parseFloat(e.target.value) || 0 })}
-                            className="w-16 bg-black/40 border border-white/[0.08] text-white font-mono text-xs rounded-xl px-2 py-1.5 text-center outline-none focus:ring-1 focus:ring-[#FFD700]/30" />
+                            className="w-16 bg-card border border-border text-foreground font-mono text-xs rounded-lg px-2 py-1.5 text-center outline-none focus:ring-1 focus:ring-primary/30" />
                         </div>
-                        <div className="flex rounded-xl overflow-hidden border border-white/[0.08]">
+                        <div className="flex rounded-lg overflow-hidden border border-border">
                           {(['Over','Under'] as const).map(s => (
                             <button key={s} onClick={() => handleLegChange(i, { selection: s })}
-                              className={`px-3 py-1.5 text-[10px] font-black uppercase transition-colors ${
+                              className={`px-3 py-1.5 text-[10px] font-semibold uppercase transition-colors ${
                                 leg.selection === s
-                                  ? s === 'Over' ? 'bg-blue-600 text-white' : 'bg-orange-600 text-white'
-                                  : 'bg-black/40 text-zinc-600 hover:bg-white/[0.04]'
+                                  ? s === 'Over' ? 'bg-edge text-white' : 'bg-loss text-white'
+                                  : 'bg-card text-muted-foreground hover:bg-secondary'
                               }`}>{s}</button>
                           ))}
                         </div>
                         <div className="flex items-center gap-1.5 ml-auto">
-                          <span className="text-[9px] text-zinc-600 uppercase font-black">Odds</span>
+                          <span className="text-[10px] text-muted-foreground font-semibold">Odds</span>
                           <input type="number" value={leg.odds ?? ''}
                             onChange={e => handleLegChange(i, { odds: parseInt(e.target.value) || -110 })}
-                            className="w-20 bg-black/40 border border-white/[0.08] text-white font-mono text-xs rounded-xl px-2 py-1.5 text-center outline-none focus:ring-1 focus:ring-[#FFD700]/30" />
+                            className="w-20 bg-card border border-border text-foreground font-mono text-xs rounded-lg px-2 py-1.5 text-center outline-none focus:ring-1 focus:ring-primary/30" />
                         </div>
                       </div>
 
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-[9px] text-zinc-600 uppercase font-black w-10">Result</span>
+                        <span className="text-[10px] text-muted-foreground font-semibold w-10">Result</span>
                         {LEG_STATUSES.map(r => {
                           const Icon = r.icon;
                           const active = (leg.status || 'pending') === r.value;
                           return (
                             <button key={r.value} onClick={() => handleLegChange(i, { status: r.value })}
-                              className={`flex items-center gap-1 px-2 py-1 rounded-lg border text-[9px] font-black uppercase transition-all ${
-                                active ? r.cls : 'border-white/[0.08] text-zinc-600 hover:border-white/20 hover:text-zinc-400'
+                              className={`flex items-center gap-1 px-2 py-1 rounded-lg border text-[9px] font-semibold uppercase transition-all ${
+                                active ? r.cls : 'border-border text-muted-foreground hover:border-primary/30'
                               }`}>
                               <Icon className="h-3 w-3" />{r.label}
                             </button>
@@ -327,21 +288,21 @@ export function EditBetModal({ bet, isOpen, userId, onClose, onSave, onDelete }:
             </div>
           )}
 
-          {/* Payout Preview */}
-          <div className="bg-[#FFD700]/5 border border-[#FFD700]/10 rounded-2xl p-4 flex justify-between items-center">
-            <span className="text-[10px] text-zinc-500 font-black uppercase italic">Potential Payout</span>
-            <span className="text-xl font-black font-mono text-[#FFD700]">${payout.toFixed(2)}</span>
+          {/* Payout preview */}
+          <div className="bg-primary/5 border border-primary/15 rounded-xl p-4 flex justify-between items-center">
+            <span className="text-[11px] text-muted-foreground font-semibold uppercase">Potential Payout</span>
+            <span className="text-xl font-bold font-mono text-primary">${payout.toFixed(2)}</span>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="flex gap-3 px-6 pb-6 pt-2 border-t border-white/5 shrink-0">
+        <div className="flex gap-3 px-6 pb-6 pt-2 border-t border-border shrink-0">
           <button onClick={handleDelete} disabled={isDeleting}
-            className="px-5 py-3.5 rounded-2xl border border-red-500/20 text-red-500 hover:bg-red-500/10 transition-all disabled:opacity-50">
+            className="px-4 py-3 rounded-xl border border-loss/25 text-loss hover:bg-loss/5 transition-all disabled:opacity-50">
             {isDeleting ? <Loader2 className="animate-spin h-4 w-4" /> : <Trash2 className="h-4 w-4" />}
           </button>
           <button onClick={handleSave} disabled={isSaving}
-            className="flex-1 bg-[#FFD700] hover:bg-[#e6c200] text-black font-black uppercase py-3.5 rounded-2xl flex items-center justify-center gap-2 transition-all disabled:opacity-50">
+            className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-3 rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-50">
             {isSaving ? <><Loader2 className="animate-spin h-4 w-4" />Saving…</> : <><Save className="h-4 w-4" />Save Changes</>}
           </button>
         </div>

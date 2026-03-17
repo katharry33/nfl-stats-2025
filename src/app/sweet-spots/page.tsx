@@ -7,7 +7,7 @@ import { SweetSpotPanel } from '@/components/bets/SweetSpotPanel';
 
 export default function SweetSpotsPage() {
   return (
-    <main className="min-h-screen bg-[#060606] text-white p-4 md:p-8">
+    <main className="min-h-screen bg-background text-foreground p-4 md:p-8">
       <div className="max-w-[1400px] mx-auto space-y-6">
 
         {/* Header */}
@@ -20,7 +20,7 @@ export default function SweetSpotsPage() {
               </div>
               <h1 className="text-2xl font-black italic uppercase tracking-tight">Sweet Spot Engine</h1>
             </div>
-            <p className="text-zinc-600 text-[10px] font-bold uppercase tracking-widest">
+            <p className="text-muted-foreground text-[10px] font-bold uppercase tracking-widest">
               Patterns from your winning bets · where you consistently find edge
             </p>
           </div>

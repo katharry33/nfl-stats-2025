@@ -13,7 +13,7 @@ export default function PerformancePage() {
   if (loading) return <PerformanceLoader />;
 
   return (
-    <div className="min-h-screen bg-[#060606] text-white p-4 md:p-8">
+    <div className="min-h-screen bg-background text-foreground p-4 md:p-8">
        {/* Use stats.totalProfit, stats.winRate, etc. */}
        <KpiCard 
           title="Net Profit" 

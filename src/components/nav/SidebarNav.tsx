@@ -27,9 +27,9 @@ const INSIGHTS_ITEMS = [
   { href: '/sweet-spots',     label: 'Sweet Spot Engine', icon: Target     },
 ];
 const MASTER_DATA = [
-  { href: '/pfr-ids',      label: 'PFR IDs',             icon: Database },
-  { href: '/player-teams', label: 'Player Team Mapping', icon: Users    },
-  { href: '/schedule',     label: 'Schedule',            icon: Calendar },
+  { href: 'static-data/pfr-ids',      label: 'PFR IDs',             icon: Database },
+  { href: 'static-data/player-teams', label: 'Player Team Mapping', icon: Users    },
+  { href: 'static-data/schedule',     label: 'Schedule',            icon: Calendar },
 ];
 
 // ─── NavItem ──────────────────────────────────────────────────────────────────
@@ -52,7 +52,7 @@ function NavItem({ href, label, icon: Icon, badge, isSweetSpot = false }: {
         }
       `}
     >
-      <Icon className={`h-4 w-4 flex-shrink-0 transition-colors ${
+      <Icon className={`h-4 w-4 'shrink-0' transition-colors ${
         isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground/70'
       }`} />
 

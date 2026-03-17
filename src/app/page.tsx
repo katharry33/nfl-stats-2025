@@ -129,7 +129,7 @@ function ActionCard({ href, title, desc, icon: Icon, color }: {
       className="group bg-card border border-border rounded-[2rem] p-6 hover:border-primary/20 transition-all relative overflow-hidden"
     >
       <div className={`w-12 h-12 rounded-2xl ${color} flex items-center justify-center mb-4 transition-transform group-hover:scale-110 duration-500`}>
-        <Icon className="h-6 w-6 text-white" />
+        <Icon className="h-6 w-6 text-foreground" />
       </div>
       <h3 className="text-sm font-black uppercase italic tracking-tight">{title}</h3>
       <p className="text-[10px] text-muted-foreground font-bold uppercase mt-1">{desc}</p>

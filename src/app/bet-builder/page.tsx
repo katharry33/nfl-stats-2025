@@ -13,7 +13,7 @@ export default function BetBuilderPage({ searchParams }: Props) {
   const week      = weekParam && !isNaN(weekParam) ? weekParam : CURRENT_WEEK;
 
   return (
-    <div className="min-h-screen bg-[#060606]">
+    <div className="min-h-screen bg-background">
       <BetBuilderClient initialWeek={week} season={SEASON} />
     </div>
   );

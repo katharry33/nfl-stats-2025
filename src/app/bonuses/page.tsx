@@ -105,18 +105,18 @@ function BonusForm({
     }
   };
 
-  const inputCls = "w-full bg-black/40 border border-white/[0.08] text-white text-xs font-mono rounded-xl px-3 py-2.5 outline-none focus:ring-1 focus:ring-[#FFD700]/30 transition-all";
+  const inputCls = "w-full bg-black/40 border border-border text-foreground text-xs font-mono rounded-xl px-3 py-2.5 outline-none focus:ring-1 focus:ring-[#FFD700]/30 transition-all";
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       {/* Name + Book */}
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <label className="text-[8px] font-black uppercase tracking-widest text-zinc-600">Name</label>
+          <label className="text-[8px] font-black uppercase tracking-widest text-muted-foreground">Name</label>
           <input value={name} onChange={e => setName(e.target.value)} className={inputCls} placeholder="DK NFL Boost" required />
         </div>
         <div className="space-y-1.5">
-          <label className="text-[8px] font-black uppercase tracking-widest text-zinc-600">Book</label>
+          <label className="text-[8px] font-black uppercase tracking-widest text-muted-foreground">Book</label>
           <select value={book} onChange={e => setBook(e.target.value)} className={inputCls}>
             {BOOKS.map(b => <option key={b} value={b}>{b}</option>)}
           </select>
@@ -125,7 +125,7 @@ function BonusForm({
 
       {/* Boost picker */}
       <div className="space-y-1.5">
-        <label className="text-[8px] font-black uppercase tracking-widest text-zinc-600">Boost %</label>
+        <label className="text-[8px] font-black uppercase tracking-widest text-muted-foreground">Boost %</label>
         <div className="grid grid-cols-6 gap-1.5">
           {BOOST_OPTIONS.map(v => (
             <button key={v} type="button"
@@ -133,14 +133,14 @@ function BonusForm({
               className={`py-1.5 rounded-lg text-[9px] font-black transition-all border ${
                 !isCustom && boost === v
                   ? 'bg-[#FFD700] border-[#FFD700] text-black'
-                  : 'bg-black/40 border-white/[0.08] text-zinc-500 hover:text-white'
+                  : 'bg-black/40 border-border text-muted-foreground hover:text-foreground'
               }`}
             >{v}%</button>
           ))}
           <button type="button"
             onClick={() => setIsCustom(true)}
             className={`py-1.5 rounded-lg text-[9px] font-black transition-all border col-span-2 ${
-              isCustom ? 'bg-[#FFD700] border-[#FFD700] text-black' : 'bg-black/40 border-white/[0.08] text-zinc-500 hover:text-white'
+              isCustom ? 'bg-[#FFD700] border-[#FFD700] text-black' : 'bg-black/40 border-border text-muted-foreground hover:text-foreground'
             }`}
           >Custom</button>
         </div>
@@ -152,7 +152,7 @@ function BonusForm({
 
       {/* Eligible types */}
       <div className="space-y-1.5">
-        <label className="text-[8px] font-black uppercase tracking-widest text-zinc-600">Eligible For</label>
+        <label className="text-[8px] font-black uppercase tracking-widest text-muted-foreground">Eligible For</label>
         <div className="flex flex-wrap gap-1.5">
           {ELIGIBLE_OPTS.map(opt => (
             <button key={opt} type="button"
@@ -160,7 +160,7 @@ function BonusForm({
               className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase border transition-all ${
                 eligible.includes(opt)
                   ? 'bg-[#FFD700]/10 border-[#FFD700]/30 text-[#FFD700]'
-                  : 'bg-black/40 border-white/[0.08] text-zinc-600 hover:text-white'
+                  : 'bg-black/40 border-border text-muted-foreground hover:text-foreground'
               }`}
             >{opt}</button>
           ))}
@@ -170,11 +170,11 @@ function BonusForm({
       {/* Max wager + min odds */}
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <label className="text-[8px] font-black uppercase tracking-widest text-zinc-600">Max Wager ($)</label>
+          <label className="text-[8px] font-black uppercase tracking-widest text-muted-foreground">Max Wager ($)</label>
           <input type="number" value={maxWager} onChange={e => setMaxWager(e.target.value)} className={inputCls} placeholder="10.00" />
         </div>
         <div className="space-y-1.5">
-          <label className="text-[8px] font-black uppercase tracking-widest text-zinc-600">Min Odds</label>
+          <label className="text-[8px] font-black uppercase tracking-widest text-muted-foreground">Min Odds</label>
           <input type="text" value={minOdds} onChange={e => setMinOdds(e.target.value)} className={inputCls} placeholder="-200" />
         </div>
       </div>
@@ -241,14 +241,14 @@ export default function BonusesPage() {
     .then(() => toast.success('Bonus removed'));
 
   return (
-    <main className="min-h-screen bg-[#060606] text-white p-4 md:p-8">
+    <main className="min-h-screen bg-background text-foreground p-4 md:p-8">
       <div className="max-w-[1200px] mx-auto space-y-6">
 
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-black italic uppercase tracking-tight">Bonus Inventory</h1>
-            <p className="text-zinc-600 text-[10px] font-bold uppercase tracking-widest mt-0.5">
+            <p className="text-muted-foreground text-[10px] font-bold uppercase tracking-widest mt-0.5">
               {active.length} active · ${totalValue.toFixed(2)} estimated value
             </p>
           </div>
@@ -265,24 +265,24 @@ export default function BonusesPage() {
             { label: 'Est. Value',    value: `$${totalValue.toFixed(0)}`, color: 'text-[#FFD700]' },
             { label: 'Used / Total',  value: `${used.length} / ${bonuses.length}`, color: 'text-zinc-400' },
           ].map(s => (
-            <div key={s.label} className="bg-[#0f1115] border border-white/[0.06] rounded-2xl px-4 py-3">
+            <div key={s.label} className="bg-card border border-border rounded-2xl px-4 py-3">
               <p className={`text-xl font-black font-mono ${s.color}`}>{s.value}</p>
-              <p className="text-[8px] font-black uppercase tracking-widest text-zinc-700 mt-0.5">{s.label}</p>
+              <p className="text-[8px] font-black uppercase tracking-widest text-muted-foreground/70 mt-0.5">{s.label}</p>
             </div>
           ))}
         </div>
 
         {/* Filter tabs + table */}
-        <div className="bg-[#0f1115] border border-white/[0.06] rounded-2xl overflow-hidden">
+        <div className="bg-card border border-border rounded-2xl overflow-hidden">
 
           {/* Tab bar */}
-          <div className="flex items-center gap-1 px-4 pt-4 pb-0 border-b border-white/[0.06]">
+          <div className="flex items-center gap-1 px-4 pt-4 pb-0 border-b border-border">
             {(['active', 'used', 'all'] as const).map(f => (
               <button key={f} onClick={() => setFilterStatus(f)}
                 className={`px-3 py-2 text-[9px] font-black uppercase tracking-widest transition-colors border-b-2 -mb-px ${
                   filterStatus === f
                     ? 'border-[#FFD700] text-[#FFD700]'
-                    : 'border-transparent text-zinc-600 hover:text-zinc-400'
+                    : 'border-transparent text-muted-foreground hover:text-zinc-400'
                 }`}>
                 {f === 'all' ? `All (${bonuses.length})` : f === 'active' ? `Active (${active.length})` : `Used (${used.length})`}
               </button>
@@ -291,12 +291,12 @@ export default function BonusesPage() {
 
           {/* Table */}
           {loading ? (
-            <div className="flex items-center justify-center py-16 text-zinc-600">
+            <div className="flex items-center justify-center py-16 text-muted-foreground">
               <Loader2 className="h-5 w-5 animate-spin mr-2" />
               <span className="text-xs font-black uppercase">Loading…</span>
             </div>
           ) : filtered.length === 0 ? (
-            <div className="py-16 text-center text-zinc-700 text-xs font-black uppercase italic">
+            <div className="py-16 text-center text-muted-foreground/70 text-xs font-black uppercase italic">
               No {filterStatus === 'all' ? '' : filterStatus} bonuses yet
             </div>
           ) : (
@@ -305,7 +305,7 @@ export default function BonusesPage() {
                 <thead className="bg-black/30">
                   <tr>
                     {['Bonus', 'Book', 'Boost', 'Max Wager', 'Min Odds', 'Eligible For', 'Status', 'Created', ''].map(h => (
-                      <th key={h} className="px-4 py-2.5 text-left text-[8px] font-black uppercase tracking-widest text-zinc-700 whitespace-nowrap">
+                      <th key={h} className="px-4 py-2.5 text-left text-[8px] font-black uppercase tracking-widest text-muted-foreground/70 whitespace-nowrap">
                         {h}
                       </th>
                     ))}
@@ -313,7 +313,7 @@ export default function BonusesPage() {
                 </thead>
                 <tbody>
                   {filtered.map((bonus, i) => {
-                    const meta    = TYPE_META[bonus.betType ?? ''] ?? { icon: <Zap className="h-3 w-3" />, color: 'text-zinc-500' };
+                    const meta    = TYPE_META[bonus.betType ?? ''] ?? { icon: <Zap className="h-3 w-3" />, color: 'text-muted-foreground' };
                     const created = resolveFirestoreDate(bonus.createdAt as any);
                     const expiry  = resolveFirestoreDate(bonus.expirationDate as any);
                     const expiresInHrs = expiry ? (expiry.getTime() - Date.now()) / 3_600_000 : null;
@@ -322,13 +322,13 @@ export default function BonusesPage() {
 
                     return (
                       <tr key={bonus.id}
-                        className={`border-t border-white/[0.04] ${i % 2 === 0 ? 'bg-black/10' : ''} ${!isActive ? 'opacity-50' : 'hover:bg-white/[0.02]'} transition-colors`}>
+                        className={`border-t border-border ${i % 2 === 0 ? 'bg-black/10' : ''} ${!isActive ? 'opacity-50' : 'hover:bg-white/[0.02]'} transition-colors`}>
 
                         {/* Name */}
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2">
                             <span className={meta.color}>{meta.icon}</span>
-                            <span className="text-xs font-black italic uppercase text-white">{bonus.name}</span>
+                            <span className="text-xs font-black italic uppercase text-foreground">{bonus.name}</span>
                           </div>
                         </td>
 
@@ -351,14 +351,14 @@ export default function BonusesPage() {
 
                         {/* Min odds */}
                         <td className="px-4 py-3">
-                          <span className="text-xs font-mono text-zinc-500">{(bonus as any).minOdds ?? '—'}</span>
+                          <span className="text-xs font-mono text-muted-foreground">{(bonus as any).minOdds ?? '—'}</span>
                         </td>
 
                         {/* Eligible */}
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap gap-1">
                             {((bonus as any).eligibleTypes ?? []).map((t: string) => (
-                              <span key={t} className="text-[7px] px-1.5 py-0.5 bg-white/[0.04] border border-white/[0.06] text-zinc-500 rounded uppercase font-bold">
+                              <span key={t} className="text-[7px] px-1.5 py-0.5 bg-white/[0.04] border border-border text-muted-foreground rounded uppercase font-bold">
                                 {t}
                               </span>
                             ))}
@@ -369,7 +369,7 @@ export default function BonusesPage() {
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1.5">
                             <StatusPip status={bonus.status ?? 'active'} />
-                            <span className="text-[9px] font-black uppercase text-zinc-500">
+                            <span className="text-[9px] font-black uppercase text-muted-foreground">
                               {bonus.status ?? 'active'}
                             </span>
                           </div>
@@ -382,7 +382,7 @@ export default function BonusesPage() {
 
                         {/* Created */}
                         <td className="px-4 py-3">
-                          <span className="text-[9px] font-mono text-zinc-700">
+                          <span className="text-[9px] font-mono text-muted-foreground/70">
                             {created ? format(created, 'MM/dd/yy') : '—'}
                           </span>
                         </td>
@@ -391,18 +391,18 @@ export default function BonusesPage() {
                         <td className="px-3 py-3">
                           <div className="flex items-center gap-1">
                             <button onClick={() => openEdit(bonus)}
-                              className="p-1.5 text-zinc-700 hover:text-zinc-300 hover:bg-white/[0.04] rounded-lg transition-colors">
+                              className="p-1.5 text-muted-foreground/70 hover:text-zinc-300 hover:bg-white/[0.04] rounded-lg transition-colors">
                               <Pencil className="h-3.5 w-3.5" />
                             </button>
                             {isActive && (
                               <button onClick={() => markUsed(bonus.id)}
-                                className="p-1.5 text-zinc-700 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors"
+                                className="p-1.5 text-muted-foreground/70 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors"
                                 title="Mark used">
                                 <CheckCircle2 className="h-3.5 w-3.5" />
                               </button>
                             )}
                             <button onClick={() => remove(bonus.id)}
-                              className="p-1.5 text-zinc-700 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors">
+                              className="p-1.5 text-muted-foreground/70 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors">
                               <Trash2 className="h-3.5 w-3.5" />
                             </button>
                           </div>
@@ -425,13 +425,13 @@ export default function BonusesPage() {
             onClick={() => setPanelOpen(false)} />
 
           {/* Panel */}
-          <div className="fixed top-0 right-0 h-screen w-full max-w-md z-50 bg-[#0a0c0f] border-l border-white/[0.08] shadow-2xl flex flex-col">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-white/[0.06]">
+          <div className="fixed top-0 right-0 h-screen w-full max-w-md z-50 bg-[#0a0c0f] border-l border-border shadow-2xl flex flex-col">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-border">
               <h2 className="text-sm font-black italic uppercase tracking-tight">
                 {editing ? 'Edit Bonus' : 'Add Bonus'}
               </h2>
               <button onClick={() => setPanelOpen(false)}
-                className="p-1.5 text-zinc-600 hover:text-white rounded-lg hover:bg-white/[0.04] transition-colors">
+                className="p-1.5 text-muted-foreground hover:text-foreground rounded-lg hover:bg-white/[0.04] transition-colors">
                 <X className="h-4 w-4" />
               </button>
             </div>

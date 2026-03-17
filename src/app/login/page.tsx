@@ -41,16 +41,16 @@ export default function PasswordGate() {
         className="bg-zinc-900 border border-white/10 p-8 rounded-[2rem] w-full max-w-sm space-y-4 shadow-2xl"
       >
         <div className="space-y-1">
-          <h1 className="text-white font-black italic uppercase text-2xl tracking-tighter">
+          <h1 className="text-foreground font-black italic uppercase text-2xl tracking-tighter">
             Private Access
           </h1>
-          <p className="text-zinc-500 text-xs uppercase font-bold">Authenticated Sessions Only</p>
+          <p className="text-muted-foreground text-xs uppercase font-bold">Authenticated Sessions Only</p>
         </div>
 
         <input
           type="password"
           placeholder="Enter Site Password"
-          className="w-full bg-black border border-white/10 rounded-xl px-4 py-4 text-white outline-none focus:border-[#FFD700] transition-colors"
+          className="w-full bg-black border border-white/10 rounded-xl px-4 py-4 text-foreground outline-none focus:border-[#FFD700] transition-colors"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           disabled={loading}
