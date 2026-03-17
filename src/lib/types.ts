@@ -150,9 +150,10 @@ export function resolveFirestoreDate(date: any): Date | null {
 }
 export interface Bet {
   id: string;
+  stake: number;
+  odds: number;
   type: 'straight' | 'parlay' | 'teaser';
   status: 'pending' | 'won' | 'lost' | 'void';
-  amount: number;
   toWin: number;
   placedAt: any;
   bonusId?: string; // Track which bonus was used

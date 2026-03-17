@@ -1,7 +1,9 @@
 'use client';
 
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react';
 import { Bet } from '@/lib/types';
+import { useWallet } from '@/context/wallet-context';
+import { calculateRecommendation } from '@/lib/math/kelly';
 
 export interface BetSlipContextType {
   bets: Bet[];
@@ -22,6 +24,10 @@ export interface BetSlipContextType {
   clearSlip: () => void;
   totalParlayOdds: number;
   isInitialized: boolean;
+  kelly: {
+    recommendedStake: number;
+    expectedValue: number;
+  };
 }
 
 const BetSlipContext = createContext<BetSlipContextType | undefined>(undefined);
@@ -41,13 +47,15 @@ function calcOdds(sels: any[]): number {
     if (!o) return acc;
     return acc * (o > 0 ? o / 100 + 1 : 100 / Math.abs(o) + 1);
   }, 1);
-  return dec > 1 ? parseFloat(((dec - 1) * 100).toFixed(2)) : 0;
+  return dec > 1 ? parseFloat(((dec - 1) * 100).toFixed(0)) : 0;
 }
 
 export const BetSlipProvider = ({ children }: { children: React.ReactNode }) => {
   const [selections, setSelections] = useState<any[]>([]);
   const [totalParlayOdds, setTotalParlayOdds] = useState(0);
   const [isInitialized, setIsInitialized] = useState(false);
+
+  const { bankroll } = useWallet();
 
   useEffect(() => {
     const savedSlip = localStorage.getItem('active_betslip');
@@ -68,6 +76,27 @@ export const BetSlipProvider = ({ children }: { children: React.ReactNode }) => 
     }
   }, [selections, isInitialized]);
 
+  const kelly = useMemo(() => {
+    const modelHitRate = selections.length > 1 ? 25 : 55; // Lower for parlays
+    const americanOdds = totalParlayOdds.toString();
+
+    if (totalParlayOdds === 0) {
+      return { recommendedStake: 0, expectedValue: 0 };
+    }
+
+    const { recommendedWager, expectedValue } = calculateRecommendation(
+      modelHitRate,
+      americanOdds,
+      bankroll
+    );
+
+    return {
+      recommendedStake: recommendedWager > 0 ? recommendedWager / 4 : 0,
+      expectedValue: expectedValue * 100, // as percent
+    };
+  }, [totalParlayOdds, bankroll, selections.length]);
+
+  // ... (rest of the provider: fetchBets, loadMoreBets, etc.)
   const [bets, setBets] = useState<Bet[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -132,7 +161,6 @@ export const BetSlipProvider = ({ children }: { children: React.ReactNode }) => 
 
   const addLeg = useCallback((leg: any) => {
     setSelections(prev => {
-      // leg.id already encodes propId + selection, so just match on id alone
       const incomingId = leg.id || leg.propId;
       const isDupe = prev.some(l => {
         const existingId = l.id || l.propId;
@@ -144,10 +172,7 @@ export const BetSlipProvider = ({ children }: { children: React.ReactNode }) => 
   }, []);
 
   const removeLeg = useCallback((legId: string) => {
-    setSelections(prev => {
-      const next = prev.filter(l => (l.propId || l.id) !== legId && l.id !== legId);
-      return next;
-    });
+    setSelections(prev => prev.filter(l => (l.propId || l.id) !== legId && l.id !== legId));
   }, []);
 
   const clearSlip = useCallback(() => {
@@ -160,6 +185,7 @@ export const BetSlipProvider = ({ children }: { children: React.ReactNode }) => 
       bets, setBets, totalCount, loading, loadingMore, hasMore, error,
       fetchBets, loadMoreBets, updateBet, deleteBet,
       selections, setSelections, addLeg, removeLeg, clearSlip, totalParlayOdds, isInitialized,
+      kelly,
     }}>
       {children}
     </BetSlipContext.Provider>

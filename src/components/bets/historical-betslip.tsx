@@ -1,123 +1,71 @@
 'use client';
+import { Bet } from '@/lib/types';
+import { toDecimaloDecimal } from '@/lib/utils/odds';
 
-import React, { useEffect } from 'react';
-import { Trash2, ArrowRight, Layers, X } from 'lucide-react';
-import { useBetSlip } from '@/context/betslip-context';
-import { useRouter } from 'next/navigation';
+interface HistoricalBetSlipProps {
+  bet: Bet;
+}
 
-export function HistoricalBetSlip() {
-  const { selections, removeLeg, clearSlip } = useBetSlip();
-  const router = useRouter();
+export function HistoricalBetSlip({ bet }: HistoricalBetSlipProps) {
+  const legs = bet.legs || [];
+  const isParlay = legs.length > 1;
+  const status = bet.status.toLowerCase();
 
-  // Debugging: Monitor context changes to ensure legs are actually landing here
-  useEffect(() => {
-    console.log("Current BetSlip Selections:", selections);
-  }, [selections]);
+  const getStatusColor = () => {
+    switch (status) {
+      case 'won':
+      case 'cashed':
+        return 'text-emerald-400';
+      case 'lost':
+        return 'text-red-400';
+      default:
+        return 'text-muted-foreground';
+    }
+  };
+
+  const renderLeg = (leg: any, isFirst: boolean) => (
+    <div key={leg.id || leg.propId} className={`relative flex items-center justify-between py-2.5 ${!isFirst && 'border-t border-white/5'}`}>
+      <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-gold-500" />
+      <div className="pl-3">
+        <p className="text-xs font-semibold text-foreground">{leg.player ?? leg.label}</p>
+        <p className="text-[11px] text-muted-foreground mt-0.5">{leg.prop ?? leg.market}</p>
+      </div>
+      <div className="flex items-center gap-2">
+        {leg.isBonusBet && (
+          <span className="text-[8px] bg-purple-500/20 text-purple-400 px-1 rounded uppercase font-black ml-auto">
+            Bonus
+          </span>
+        )}
+        <span className={`text-xs font-bold tabular-nums ${Number(leg.odds) > 0 ? 'text-profit' : 'text-muted-foreground'}`}>
+          {Number(leg.odds) > 0 ? '+' : ''}{leg.odds}
+        </span>
+      </div>
+    </div>
+  );
+
+  const totalStake = bet.stake || (bet as any).wager || 0;
+  const finalOdds = oddsToDecimal(bet.odds.toString());
+  const payout = totalStake * finalOdds;
+  const profit = payout - totalStake;
 
   return (
-    <div className="bg-[#0f1115] border border-white/5 rounded-3xl overflow-hidden shadow-2xl">
-
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-white/5">
-        <div className="flex items-center gap-2">
-          <Layers className="h-4 w-4 text-[#FFD700]" />
-          <span className="text-sm font-black uppercase tracking-widest text-white">Bet Slip</span>
-          {selections.length > 0 && (
-            <span className="text-[10px] font-black bg-[#FFD700] text-black px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
-              {selections.length}
-            </span>
-          )}
-        </div>
-        {selections.length > 0 && (
-          <button onClick={clearSlip}
-            className="text-[10px] font-black text-zinc-600 hover:text-red-400 uppercase tracking-wider transition-colors">
-            Clear all
-          </button>
-        )}
+    <div className="bg-card-secondary/50 rounded-lg border border-white/5">
+      <div className="p-3">
+        {isParlay ? legs.map((leg, i) => renderLeg(leg, i === 0)) : renderLeg(bet, true)}
       </div>
 
-      {/* Body */}
-      <div className="p-4">
-        {selections.length === 0 ? (
-          <div className="py-10 flex flex-col items-center gap-3">
-            <div className="h-12 w-12 bg-white/[0.03] border border-white/5 rounded-2xl flex items-center justify-center">
-              <Layers className="h-5 w-5 text-zinc-700" />
-            </div>
-            <p className="text-xs text-zinc-600 text-center max-w-[160px]">
-              Add props to build your parlay
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-2 max-h-[420px] overflow-y-auto pr-0.5">
-            {selections.map((leg: any) => {
-              // FIX: Ensure we have a reliable ID for both the Key and the Remove action
-              const uniqueId = leg.id || leg.propId || `${leg.player}-${leg.prop}-${leg.line}`;
-              const odds = Number(leg.odds);
-
-              return (
-                <div key={uniqueId}
-                  className="group flex items-start gap-2 p-3 bg-black/40 border border-white/[0.06]
-                    rounded-2xl hover:border-[#FFD700]/20 transition-colors">
-
-                  {/* Gold accent bar for historical props */}
-                  {leg.source === 'historical-props' && (
-                    <div className="w-0.5 h-full bg-[#FFD700]/40 rounded-full shrink-0 self-stretch" />
-                  )}
-
-                  <div className="flex-1 min-w-0">
-                    <p className="font-black text-sm text-white uppercase italic tracking-tight truncate">
-                      {leg.player}
-                    </p>
-                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                      {leg.selection && (
-                        <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase
-                          ${leg.selection.toLowerCase() === 'over'
-                            ? 'bg-blue-500/10 text-blue-400'
-                            : 'bg-orange-500/10 text-orange-400'}`}>
-                          {leg.selection}
-                        </span>
-                      )}
-                      <p className="text-[10px] text-zinc-500 font-mono">
-                        {leg.prop} · {leg.line}
-                      </p>
-                    </div>
-                    <p className="text-[10px] font-mono text-[#FFD700]/60 mt-1">
-                      {odds > 0 ? '+' : ''}{odds || '—'}
-                    </p>
-                  </div>
-
-                  <button
-                    onClick={() => removeLeg(uniqueId)}
-                    className="shrink-0 p-1.5 text-zinc-700 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all rounded-lg hover:bg-red-500/10"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Footer */}
-      {selections.length > 0 && (
-        <div className="px-4 pb-4 pt-2 border-t border-white/5 space-y-3">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-zinc-600 font-bold uppercase tracking-wider">Total Legs</span>
-            <span className="font-black text-[#FFD700] bg-[#FFD700]/10 px-2 py-0.5 rounded-lg font-mono">
-              {selections.length}
-            </span>
-          </div>
-          <button
-            onClick={() => router.push('/parlay-studio')}
-            className="w-full flex items-center justify-center gap-2 py-3 bg-[#FFD700] hover:bg-[#e6c200]
-              text-black font-black italic uppercase text-sm rounded-2xl transition-colors shadow-lg shadow-[#FFD700]/10"
-          >
-            Parlay Studio
-            <ArrowRight className="h-4 w-4" />
-          </button>
+      <div className="flex justify-between items-center bg-card-secondary p-3 border-t border-white/5 rounded-b-lg">
+        <div>
+          <p className="text-xs font-semibold">Stake: ${totalStake.toFixed(2)}</p>
+          <p className={`text-xs font-semibold ${getStatusColor()}`}>
+            {status.toUpperCase()}: {profit >= 0 ? '+' : '-'}${Math.abs(profit).toFixed(2)}
+          </p>
         </div>
-      )}
+        <div className="text-right">
+          <p className="text-sm font-bold text-foreground">${payout.toFixed(2)}</p>
+          <p className="text-xs text-muted-foreground">@{bet.odds > 0 ? '+' : ''}{bet.odds}</p>
+        </div>
+      </div>
     </div>
   );
 }

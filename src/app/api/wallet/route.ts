@@ -1,38 +1,40 @@
 import { NextResponse } from 'next/server';
-import { adminDb } from '@/lib/firebase/admin';
+import { adminDb, adminAuth } from '@/lib/firebase/admin';
+import { cookies } from 'next/headers';
 
-// Constants
-const WALLET_COLLECTION = 'wallet';
-const USER_WALLET_DOC = 'dev-wallet';
+const WALLET_COLLECTION = 'wallets';
 
-/**
- * GET /api/wallet
- * Fetches the user's wallet or initializes it if it doesn't exist.
- */
 export async function GET() {
   try {
-    // 1. Validate Firebase Admin initialized
-    if (!adminDb) {
-      throw new Error("Firebase Admin DB not initialized");
-    }
+    // 1. Authenticate the User (Assuming you use a session cookie or Bearer token)
+    // For now, we'll mimic the logic to fetch via your auth provider
+    const sessionCookie = cookies().get('__session')?.value;
+    if (!sessionCookie) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const docRef = adminDb.collection(WALLET_COLLECTION).doc(USER_WALLET_DOC);
-    const docSnap = await docRef.get();
+    const decodedToken = await adminAuth.verifySessionCookie(sessionCookie);
+    const uid = decodedToken.uid;
 
-    if (!docSnap.exists) {
-      const defaultWallet = { 
-        bankroll: 1000, 
-        bonusBalance: 250,
-        updatedAt: new Date().toISOString() 
-      };
-      
-      await docRef.set(defaultWallet);
-      return NextResponse.json(defaultWallet);
-    }
+    const docRef = adminDb.collection(WALLET_COLLECTION).doc(uid);
 
-    const walletData = docSnap.data();
-    
-    // 2. Return data with safe fallbacks
+    // 2. Use a Transaction to ensure data integrity during initialization
+    const walletData = await adminDb.runTransaction(async (transaction) => {
+      const docSnap = await transaction.get(docRef);
+
+      if (!docSnap.exists) {
+        const defaultWallet = {
+          userId: uid,
+          bankroll: 1000,
+          bonusBalance: 250,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        transaction.set(docRef, defaultWallet);
+        return defaultWallet;
+      }
+
+      return docSnap.data();
+    });
+
     return NextResponse.json({
       bankroll: walletData?.bankroll ?? 0,
       bonusBalance: walletData?.bonusBalance ?? 0,
@@ -41,11 +43,8 @@ export async function GET() {
   } catch (error: any) {
     console.error("API GET Wallet Error:", error);
     return NextResponse.json(
-      { error: "Internal Server Error", details: error.message }, 
+      { error: "Internal Server Error" }, 
       { status: 500 }
     );
   }
 }
-
-// Optional: Prevent caching for wallet balances
-export const dynamic = 'force-dynamic';

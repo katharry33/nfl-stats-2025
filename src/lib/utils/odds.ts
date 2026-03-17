@@ -58,3 +58,11 @@ export function calculateEdge(odds: number, projection: number): number {
   // Edge is the difference (e.g., 0.60 projected - 0.52 implied = 0.08 or 8% edge)
   return projection - impliedProbability;
 }
+
+// Add to @/lib/utils/odds.ts
+export const getDecimalFromAmerican = (american: number) => 
+  american > 0 ? (american / 100) + 1 : (100 / Math.abs(american)) + 1;
+
+export const calculateParlayDecimal = (selections: any[]) => {
+  return selections.reduce((acc, leg) => acc * getDecimalFromAmerican(Number(leg.odds)), 1);
+};

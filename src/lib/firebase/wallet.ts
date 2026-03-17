@@ -1,25 +1,22 @@
-import { Firestore, doc, getDoc, setDoc, Timestamp } from "firebase/firestore";
+import { adminDb } from "../admin";
 import type { Wallet } from "@/lib/types";
-import { resolveFirestoreDate } from "@/lib/types";
 
-const WALLET_COLLECTION = "wallet";
-const DEFAULT_WALLET_ID = "main";
+const WALLET_COLLECTION = "wallets"; // Use plural to match your other routes
 
-export async function getWallet(firestore: Firestore, uid: string = DEFAULT_WALLET_ID): Promise<Wallet | null> {
-  const docRef = doc(firestore, WALLET_COLLECTION, uid);
-  const docSnap = await getDoc(docRef);
+export async function getWallet(uid: string): Promise<Wallet | null> {
+  const docRef = adminDb.collection(WALLET_COLLECTION).doc(uid);
+  const docSnap = await docRef.get();
   
-  if (docSnap.exists()) {
+  if (docSnap.exists) {
     const data = docSnap.data();
-    // PATCH: Spread all fields from Firestore and use a safe type assertion.
-    // This ensures all fields, including `updatedAt`, are present and normalizes dates.
     return {
       id: docSnap.id,
       ...data,
-      balance: data.balance || 0,
-      bonusBalance: data.bonusBalance || 0,
-      updatedAt: data.updatedAt ? resolveFirestoreDate(data.updatedAt) : undefined,
-      lastUpdated: data.lastUpdated ? resolveFirestoreDate(data.lastUpdated) : undefined,
+      balance: data?.balance || 0,
+      bonusBalance: data?.bonusBalance || 0,
+      // Admin SDK timestamps have a .toDate() method
+      updatedAt: data?.updatedAt?.toDate() || new Date(),
+      lastUpdated: data?.lastUpdated?.toDate() || new Date(),
     } as unknown as Wallet;
   }
   
@@ -27,20 +24,16 @@ export async function getWallet(firestore: Firestore, uid: string = DEFAULT_WALL
 }
 
 export async function updateWallet(
-  firestore: Firestore, 
-  updates: Partial<Omit<Wallet, 'id'>>,
-  uid: string = DEFAULT_WALLET_ID
+  uid: string,
+  updates: Partial<Omit<Wallet, 'id'>>
 ): Promise<void> {
-  const docRef = doc(firestore, WALLET_COLLECTION, uid);
+  const docRef = adminDb.collection(WALLET_COLLECTION).doc(uid);
   
-  const lastUpdatedValue = (updates as any).lastUpdated;
-  
-  const walletData = {
+  const cleanUpdates = {
     ...updates,
-    lastUpdated: (lastUpdatedValue && typeof (lastUpdatedValue as any).toDate === 'function') 
-      ? (lastUpdatedValue as any).toDate() 
-      : (lastUpdatedValue instanceof Date ? lastUpdatedValue : new Date()),
+    lastUpdated: new Date(), // Automatically set server-side timestamp
   };
 
-  await setDoc(docRef, walletData, { merge: true });
+  // .set with { merge: true } is safe, but .update is more standard for existing docs
+  await docRef.set(cleanUpdates, { merge: true });
 }
