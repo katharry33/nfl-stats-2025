@@ -1,15 +1,11 @@
-'use client';
+import { PageLoader } from '@/components/ui/LoadingSpinner';
 
-import React from 'react';
-import { Loader2 } from 'lucide-react';
+// Next.js App Router automatically shows this while the page Suspense resolves.
+// Copy this file into any route folder, e.g.:
+//   app/betting-log/loading.tsx
+//   app/bet-builder/loading.tsx
+//   app/my-performance/loading.tsx  etc.
 
 export default function Loading() {
-  return (
-    <div className="fixed inset-0 flex items-center justify-center bg-slate-100/50 backdrop-blur-sm z-[100]">
-      <div className="flex items-center gap-3 text-slate-700">
-        <Loader2 className="h-8 w-8 animate-spin text-emerald-500" />
-        <span className="text-lg font-medium">Loading...</span>
-      </div>
-    </div>
-  );
+  return <PageLoader />;
 }

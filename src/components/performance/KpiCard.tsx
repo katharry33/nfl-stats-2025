@@ -20,10 +20,10 @@ export function KpiCard({
   const ChangeIcon = changeType === 'positive' ? ArrowUpRight : ArrowDownRight;
 
   return (
-    <div className="p-4 bg-slate-900 border border-slate-800 rounded-xl">
+    <div className="p-4 bg-card border border-slate-800 rounded-xl">
       <div className="flex items-center justify-between mb-1">
-        <p className="text-xs font-bold text-slate-500 uppercase">{title}</p>
-        {Icon && <Icon className="h-4 w-4 text-slate-500" />}
+        <p className="text-xs font-bold text-muted-foreground uppercase">{title}</p>
+        {Icon && <Icon className="h-4 w-4 text-muted-foreground" />}
       </div>
       <p className="text-2xl font-black text-white">{value}</p>
       <div className="flex items-center gap-1 mt-1">
@@ -33,7 +33,7 @@ export function KpiCard({
             {change}
           </span>
         )}
-        {description && <p className="text-[10px] text-slate-400">{description}</p>}
+        {description && <p className="text-[10px] text-muted-foreground">{description}</p>}
       </div>
     </div>
   );

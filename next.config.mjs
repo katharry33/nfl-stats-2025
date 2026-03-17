@@ -9,10 +9,11 @@ const nextConfig = {
 
   // 2. Cloud Workstation Compatibility
   experimental: {
-    // Allows the cloud environment to tunnel CSS/JS chunks without CORS issues
-    allowedDevOrigins: [
-      '3000-firebase-studio-1768002829565.cluster-qewex6ficndhsr4lj7gyhcsnbe.cloudworkstations.dev'
-    ]
+    // If you are on a newer version of Next.js, 
+    // use 'serverActions' config if you need to allow specific origins:
+    serverActions: {
+      allowedOrigins: ["studio-8723557452.cloud-ide-url.com"], 
+    },
   },
 
   // 3. Image Optimization Stability

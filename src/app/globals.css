@@ -1,56 +1,9 @@
 @import "tailwindcss";
 
 /* =========================================
-   THEME TOKENS (Tailwind v4)
-   ========================================= */
-
-@theme {
-
-  /* Core UI colors */
-
-  --color-background: hsl(var(--background));
-  --color-foreground: hsl(var(--foreground));
-
-  --color-card: hsl(var(--card));
-  --color-card-foreground: hsl(var(--card-foreground));
-
-  --color-popover: hsl(var(--popover));
-  --color-popover-foreground: hsl(var(--popover-foreground));
-
-  --color-primary: hsl(var(--primary));
-  --color-primary-foreground: hsl(var(--primary-foreground));
-
-  --color-secondary: hsl(var(--secondary));
-  --color-secondary-foreground: hsl(var(--secondary-foreground));
-
-  --color-muted: hsl(var(--muted));
-  --color-muted-foreground: hsl(var(--muted-foreground));
-
-  --color-accent: hsl(var(--accent));
-  --color-accent-foreground: hsl(var(--accent-foreground));
-
-  --color-destructive: hsl(var(--destructive));
-  --color-destructive-foreground: hsl(var(--destructive-foreground));
-
-  --color-border: hsl(var(--border));
-  --color-input: hsl(var(--input));
-  --color-ring: hsl(var(--ring));
-
-  /* Betting semantics */
-
-  --color-profit: hsl(var(--profit));
-  --color-loss: hsl(var(--loss));
-  --color-edge: hsl(var(--edge));
-
-  /* Radius */
-
-  --radius-lg: var(--radius);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-sm: calc(var(--radius) - 4px);
-}
-
-/* =========================================
    BASE COLOR SYSTEM
+   Defined BEFORE @theme inline so the
+   hsl(var(--x)) references resolve correctly
    ========================================= */
 
 @layer base {
@@ -147,6 +100,60 @@
 }
 
 /* =========================================
+   THEME TOKENS (Tailwind v4)
+   `inline` required — without it, v4 wraps
+   each value in its own CSS variable, making
+   hsl(var(--border)) a double-var that never
+   resolves, and `border-border` / `bg-card`
+   etc. fail to register as utilities.
+   ========================================= */
+
+@theme inline {
+
+  /* Core UI colors */
+
+  --color-background:           hsl(var(--background));
+  --color-foreground:           hsl(var(--foreground));
+
+  --color-card:                 hsl(var(--card));
+  --color-card-foreground:      hsl(var(--card-foreground));
+
+  --color-popover:              hsl(var(--popover));
+  --color-popover-foreground:   hsl(var(--popover-foreground));
+
+  --color-primary:              hsl(var(--primary));
+  --color-primary-foreground:   hsl(var(--primary-foreground));
+
+  --color-secondary:            hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+
+  --color-muted:                hsl(var(--muted));
+  --color-muted-foreground:     hsl(var(--muted-foreground));
+
+  --color-accent:               hsl(var(--accent));
+  --color-accent-foreground:    hsl(var(--accent-foreground));
+
+  --color-destructive:          hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+
+  --color-border:               hsl(var(--border));
+  --color-input:                hsl(var(--input));
+  --color-ring:                 hsl(var(--ring));
+
+  /* Betting semantics */
+
+  --color-profit:               hsl(var(--profit));
+  --color-loss:                 hsl(var(--loss));
+  --color-edge:                 hsl(var(--edge));
+
+  /* Radius */
+
+  --radius-lg:                  var(--radius);
+  --radius-md:                  calc(var(--radius) - 2px);
+  --radius-sm:                  calc(var(--radius) - 4px);
+}
+
+/* =========================================
    GLOBAL BASE STYLES
    ========================================= */
 
@@ -157,16 +164,9 @@
   }
 
   body {
-
-    background-color: hsl(var(--background));
-    color: hsl(var(--foreground));
-
     @apply bg-background text-foreground antialiased;
-
     font-feature-settings: "rlig" 1, "calt" 1;
   }
-
-  /* Ensure readable inputs */
 
   input,
   textarea,
@@ -179,9 +179,7 @@
   input:-webkit-autofill,
   input:-webkit-autofill:hover,
   input:-webkit-autofill:focus {
-
     -webkit-text-fill-color: hsl(var(--foreground));
-
     transition: background-color 5000s ease-in-out 0s;
   }
 }
@@ -191,6 +189,13 @@
    ========================================= */
 
 @layer utilities {
+
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
 
   .custom-scrollbar::-webkit-scrollbar {
     width: 6px;

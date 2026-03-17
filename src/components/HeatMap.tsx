@@ -1,11 +1,17 @@
-import { HeatCell } from "./HeatCell"
-export function HeatMap({ data }: { data: number[][] }) {
+import { HeatCell } from "./HeatCell";
 
-    return (
-      <div className="grid grid-cols-6 gap-2">
+type HeatMapProps = {
+  data: number[][];
+};
+
+export function HeatMap({ data }: HeatMapProps) {
+  return (
+    <div className="overflow-x-auto">
+      <div className="inline-grid grid-cols-6 gap-2">
         {data.flat().map((v, i) => (
           <HeatCell key={i} value={v} />
         ))}
       </div>
-    )
-  }
+    </div>
+  );
+}

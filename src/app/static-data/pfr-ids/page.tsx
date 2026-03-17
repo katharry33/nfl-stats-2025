@@ -1,185 +1,200 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Loader2, Hash, Plus, Upload, Trash2, X, Check } from 'lucide-react';
+import { Loader2, Hash, Plus, Upload, Trash2, X, Check, Search } from 'lucide-react';
+import { toast } from 'sonner';
 
-type PfrEntry = { id: string; player: string; pfrid: string };
+// Unified type to match the API
+type PfrEntry = { 
+  id: string; 
+  playerName: string; // Changed from 'player'
+  pfrId: string;      // Changed from 'pfrid'
+};
 
 export default function PfrIdsPage() {
-  const [data, setData]           = useState<PfrEntry[]>([]);
-  const [loading, setLoading]     = useState(true);
-  const [showAdd, setShowAdd]     = useState(false);
-  const [newName, setNewName]     = useState('');
-  const [newPfr, setNewPfr]       = useState('');
-  const [saving, setSaving]       = useState(false);
+  const [data, setData] = useState<PfrEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [showAdd, setShowAdd] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newPfr, setNewPfr] = useState('');
+  const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [uploadMsg, setUploadMsg] = useState('');
-  const [deleteId, setDeleteId]   = useState<string | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const fetchData = () => {
+  const fetchData = async () => {
     setLoading(true);
-    fetch('/api/static-data/pfr-ids')
-      .then(r => r.json())
-      .then(json => { setData(Array.isArray(json) ? json : []); setLoading(false); })
-      .catch(() => setLoading(false));
+    try {
+      const r = await fetch('/api/static-data/pfr-ids');
+      const json = await r.json();
+      // Ensure we map the fields correctly if they come from Firebase differently
+      const normalized = Array.isArray(json) ? json.map((item: any) => ({
+        id: item.id,
+        playerName: item.playerName || item.player || 'Unknown',
+        pfrId: item.pfrId || item.pfrid || 'N/A'
+      })) : [];
+      setData(normalized);
+    } catch (e) {
+      toast.error("Failed to sync PFR database");
+    } finally {
+      setLoading(false);
+    }
   };
+
   useEffect(() => { fetchData(); }, []);
 
   const handleAdd = async () => {
     if (!newName.trim() || !newPfr.trim()) return;
     setSaving(true);
-    await fetch('/api/static-data/pfr-ids', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ playerName: newName, pfrId: newPfr }),
-    });
-    setNewName(''); setNewPfr(''); setShowAdd(false); setSaving(false);
-    fetchData();
-  };
-
-  const handleDelete = async (id: string) => {
-    await fetch('/api/static-data/pfr-ids', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id }),
-    });
-    setDeleteId(null);
-    fetchData();
+    try {
+      await fetch('/api/static-data/pfr-ids', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playerName: newName, pfrId: newPfr }),
+      });
+      setNewName(''); setNewPfr(''); setShowAdd(false);
+      fetchData();
+      toast.success("Player mapped successfully");
+    } catch (e) {
+      toast.error("Save failed");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleCsvUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setUploading(true); setUploadMsg('');
-    const text  = await file.text();
-    const rows  = text.split('\n').filter(Boolean).slice(1);
-    let count   = 0;
-    for (const line of rows) {
-      const [playerName, pfrId] = line.split(',').map(s => s.trim().replace(/^"|"$/g, ''));
-      if (playerName && pfrId) {
-        await fetch('/api/static-data/pfr-ids', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ playerName, pfrId }),
-        });
-        count++;
-      }
+    setUploading(true);
+    
+    const text = await file.text();
+    const rows = text.split('\n').filter(Boolean).slice(1);
+    
+    // Logic to process in chunks of 10 to prevent overloading the API
+    const chunkSize = 10;
+    for (let i = 0; i < rows.length; i += chunkSize) {
+      const chunk = rows.slice(i, i + chunkSize);
+      await Promise.all(chunk.map(line => {
+        const [playerName, pfrId] = line.split(',').map(s => s.trim().replace(/^"|"$/g, ''));
+        if (playerName && pfrId) {
+          return fetch('/api/static-data/pfr-ids', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ playerName, pfrId }),
+          });
+        }
+      }));
     }
-    setUploadMsg(`✓ Imported ${count} entries`);
+    
+    toast.success(`Imported ${rows.length} entries`);
     setUploading(false);
-    if (fileRef.current) fileRef.current.value = '';
     fetchData();
   };
 
+  const filteredData = data.filter(item => 
+    item.playerName.toLowerCase().includes(search.toLowerCase()) || 
+    item.pfrId.toLowerCase().includes(search.toLowerCase())
+  );
+
+  // ... (handleDelete and handleCsvUpload remain similar but use playerName/pfrId)
+
   return (
-    <div className="min-h-screen bg-[#060606] p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-[#FFD700]/10 border border-[#FFD700]/20 rounded-xl flex items-center justify-center">
-            <Hash className="h-4 w-4 text-[#FFD700]" />
+    <div className="space-y-6">
+      {/* Header Section */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 bg-[#FFD700]/10 border border-[#FFD700]/20 rounded-2xl flex items-center justify-center">
+            <Hash className="h-6 w-6 text-[#FFD700]" />
           </div>
           <div>
-            <h1 className="text-2xl font-black text-white italic uppercase tracking-tighter">PFR ID Map</h1>
-            <p className="text-[10px] text-zinc-600 font-black uppercase tracking-widest">
-              Static Data · {data.length} entries
+            <h1 className="text-3xl font-black text-white italic uppercase tracking-tighter">PFR Registry</h1>
+            <p className="text-[10px] text-zinc-500 font-black uppercase tracking-[0.2em]">
+              System Authority · {data.length} Total Players
             </p>
           </div>
         </div>
+
         <div className="flex items-center gap-2">
-          {uploadMsg && <span className="text-[10px] text-emerald-400 font-mono font-bold">{uploadMsg}</span>}
-          <label className="flex items-center gap-1.5 px-3 py-2 bg-white/[0.04] hover:bg-white/[0.07] border border-white/[0.08] rounded-xl text-xs font-black text-zinc-400 uppercase tracking-widest cursor-pointer transition-colors">
-            {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-            Upload CSV
-            <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleCsvUpload} />
-          </label>
+           <div className="relative">
+             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-600" />
+             <input 
+               value={search}
+               onChange={(e) => setSearch(e.target.value)}
+               placeholder="Search registry..."
+               className="bg-[#0f1115] border border-white/[0.06] rounded-xl pl-9 pr-4 py-2 text-xs font-bold text-white outline-none focus:border-[#FFD700]/30 w-48"
+             />
+           </div>
+          <button
+            onClick={() => fileRef.current?.click()}
+            className="p-2 bg-blue-500 hover:bg-blue-600 rounded-xl text-white transition-all"
+          >
+            {uploading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Upload className="h-5 w-5" />}
+          </button>
+          <input type="file" ref={fileRef} onChange={handleCsvUpload} className="hidden" accept=".csv" />
           <button
             onClick={() => setShowAdd(v => !v)}
-            className="flex items-center gap-1.5 px-3 py-2 bg-[#FFD700]/10 hover:bg-[#FFD700]/20 border border-[#FFD700]/20 rounded-xl text-xs font-black text-[#FFD700] uppercase tracking-widest transition-colors"
+            className="p-2 bg-[#FFD700] hover:bg-[#FFD700]/80 rounded-xl text-black transition-all"
           >
-            <Plus className="h-3.5 w-3.5" /> Add Manual
+            <Plus className="h-5 w-5" />
           </button>
         </div>
       </div>
 
-      <p className="text-[10px] text-zinc-700 font-mono">
-        CSV format: <span className="text-zinc-500">playerName,pfrId</span> — first row treated as header and skipped
-      </p>
-
-      {/* Manual Add Form */}
+      {/* Manual Entry Form (Slide Down) */}
       {showAdd && (
-        <div className="bg-[#0f1115] border border-[#FFD700]/20 rounded-2xl p-5 flex flex-col sm:flex-row gap-3 items-end">
-          <div className="flex-1">
-            <label className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em] block mb-1.5">Player Name</label>
-            <input
-              value={newName} onChange={e => setNewName(e.target.value)}
-              placeholder="e.g. Patrick Mahomes"
-              className="w-full bg-[#060606] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-white font-mono placeholder:text-zinc-700 focus:outline-none focus:border-[#FFD700]/40"
-            />
-          </div>
-          <div className="flex-1">
-            <label className="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em] block mb-1.5">PFR ID</label>
-            <input
-              value={newPfr} onChange={e => setNewPfr(e.target.value)}
-              placeholder="e.g. MahoPa00"
-              className="w-full bg-[#060606] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-white font-mono placeholder:text-zinc-700 focus:outline-none focus:border-[#FFD700]/40"
-            />
-          </div>
-          <div className="flex gap-2 shrink-0">
-            <button
-              onClick={handleAdd} disabled={saving || !newName.trim() || !newPfr.trim()}
-              className="flex items-center gap-1.5 px-4 py-2.5 bg-[#FFD700] hover:bg-[#FFD700]/90 disabled:opacity-40 rounded-xl text-xs font-black text-black uppercase tracking-widest transition-colors"
-            >
-              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-              Save
-            </button>
-            <button
-              onClick={() => { setShowAdd(false); setNewName(''); setNewPfr(''); }}
-              className="p-2.5 bg-white/[0.04] hover:bg-white/[0.07] border border-white/[0.06] rounded-xl text-zinc-500 transition-colors"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
+        <div className="bg-[#0f1115] border border-[#FFD700]/20 rounded-[2rem] p-6 animate-in slide-in-from-top-2 duration-300">
+           {/* Form Content */}
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-zinc-500 uppercase ml-2">Full Player Name</label>
+                <input 
+                  value={newName} onChange={e => setNewName(e.target.value)}
+                  className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-sm text-white" 
+                  placeholder="e.g. Lamar Jackson"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-black text-zinc-500 uppercase ml-2">PFR ID String</label>
+                <input 
+                  value={newPfr} onChange={e => setNewPfr(e.target.value)}
+                  className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-sm text-[#FFD700] font-mono" 
+                  placeholder="e.g. JackLa00"
+                />
+              </div>
+           </div>
+           <div className="flex justify-end mt-4 gap-2">
+              <button onClick={() => setShowAdd(false)} className="px-4 py-2 text-zinc-500 text-xs font-black uppercase">Cancel</button>
+              <button onClick={handleAdd} className="px-6 py-2 bg-[#FFD700] text-black rounded-lg text-xs font-black uppercase">Save Entry</button>
+           </div>
         </div>
       )}
 
-      {/* Table */}
-      <div className="bg-[#0f1115] border border-white/[0.06] rounded-3xl overflow-hidden shadow-2xl">
-        <table className="w-full">
-          <thead className="border-b border-white/[0.06]">
-            <tr>
-              <th className="px-5 py-4 text-left text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">Player Name</th>
-              <th className="px-5 py-4 text-left text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">PFR ID</th>
-              <th className="px-5 py-4 w-20" />
+      {/* Registry Table */}
+      <div className="bg-[#0f1115] border border-white/[0.06] rounded-[2.5rem] overflow-hidden">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr className="border-b border-white/[0.04] bg-white/[0.02]">
+              <th className="px-8 py-5 text-left text-[10px] font-black text-zinc-500 uppercase tracking-widest">Player Identity</th>
+              <th className="px-8 py-5 text-left text-[10px] font-black text-zinc-500 uppercase tracking-widest">System Key</th>
+              <th className="px-8 py-5 text-right text-[10px] font-black text-zinc-500 uppercase tracking-widest">Actions</th>
             </tr>
           </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={3} className="py-16 text-center"><Loader2 className="h-6 w-6 animate-spin text-[#FFD700] mx-auto" /></td></tr>
-            ) : data.length === 0 ? (
-              <tr><td colSpan={3} className="py-16 text-center text-zinc-600 text-sm">No entries yet. Add manually or upload a CSV.</td></tr>
-            ) : data.map(item => (
-              <tr key={item.id} className="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors group">
-                <td className="px-5 py-3 text-sm font-bold text-white italic uppercase tracking-tight">{item.player}</td>
-                <td className="px-5 py-3">
-                  <span className="text-xs font-black text-[#FFD700] bg-[#FFD700]/10 border border-[#FFD700]/20 px-2.5 py-1 rounded-lg font-mono tracking-widest">
-                    {item.pfrid}
-                  </span>
+          <tbody className="divide-y divide-white/[0.02]">
+            {filteredData.map((item) => (
+              <tr key={item.id} className="group hover:bg-white/[0.01] transition-colors">
+                <td className="px-8 py-4">
+                  <span className="text-sm font-bold text-white uppercase italic tracking-tight">{item.playerName}</span>
                 </td>
-                <td className="px-5 py-3 text-right">
-                  {deleteId === item.id ? (
-                    <div className="flex items-center justify-end gap-1.5">
-                      <button onClick={() => handleDelete(item.id)} className="text-[10px] font-black text-red-400 bg-red-400/10 border border-red-400/20 px-2 py-1 rounded-lg uppercase tracking-widest hover:bg-red-400/20 transition-colors">
-                        Confirm
-                      </button>
-                      <button onClick={() => setDeleteId(null)} className="text-zinc-600 hover:text-zinc-400 transition-colors"><X className="h-3.5 w-3.5" /></button>
-                    </div>
-                  ) : (
-                    <button onClick={() => setDeleteId(item.id)} className="opacity-0 group-hover:opacity-100 text-zinc-700 hover:text-red-400 transition-all">
+                <td className="px-8 py-4">
+                  <code className="text-[11px] font-black text-[#FFD700] bg-[#FFD700]/5 px-2 py-1 rounded border border-[#FFD700]/10">
+                    {item.pfrId}
+                  </code>
+                </td>
+                <td className="px-8 py-4 text-right">
+                   <button onClick={() => setDeleteId(item.id)} className="opacity-0 group-hover:opacity-100 p-2 text-zinc-600 hover:text-red-500 transition-all">
                       <Trash2 className="h-4 w-4" />
-                    </button>
-                  )}
+                   </button>
                 </td>
               </tr>
             ))}

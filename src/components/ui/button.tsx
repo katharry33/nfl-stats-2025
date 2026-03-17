@@ -11,12 +11,12 @@ function cn(...inputs: ClassValue[]) {
 
 // 1. Define the styles outside so they can be exported
 const variantStyles = {
-  default: 'bg-emerald-600 text-white hover:bg-emerald-500 shadow-lg shadow-emerald-900/20',
-  outline: 'border border-slate-800 bg-transparent hover:bg-slate-800 text-slate-300',
-  secondary: 'bg-slate-800 text-slate-100 hover:bg-slate-700 border border-slate-700',
-  ghost: 'hover:bg-slate-800 text-slate-400 hover:text-slate-100',
+  default: 'bg-teal-400 text-white hover:bg-teal-500 shadow-lg shadow-teal-900/20',
+  outline: 'border border-border bg-transparent hover:bg-muted text-foreground',
+  secondary: 'bg-muted text-foreground hover:bg-muted/80 border border-border',
+  ghost: 'text-muted-foreground hover:text-foreground hover:bg-muted',
   destructive: 'bg-rose-600 text-white hover:bg-rose-500 shadow-lg shadow-rose-900/20',
-  link: 'text-blue-500 underline-offset-4 hover:underline',
+  link: 'text-teal-400 underline-offset-4 hover:underline',
 };
 
 const sizeStyles = {

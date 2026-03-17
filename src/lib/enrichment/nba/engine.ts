@@ -1,9 +1,13 @@
+// src/lib/enrichment/nba/engine.ts
 import { BalldontlieAPI } from "@balldontlie/sdk";
 
-// 1. Initialize the API instance at the top level
-const api = new BalldontlieAPI({ 
-  apiKey: process.env.BDL_API_KEY || '' 
-});
+const apiKey = process.env.BDL_API_KEY;
+
+if (!apiKey) {
+  throw new Error("Missing BDL_API_KEY environment variable");
+}
+
+export const nbaApi = new BalldontlieAPI({ apiKey });
 
 const STAT_MAP: Record<string, string> = {
   'pts': 'pts',
