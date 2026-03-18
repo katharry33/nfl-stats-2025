@@ -10,7 +10,7 @@ import { useDebounce } from '@/hooks/use-debounce';
 import type { Bet } from '@/lib/types';
 import { Search, Loader2, RefreshCw, Target } from 'lucide-react';
 import { toast } from 'sonner';
-import { fetchScoringCriteria, type ScoringCriteria } from '@/lib/utils/sweetSpotScore';
+import { fetchScoringCriteria, ScoringCriteria } from '@/lib/utils/sweetSpotScore';
 import { PageLoader } from '@/components/ui/LoadingSpinner';
 
 export default function BettingLogPage() {
@@ -34,7 +34,9 @@ export default function BettingLogPage() {
   }, [debouncedSearch, user?.uid]);
 
   useEffect(() => {
-    fetchScoringCriteria().then(c => { if (c) setCriteria(c); });
+    fetchScoringCriteria().then(c => { 
+      if (c !== undefined) setCriteria(c as ScoringCriteria);
+    });
   }, []);
 
   const handleDelete = useCallback(async (ids: string[]) => {
@@ -99,7 +101,7 @@ export default function BettingLogPage() {
         </div>
 
         {/* ── Stats ── */}
-        <BettingStats bets={bets} />
+        <BettingStats />
 
         {/* ── Search ── */}
         <div className="relative max-w-sm">

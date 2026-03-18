@@ -169,3 +169,10 @@ export interface Bet {
     actualResult?: string;
   }[];
 }
+
+export interface Wallet {
+  bankroll: number;
+  bonusBalance: number;
+  lastUpdated?: string;
+  uid: string;
+}

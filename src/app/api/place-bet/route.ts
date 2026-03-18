@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { adminDb, adminAuth } from '@/lib/firebase/admin';
+import { adminDb, admin } from '@/lib/firebase/admin';
 
 export async function POST(req: Request) {
   try {
@@ -22,8 +22,8 @@ export async function POST(req: Request) {
 
       // 2. Update Wallet
       transaction.update(walletRef, {
-        bankroll: adminDb.FieldValue.increment(-cashDeduction),
-        bonusBalance: adminDb.FieldValue.increment(-bonusDeduction),
+        bankroll: admin.firestore.FieldValue.increment(-cashDeduction),
+        bonusBalance: admin.firestore.FieldValue.increment(-bonusDeduction),
         lastUpdated: new Date().toISOString()
       });
 

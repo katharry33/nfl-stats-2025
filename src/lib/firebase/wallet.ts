@@ -1,4 +1,4 @@
-import { adminDb } from "../admin";
+import { adminDb } from './admin';
 import type { Wallet } from "@/lib/types";
 
 const WALLET_COLLECTION = "wallets"; // Use plural to match your other routes

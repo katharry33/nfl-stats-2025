@@ -1,57 +1,65 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { toast } from 'sonner';
+import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { db } from '@/lib/firebase/client';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { useAuth } from '@/context/AuthContext'; // Using your existing auth
 
 interface WalletState {
   bankroll: number;
   bonusBalance: number;
   loading: boolean;
+  error: string | null;
 }
 
 const WalletContext = createContext<WalletState | undefined>(undefined);
 
-export function WalletProvider({ children }: { children: ReactNode }) {
-  const [bankroll, setBankroll] = useState(0);
-  const [bonusBalance, setBonusBalance] = useState(0);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchWalletData = async () => {
-      try {
-        setLoading(true);
-        const response = await fetch('/api/wallet');
-        if (!response.ok) {
-          throw new Error('Failed to fetch wallet data');
-        }
-        const data = await response.json();
-        setBankroll(data.bankroll || 0);
-        setBonusBalance(data.bonusBalance || 0);
-      } catch (error) {
-        toast.error('Could not load wallet.', { 
-          description: error instanceof Error ? error.message : 'Please try again later.\' 
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchWalletData();
-  }, []);
-
-  const value = { bankroll, bonusBalance, loading };
-
-  return (
-    <WalletContext.Provider value={value}>
-      {children}
-    </WalletContext.Provider>
-  );
-}
-
-export function useWallet() {
+export const useWallet = () => {
   const context = useContext(WalletContext);
   if (context === undefined) {
     throw new Error('useWallet must be used within a WalletProvider');
   }
   return context;
-}
+};
+
+export const WalletProvider = ({ children }: { children: ReactNode }) => {
+  const { user } = useAuth();
+  const [data, setData] = useState({ bankroll: 0, bonusBalance: 0 });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user?.uid) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    // Real-time subscription to the user's wallet doc
+    const unsub = onSnapshot(
+      doc(db, 'wallets', user.uid),
+      (snap) => {
+        if (snap.exists()) {
+          const d = snap.data();
+          setData({
+            bankroll: d.balance || 0,
+            bonusBalance: d.bonusBalance || 0
+          });
+        }
+        setLoading(false);
+      },
+      (err) => {
+        setError(err.message);
+        setLoading(false);
+      }
+    );
+
+    return () => unsub();
+  }, [user?.uid]);
+
+  return (
+    <WalletContext.Provider value={{ ...data, loading, error }}>
+      {children}
+    </WalletContext.Provider>
+  );
+};

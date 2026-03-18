@@ -1,159 +1,113 @@
-'use client';
+"use client";
 
-import React from 'react';
-import Link from 'next/link';
-import {
-  Wallet as WalletIcon, ArrowRight, Trophy,
-  Hammer, Layers, Zap, Calendar, Fingerprint, Map,
-} from 'lucide-react';
-import { useBankroll } from '@/hooks/use-bankroll';
-import { usePerformance } from '@/hooks/use-performance';
-import { PnLTrendChart } from '@/components/dashboard/PnLTrendChart';
-import { PageLoader } from '@/components/ui/LoadingSpinner';
+import { usePerformance } from "@/hooks/use-performance";
+import { useAuth } from "@/lib/firebase/provider";
+import { PageLoader } from "@/components/ui/LoadingSpinner";
+import { PnLTrendChart } from "@/components/dashboard/PnLTrendChart";
+import { WalletCard } from "@/components/dashboard/WalletCard"; // We'll create this below
+import { KpiCard } from "@/components/ui/kpi-card";
+import { 
+  TrendingUp, 
+  Target, 
+  Zap, 
+  History, 
+  ArrowUpRight, 
+  Wallet, 
+  LayoutDashboard 
+} from "lucide-react";
 
-const FIELD = 'text-[10px] uppercase font-black text-muted-foreground/60 tracking-[0.2em]';
+import Link from "next/link";
 
 export default function DashboardPage() {
-  const { total: bankroll, loading: walletLoading } = useBankroll();
-  const { stats, loading: perfLoading } = usePerformance();
+  const { stats, loading } = usePerformance();
+  const { user, loading: authLoading } = useAuth();
 
-  if (walletLoading || perfLoading) return <PageLoader />;
+  if (loading || authLoading) return <PageLoader />;
 
   return (
-    <div className="min-h-screen bg-background text-foreground p-6 pb-20">
-      <div className="max-w-7xl mx-auto space-y-8">
-
-        {/* ── HEADER ── */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-black italic uppercase tracking-tighter">Command Center</h1>
-            <p className="text-muted-foreground text-[10px] font-black uppercase tracking-[0.3em]">
-              Operational Overview • 2026 Season
-            </p>
-          </div>
-          <div className="px-4 py-2 bg-card border border-border rounded-xl flex flex-col items-end">
-            <span className="text-[8px] font-black text-muted-foreground/60 uppercase">Live Bankroll</span>
-            <span className="text-sm font-black font-mono text-profit">
-              ${bankroll?.toLocaleString()}
-            </span>
-          </div>
+    <main className="min-h-screen bg-[#0a0c0f] text-white p-6 md:p-10 space-y-8">
+      {/* --- HEADER & WALLET --- */}
+      <div className="flex flex-col md:flex-row justify-between items-end gap-6 border-b border-white/5 pb-10">
+        <div>
+          <h1 className="text-4xl font-black uppercase italic tracking-tighter text-white">
+            Command <span className="text-cyan-400">Center</span>
+          </h1>
+          <p className="text-zinc-500 font-medium tracking-wide">
+            Welcome back, {user?.displayName?.split(' ')[0] || 'Operator'}.
+          </p>
         </div>
+        
+        {/* Integrated Wallet Component */}
+        <WalletCard balance={stats.totalProfit} />
+      </div>
 
-        {/* ── TIER 1: FINANCIAL & PERFORMANCE PULSE ── */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-          {/* Bankroll Portal */}
-          <div className="lg:col-span-2 bg-card border border-border rounded-[2.5rem] p-8 relative overflow-hidden group">
-            <div className="relative z-10">
-              <div className="flex justify-between items-start mb-6">
-                <div>
-                  <p className={FIELD}>Available Bankroll</p>
-                  <h2 className="text-4xl font-black font-mono text-foreground">
-                    ${bankroll.toFixed(2)}
-                  </h2>
-                </div>
-                <Link
-                  href="/wallet"
-                  className="px-4 py-2 bg-foreground/5 hover:bg-foreground/10 border border-border rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2"
-                >
-                  Manage Funds <ArrowRight className="h-3 w-3" />
-                </Link>
+      {/* --- HERO SECTION: PERFORMANCE TREND --- */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2">
+           <PnLTrendChart data={stats.chartData} />
+        </div>
+        
+        {/* Quick Stats Sidebar */}
+        <div className="grid grid-cols-1 gap-4">
+          <StatMiniCard 
+            label="Win Rate" 
+            value={`${stats.winRate.toFixed(1)}%`} 
+            icon={Target}
+            color="text-cyan-400"
+          />
+          <StatMiniCard 
+            label="ROI" 
+            value={`${stats.roi.toFixed(1)}%`} 
+            icon={TrendingUp}
+            color="text-emerald-400"
+          />
+          <Link href="/betting-log" className="group bg-white/5 border border-white/10 rounded-3xl p-6 hover:bg-white/10 transition-all flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-zinc-800 rounded-2xl group-hover:scale-110 transition-transform">
+                <History className="h-6 w-6 text-zinc-400" />
+              </div>
+              <div>
+                <p className="text-xs font-black uppercase text-zinc-500">View History</p>
+                <p className="text-xl font-bold">{stats.totalBets} Total Bets</p>
               </div>
             </div>
-            {/* Ambient glow */}
-            <div className="absolute -bottom-24 -right-24 w-64 h-64 bg-primary/5 rounded-full blur-[100px]" />
-          </div>
-
-          {/* Efficiency KPI */}
-          <div className="bg-card border border-border rounded-[2.5rem] p-8 flex flex-col justify-between">
-            <div className="space-y-1">
-              <Trophy className="h-6 w-6 text-primary mb-4" />
-              <p className={FIELD}>Strike Rate</p>
-              <p className="text-5xl font-black font-mono tracking-tighter">
-                {stats.winRate.toFixed(1)}%
-              </p>
-            </div>
-            <div className="space-y-2">
-              <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                <span>Accuracy</span>
-                <span>{stats.winCount} / {stats.settledCount} Wins</span>
-              </div>
-              <div className="w-full h-2 bg-foreground/5 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-profit transition-all duration-1000"
-                  style={{ width: `${stats.winRate}%` }}
-                />
-              </div>
-            </div>
-          </div>
+            <ArrowUpRight className="h-5 w-5 text-zinc-600 group-hover:text-white transition-colors" />
+          </Link>
         </div>
+      </div>
 
-        {/* ── TIER 2: TOOLKIT PORTALS ── */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <ActionCard href="/bet-builder"   title="Bet Builder"       desc="Model single leg outcomes"     icon={Hammer} color="bg-blue-500"    />
-          <ActionCard href="/parlay-studio" title="Parlay Studio"     desc="Correlate props & markets"     icon={Layers} color="bg-primary"     />
-          <ActionCard href="/sweet-spots"   title="Sweet Spot Engine" desc="Market inefficiency scanner"   icon={Zap}    color="bg-purple-500"  />
-        </div>
+      {/* --- ACTION TILES --- */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+         {/* These link to your other pages */}
+         <ActionTile title="Build Slip" href="/bet-builder" icon={Zap} desc="Find high-edge props" />
+         <ActionTile title="Weekly Slate" href="/insights" icon={History} desc="Model-driven insights" />
+         <ActionTile title="The Lab" href="/my-performance" icon={TrendingUp} desc="Deep analytics" />
+         <ActionTile title="Sweet Spots" href="/sweet-spots" icon={Target} desc="DNA thresholds" />
+      </div>
+    </main>
+  );
+}
 
-        {/* ── TIER 3: MOMENTUM & DATA ── */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <PnLTrendChart data={stats.chartData} />
-
-          <div className="space-y-4">
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-muted-foreground/60 ml-4">
-              Data Management
-            </p>
-            <div className="grid grid-cols-2 gap-4">
-              <AdminButton href="/schedule"      label="Schedule" icon={Calendar}    />
-              <AdminButton href="/pfr-ids"       label="PFR IDs"  icon={Fingerprint} />
-              <AdminButton href="/player-teams"  label="Team Map" icon={Map}         />
-              <AdminButton href="/bonuses"       label="Promos"   icon={Trophy} highlight />
-            </div>
-          </div>
-        </div>
-
+function StatMiniCard({ label, value, icon: Icon, color }: any) {
+  return (
+    <div className="bg-[#111418] border border-white/5 rounded-3xl p-6 flex items-center gap-4">
+      <div className={`p-3 bg-zinc-900 rounded-2xl ${color}`}>
+        <Icon className="h-6 w-6" />
+      </div>
+      <div>
+        <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">{label}</p>
+        <p className="text-2xl font-black italic tracking-tighter">{value}</p>
       </div>
     </div>
   );
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
-
-function ActionCard({ href, title, desc, icon: Icon, color }: {
-  href: string; title: string; desc: string;
-  icon: React.ElementType; color: string;
-}) {
+function ActionTile({ title, href, icon: Icon, desc }: any) {
   return (
-    <Link
-      href={href}
-      className="group bg-card border border-border rounded-[2rem] p-6 hover:border-primary/20 transition-all relative overflow-hidden"
-    >
-      <div className={`w-12 h-12 rounded-2xl ${color} flex items-center justify-center mb-4 transition-transform group-hover:scale-110 duration-500`}>
-        <Icon className="h-6 w-6 text-foreground" />
-      </div>
-      <h3 className="text-sm font-black uppercase italic tracking-tight">{title}</h3>
-      <p className="text-[10px] text-muted-foreground font-bold uppercase mt-1">{desc}</p>
-      <ArrowRight className="absolute bottom-6 right-6 h-4 w-4 text-muted-foreground/30 group-hover:text-foreground group-hover:translate-x-1 transition-all" />
-    </Link>
-  );
-}
-
-function AdminButton({ href, label, icon: Icon, highlight = false }: {
-  href: string; label: string; icon: React.ElementType; highlight?: boolean;
-}) {
-  return (
-    <Link
-      href={href}
-      className={`
-        flex items-center gap-3 px-5 py-5 rounded-2xl border transition-all group
-        ${highlight
-          ? 'bg-primary/5 border-primary/10 text-primary hover:bg-primary/10'
-          : 'bg-foreground/[0.02] border-border text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05]'
-        }
-      `}
-    >
-      <Icon className={`h-4 w-4 ${highlight ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground/60'}`} />
-      <span className="text-[10px] font-black uppercase tracking-widest">{label}</span>
+    <Link href={href} className="bg-zinc-900/50 border border-white/5 p-6 rounded-[2rem] hover:border-cyan-500/50 hover:bg-cyan-500/5 transition-all group">
+      <Icon className="h-6 w-6 mb-4 text-zinc-500 group-hover:text-cyan-400 transition-colors" />
+      <h3 className="font-bold text-lg mb-1">{title}</h3>
+      <p className="text-xs text-zinc-500 font-medium">{desc}</p>
     </Link>
   );
 }

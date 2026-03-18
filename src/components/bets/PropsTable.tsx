@@ -136,33 +136,51 @@ function getScoreDiff(p: any): number | null {
 }
 
 // ─── Color helpers ────────────────────────────────────────────────────────────
+const CYAN = '#22d3ee';
+const INDIGO = '#818cf8';
+const SLATE = '#475569';
+const RED = '#ef4444';
+
+function getHitColorClass(rate: number | null) {
+  if (rate === null || typeof rate === 'undefined' || isNaN(rate)) return 'text-slate-400';
+  const r = rate <= 1.5 ? rate * 100 : rate;
+  if (r >= 65) return `text-[${CYAN}]`;
+  if (r >= 55) return `text-[${INDIGO}]`;
+  if (r >= 45) return `text-[${SLATE}]`;
+  return `text-[${RED}]`;
+}
+
 function scoreDiffCls(d: number | null) {
-  if (d == null) return 'text-zinc-600';
-  return d > 3 ? 'text-emerald-400' : d > 0 ? 'text-[#FFD700]' : 'text-red-400';
+  if (d == null) return 'text-slate-400';
+  if (d > 3) return `text-[${CYAN}]`;
+  if (d > 0) return `text-[${INDIGO}]`;
+  return `text-[${RED}]`;
 }
 function oppRankCls(r: number | null) {
-  if (r == null) return 'text-zinc-600';
-  return r <= 8 ? 'text-emerald-400' : r <= 16 ? 'text-[#FFD700]' : 'text-red-400';
+  if (r == null) return 'text-slate-400';
+  // Lower rank is better (weaker opponent)
+  if (r <= 8) return `text-[${CYAN}]`;
+  if (r <= 16) return `text-[${INDIGO}]`;
+  return `text-[${RED}]`;
 }
 function confCls(v: number | null) {
-  if (v == null) return 'text-zinc-500';
-  const pct = v <= 1.5 ? v * 100 : v;
-  return pct >= 65 ? 'text-emerald-400' : pct >= 50 ? 'text-[#FFD700]' : 'text-red-400';
+  return getHitColorClass(v);
 }
 function hitPctCls(v: number | null) {
-  if (v == null) return 'text-zinc-600';
-  const pct = v <= 1.5 ? v * 100 : v;
-  return pct >= 60 ? 'text-emerald-400' : 'text-[#FFD700]';
+  return getHitColorClass(v);
 }
 function evCls(v: number | null) {
-  if (v == null) return 'text-zinc-600';
-  return v > 0 ? 'text-emerald-400' : 'text-red-400';
+  if (v == null) return 'text-slate-400';
+  return v > 0 ? `text-[${CYAN}]` : `text-[${RED}]`;
 }
 function kellyClss(v: number | null) {
-  if (v == null) return 'text-zinc-600';
+  if (v == null) return 'text-slate-400';
   const pct = v <= 1 ? v * 100 : v;
-  return pct >= 5 ? 'text-[#FFD700]' : 'text-zinc-500';
+  if (pct >= 10) return `text-[${CYAN}]`;
+  if (pct >= 5) return `text-[${INDIGO}]`;
+  return 'text-slate-400';
 }
+
 
 // ─── Sort value extractor ─────────────────────────────────────────────────────
 function getSortVal(p: NormalizedProp, key: SortKey): number | string {
@@ -206,8 +224,8 @@ function SortTh({
         {label}
         {active
           ? sortDir === 'desc'
-            ? <ChevronDown className="h-3 w-3 text-[#FFD700]" />
-            : <ChevronUp   className="h-3 w-3 text-[#FFD700]" />
+            ? <ChevronDown className="h-3 w-3 text-[#22d3ee]" />
+            : <ChevronUp   className="h-3 w-3 text-[#22d3ee]" />
           : <ChevronsUpDown className="h-3 w-3 opacity-0 group-hover:opacity-30 transition-opacity" />}
       </div>
     </th>
@@ -255,7 +273,7 @@ function ColumnPicker({
         onClick={() => setOpen(v => !v)}
         className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[9px] font-black uppercase transition-all ${
           open
-            ? 'bg-[#FFD700]/10 border-[#FFD700]/30 text-[#FFD700]'
+            ? 'bg-[#22d3ee]/10 border-[#22d3ee]/30 text-[#22d3ee]'
             : 'border-white/8 text-zinc-600 hover:text-white'
         }`}
       >
@@ -312,7 +330,7 @@ function ColumnPicker({
                       onClick={() => onToggle(c.id)}
                       className="w-full flex items-center gap-2 px-2 py-1.5 rounded-xl hover:bg-white/4 transition-colors group"
                     >
-                      <Plus className="h-3 w-3 text-zinc-700 group-hover:text-[#FFD700]" />
+                      <Plus className="h-3 w-3 text-zinc-700 group-hover:text-[#22d3ee]" />
                       <span className="text-xs font-bold text-zinc-600 group-hover:text-zinc-300">
                         {c.label}
                       </span>
@@ -369,7 +387,7 @@ function PropDetail({ prop }: { prop: NormalizedProp }) {
   ];
 
   return (
-    <div className="p-4 bg-[#0a0c0f] border-t border-[#FFD700]/10 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+    <div className="p-4 bg-[#0a0c0f] border-t border-[#22d3ee]/10 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
       {fields.map(([label, val]) => (
         <div key={label} className="bg-black/30 rounded-xl px-3 py-2">
           <p className="text-[8px] font-black uppercase text-zinc-700 tracking-widest mb-0.5">{label}</p>
@@ -524,7 +542,7 @@ export function PropsTable({
               value={search}
               onChange={e => { setSearch(e.target.value); setPage(0); }}
               placeholder="Player or team…"
-              className="pl-7 pr-7 py-1.5 w-40 bg-black/40 border border-white/8 text-white text-xs font-mono rounded-xl outline-none focus:ring-1 focus:ring-[#FFD700]/30 placeholder:text-zinc-700"
+              className="pl-7 pr-7 py-1.5 w-40 bg-black/40 border border-white/8 text-white text-xs font-mono rounded-xl outline-none focus:ring-1 focus:ring-[#22d3ee]/30 placeholder:text-zinc-700"
             />
             {search && (
               <button
@@ -539,7 +557,7 @@ export function PropsTable({
           <select
             value={fMatchup}
             onChange={e => { setFMatchup(e.target.value); setPage(0); }}
-            className="py-1.5 px-2.5 bg-black/40 border border-white/8 text-zinc-300 text-xs font-mono rounded-xl outline-none focus:ring-1 focus:ring-[#FFD700]/30"
+            className="py-1.5 px-2.5 bg-black/40 border border-white/8 text-zinc-300 text-xs font-mono rounded-xl outline-none focus:ring-1 focus:ring-[#22d3ee]/30"
           >
             <option value="">All Matchups</option>
             {matchupOptions.map(m => <option key={m} value={m}>{m}</option>)}
@@ -548,7 +566,7 @@ export function PropsTable({
           <select
             value={fProp}
             onChange={e => { setFProp(e.target.value); setPage(0); }}
-            className="py-1.5 px-2.5 bg-black/40 border border-white/8 text-zinc-300 text-xs font-mono rounded-xl outline-none focus:ring-1 focus:ring-[#FFD700]/30"
+            className="py-1.5 px-2.5 bg-black/40 border border-white/8 text-zinc-300 text-xs font-mono rounded-xl outline-none focus:ring-1 focus:ring-[#22d3ee]/30"
           >
             <option value="">All Props</option>
             {propOptions.map(p => <option key={p} value={p}>{p}</option>)}
@@ -561,7 +579,7 @@ export function PropsTable({
                 onClick={() => { setFOU(v); setPage(0); }}
                 className={`px-2.5 py-1.5 text-[9px] font-black uppercase transition-colors ${
                   fOU === v
-                    ? 'bg-[#FFD700]/20 text-[#FFD700]'
+                    ? 'bg-[#22d3ee]/20 text-[#22d3ee]'
                     : 'bg-black/40 text-zinc-600 hover:text-zinc-400'
                 }`}
               >
@@ -613,7 +631,7 @@ export function PropsTable({
                     type="checkbox"
                     checked={paginated.length > 0 && selected.size === paginated.length}
                     onChange={toggleAll}
-                    className="w-3.5 h-3.5 rounded border-zinc-700 bg-black/40 accent-[#FFD700]"
+                    className="w-3.5 h-3.5 rounded border-zinc-700 bg-black/40 accent-[#22d3ee]"
                   />
                 </th>
 
@@ -670,9 +688,9 @@ export function PropsTable({
                     <tr
                       onClick={() => setExpandedId(isExpanded ? null : id)}
                       className={`border-t border-white/[0.04] cursor-pointer transition-colors
-                        ${isSelected  ? 'bg-[#FFD700]/[0.03]' : idx % 2 === 0 ? 'bg-black/10' : ''}
-                        ${isExpanded  ? 'bg-[#FFD700]/[0.02]' : 'hover:bg-white/[0.02]'}
-                        ${sweetSpotResult?.tier === 'bullseye' ? 'shadow-[inset_2px_0_0_0_#FFD700]' : ''}
+                        ${isSelected  ? 'bg-[#22d3ee]/[0.03]' : idx % 2 === 0 ? 'bg-black/10' : ''}
+                        ${isExpanded  ? 'bg-[#22d3ee]/[0.02]' : 'hover:bg-white/[0.02]'}
+                        ${sweetSpotResult?.tier === 'bullseye' ? 'shadow-[inset_2px_0_0_0_#22d3ee]' : ''}
                         ${sweetSpotResult?.tier === 'hot'      ? 'shadow-[inset_2px_0_0_0_#f97316]' : ''}`}>
 
                       {/* Checkbox */}
@@ -680,7 +698,7 @@ export function PropsTable({
                         <input
                           type="checkbox" checked={isSelected}
                           onChange={() => toggleSelect(id)}
-                          className="w-3.5 h-3.5 rounded border-zinc-700 bg-black/40 accent-[#FFD700]"
+                          className="w-3.5 h-3.5 rounded border-zinc-700 bg-black/40 accent-[#22d3ee]"
                         />
                       </td>
 
@@ -818,9 +836,7 @@ export function PropsTable({
                             <td key={colId} className="px-3 py-3 text-center">
                               {prop.bestEdgePct != null && Number(prop.bestEdgePct) !== 0 ? (
                                 <>
-                                  <p className={`text-[10px] font-bold leading-none ${
-                                    Number(prop.bestEdgePct) > 0 ? 'text-emerald-400' : 'text-red-400'
-                                  }`}>
+                                  <p className={`text-[10px] font-bold leading-none ${evCls(Number(prop.bestEdgePct))}`}>
                                     {Number(prop.bestEdgePct) > 0 ? '+' : ''}{fmtPct(prop.bestEdgePct, 1)}
                                   </p>
                                   {prop.expectedValue != null && Number(prop.expectedValue) !== 0 && (
@@ -828,7 +844,7 @@ export function PropsTable({
                                       EV {Number(prop.expectedValue) > 0 ? '+' : ''}{fmtNum(prop.expectedValue, 3)}
                                     </p>
                                   )}
-                                </>
+                                </> 
                               ) : (
                                 <span className="text-zinc-700 text-xs">—</span>
                               )}
@@ -910,8 +926,8 @@ export function PropsTable({
                             disabled={inSlip}
                             className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[9px] font-black uppercase transition-all whitespace-nowrap ${
                               inSlip
-                                ? 'bg-[#FFD700]/20 border border-[#FFD700]/30 text-[#FFD700]/60 cursor-not-allowed'
-                                : 'bg-[#FFD700] text-black hover:bg-[#e6c200]'
+                                ? 'bg-[#22d3ee]/20 border border-[#22d3ee]/30 text-[#22d3ee]/60 cursor-not-allowed'
+                                : 'bg-[#22d3ee] text-black hover:bg-[#20c2d8]'
                             }`}
                           >
                             {inSlip ? '✓' : <Plus className="h-3 w-3" />}

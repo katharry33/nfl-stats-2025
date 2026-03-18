@@ -18,3 +18,6 @@ export function getAdminApp() {
 
 export const adminDb = getAdminApp().firestore();
 export const adminAuth = getAdminApp().auth();
+
+export { admin };
+export const db = adminDb;

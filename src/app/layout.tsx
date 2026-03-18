@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/lib/firebase/provider";
 import { BetSlipProvider } from "@/context/betslip-context";
-import { WalletProvider } from "@/context/wallet-context";
+import { WalletProvider } from "@/context/WalletContext";
 import { AppLayout } from "@/components/layout/app-layout";
 
 export const metadata: Metadata = {
@@ -23,9 +23,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    // NOTE: removed className="dark" — app now uses light theme by default.
-    // Add it back (or toggle it dynamically) only if you add a dark mode switch.
-    <html lang="en" suppressHydrationWarning>
+    // Add "dark" back to the className here
+    <html lang="en" className="dark" suppressHydrationWarning>
       <body className="bg-background text-foreground antialiased selection:bg-primary/20">
         <AuthProvider>
           <WalletProvider>

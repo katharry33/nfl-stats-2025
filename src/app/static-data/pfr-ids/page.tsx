@@ -94,8 +94,8 @@ export default function PfrIdsPage() {
   const INPUT = 'w-full bg-background border border-border rounded-lg px-3 py-2.5 text-sm text-foreground font-mono placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary/30';
 
   return (
-    <div className="min-h-screen bg-background p-6 space-y-6">
-
+<div className="p-10 space-y-8"> 
+{/* p-10 (2.5rem) aligns beautifully with the sidebar's top padding */}
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">

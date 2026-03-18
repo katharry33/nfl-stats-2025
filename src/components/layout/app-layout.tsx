@@ -4,8 +4,9 @@ import { MobileNavProvider } from '@/context/MobileNavContext';
 import { SidebarNav } from '@/components/nav/SidebarNav';
 import { MobileBottomNav } from '@/components/nav/MobileBottomNav';
 import { MobileDrawer } from '@/components/nav/MobileDrawer';
-import { MobileBetSlipTrigger } from '@/components/nav/MobileBetSlipTrigger'; // 1. Import the trigger
+import { MobileBetSlipTrigger } from '@/components/nav/MobileBetSlipTrigger';
 import { NavigationProgress } from '@/components/ui/NavigationProgress';
+import { Header } from '@/components/layout/Header';
 import { Toaster } from 'sonner';
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
@@ -13,27 +14,31 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     <MobileNavProvider>
       <NavigationProgress />
 
-      {/* Desktop Navigation */}
-      <SidebarNav />
+      {/* Main Container: Prevents body scroll, allows internal scroll */}
+      <div className="flex h-screen overflow-hidden bg-[#07080a]">
+        
+        {/* Desktop Sidebar: Fixed width */}
+        <aside className="hidden md:flex w-64 flex-shrink-0 border-r border-white/5 h-full">
+          <SidebarNav />
+        </aside>
 
-      {/* Main Content Logic:
-        - md:ml-56: Desktop sidebar offset
-        - pb-40: Mobile bottom safety (BottomNav + Floating Bet Slip + Padding)
-        - md:pb-0: Reset padding for desktop
-      */}
-      <main className="md:ml-56 min-h-screen pb-40 md:pb-0 relative">
-        <Toaster position="top-right" richColors closeButton />
-        {children}
-      </main>
+        {/* Main Content: This is the only scrollable area */}
+        <main className="flex-1 overflow-y-auto relative pb-40 md:pb-0 scroll-smooth">
+          <Toaster position="top-right" richColors closeButton />
+          
+          {/* Sticky Header: z-40 ensures it stays above table content */}
+          <Header />
 
-      {/* Mobile Layers:
-        Note: The Trigger is placed here so it can sit 
-        visually above the BottomNav in the stacking context.
-      */}
+          <div className="w-full max-w-[1600px] mx-auto">
+            {children}
+          </div>
+        </main>
+      </div>
+
+      {/* Mobile Nav Elements */}
       <MobileBetSlipTrigger /> 
       <MobileBottomNav />
       <MobileDrawer />
-
     </MobileNavProvider>
   );
 }

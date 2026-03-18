@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react';
 import { Bet } from '@/lib/types';
-import { useWallet } from '@/context/wallet-context';
+import { useWallet } from '@/context/WalletContext';
 import { calculateRecommendation } from '@/lib/math/kelly';
 
 export interface BetSlipContextType {

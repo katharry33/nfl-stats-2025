@@ -55,7 +55,7 @@ export default function AllPropsPage() {
       gameDate:  prop.gameDate  ?? new Date().toISOString(),
     });
     toast.success(`${prop.player} added to slip`, {
-      style: { background: '#0f1115', border: '1px solid rgba(255,215,0,0.2)', color: '#FFD700' },
+      style: { background: '#0f1115', border: '1px solid rgba(34,211,238,0.2)', color: '#22d3ee' },
     });
   }, [addLeg, slipIds]);
 
@@ -79,7 +79,7 @@ export default function AllPropsPage() {
             <input
               type="number" min={1} max={22} placeholder="Week #" value={weekFilter}
               onChange={e => setWeekFilter(e.target.value)}
-              className="w-20 py-2 px-3 bg-black/40 border border-border text-foreground text-xs font-mono rounded-xl outline-none focus:ring-1 focus:ring-[#FFD700]/30"
+              className="w-20 py-2 px-3 bg-card border border-border text-foreground text-xs font-mono rounded-xl outline-none focus:ring-1 focus:ring-primary/30"
             />
 
             {/* Season toggle */}
@@ -87,7 +87,7 @@ export default function AllPropsPage() {
               {SEASON_OPTIONS.map(s => (
                 <button key={s.value} onClick={() => setSeasonFilter(s.value)}
                   className={`px-2.5 py-2 text-[9px] font-black uppercase whitespace-nowrap transition-colors ${
-                    seasonFilter === s.value ? 'bg-[#FFD700]/20 text-[#FFD700]' : 'bg-black/40 text-muted-foreground hover:text-zinc-400'
+                    seasonFilter === s.value ? 'bg-primary/20 text-primary' : 'bg-card text-muted-foreground hover:text-foreground'
                   }`}>
                   {s.label}
                 </button>
@@ -116,7 +116,7 @@ export default function AllPropsPage() {
             {/* Go to slip */}
             {(selections ?? []).length > 0 && isInitialized && (
               <a href="/parlay-studio"
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-[#FFD700] text-black text-xs font-black uppercase hover:bg-[#e6c200] transition-colors">
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-black uppercase hover:bg-primary/90 transition-colors">
                 Slip ({selections.length}) →
               </a>
             )}
@@ -137,7 +137,7 @@ export default function AllPropsPage() {
             <button
               onClick={loadMore}
               disabled={loading}
-              className="px-6 py-2 bg-zinc-800 hover:bg-zinc-700 text-foreground rounded-xl border border-white/10 transition-all disabled:opacity-50"
+              className="px-6 py-2 bg-card hover:bg-border text-foreground rounded-xl border border-border transition-all disabled:opacity-50"
             >
               {loading ? 'Loading More...' : 'Load More'}
             </button>

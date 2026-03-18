@@ -26,13 +26,14 @@ interface WeekStat       { week: number; hitRate: number; total: number; won: nu
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const GOLD = '#FFD700';
+const CYAN = '#22d3ee'; // Cyan-400
+const SLATE = '#94a3b8';
 
 function hitColor(rate: number) {
-  if (rate >= 65) return '#10b981';
-  if (rate >= 55) return GOLD;
-  if (rate >= 45) return '#f97316';
-  return '#ef4444';
+  if (rate >= 65) return '#22d3ee'; // Top hits are now Cyan
+  if (rate >= 55) return '#818cf8'; // Mid-high is a muted Indigo/Violet
+  if (rate >= 45) return '#475569'; // Average is Slate
+  return '#ef4444';                // Low/Loss is still Red but muted
 }
 
 function StatBar({ value, max = 100, color }: { value: number; max?: number; color: string }) {
@@ -62,7 +63,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
     <div className="bg-[#0a0c0f] border border-white/10 rounded-xl px-3 py-2 shadow-2xl">
       <p className="text-[9px] font-black uppercase text-muted-foreground mb-1">{label}</p>
       {payload.map((p: any, i: number) => (
-        <p key={i} className="text-xs font-mono font-bold" style={{ color: p.color ?? GOLD }}>
+        <p key={i} className="text-xs font-mono font-bold" style={{ color: p.color ?? CYAN }}>
           {typeof p.value === 'number' ? `${p.value.toFixed(1)}%` : p.value}
         </p>
       ))}
@@ -112,7 +113,7 @@ export default function MarketInsightsPage() {
   if (loading) return (
     <div className="min-h-screen bg-background flex items-center justify-center">
       <div className="flex flex-col items-center gap-3">
-        <div className="h-8 w-8 rounded-full border-2 border-[#FFD700]/30 border-t-[#FFD700] animate-spin" />
+        <div className="h-8 w-8 rounded-full border-2 border-[#22d3ee]/30 border-t-[#22d3ee] animate-spin" />
         <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Analyzing patterns…</p>
       </div>
     </div>
@@ -142,8 +143,10 @@ export default function MarketInsightsPage() {
             <div className="flex rounded-xl overflow-hidden border border-border">
               {(['all', '2024', '2025'] as const).map(s => (
                 <button key={s} onClick={() => setSeason(s)}
-                  className={`px-3 py-1.5 text-[9px] font-black uppercase transition-colors ${
-                    season === s ? 'bg-[#FFD700]/20 text-[#FFD700]' : 'bg-black/40 text-muted-foreground hover:text-zinc-400'
+                  className={`px-3 py-1.5 text-[9px] font-black uppercase transition-colors rounded-lg border ${
+                    season === s 
+                      ? 'bg-cyan-500/10 border-cyan-500/20 text-cyan-400' 
+                      : 'bg-black/40 border-white/5 text-slate-500 hover:text-zinc-400'
                   }`}>
                   {s === 'all' ? 'All' : s === '2024' ? '2024–25' : '2025–26'}
                 </button>
@@ -157,11 +160,11 @@ export default function MarketInsightsPage() {
           {[
             { label: 'Overall Hit Rate', value: `${meta.overallHitRate.toFixed(1)}%`, sub: `${meta.scoredProps.toLocaleString()} scored`, icon: Target, color: hitColor(meta.overallHitRate) },
             { label: 'Props Tracked', value: meta.totalProps.toLocaleString(), sub: 'across all weeks', icon: BarChart2, color: '#60a5fa' },
-            { label: 'Best Prop Type', value: propTypeSummary[0]?.prop ?? '—', sub: `${propTypeSummary[0]?.hitRate.toFixed(0)}% hit rate`, icon: TrendingUp, color: GOLD },
+            { label: 'Best Prop Type', value: propTypeSummary[0]?.prop ?? '—', sub: `${propTypeSummary[0]?.hitRate.toFixed(0)}% hit rate`, icon: TrendingUp, color: '#22d3ee' },
             { label: 'Model Accuracy', value: confAccuracy.find(c => c.bucket === '75+')
                 ? `${confAccuracy.find(c => c.bucket === '75+')!.hitRate.toFixed(0)}%`
                 : '—',
-              sub: 'at 75%+ confidence', icon: Zap, color: '#10b981' },
+              sub: 'at 75%+ confidence', icon: Zap, color: '#22d3ee' },
           ].map(({ label, value, sub, icon: Icon, color }) => (
             <div key={label} className="bg-card border border-border rounded-2xl p-4">
               <div className="flex items-center gap-2 mb-2">
@@ -219,8 +222,8 @@ export default function MarketInsightsPage() {
                   tickFormatter={v => `${v}%`} />
                 <ReferenceLine y={50} stroke="rgba(255,255,255,0.08)" strokeDasharray="4 4" />
                 <Tooltip content={<CustomTooltip />} />
-                <Line type="monotone" dataKey="hitRate" stroke={GOLD} strokeWidth={2}
-                  dot={false} activeDot={{ r: 4, fill: GOLD }} />
+                <Line type="monotone" dataKey="hitRate" stroke={CYAN} strokeWidth={2}
+                  dot={false} activeDot={{ r: 4, fill: CYAN }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -334,10 +337,10 @@ export default function MarketInsightsPage() {
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
               <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search player…"
-                className="pl-7 pr-3 py-1.5 w-40 bg-black/40 border border-border text-foreground text-xs font-mono rounded-xl outline-none focus:ring-1 focus:ring-[#FFD700]/30 placeholder:text-muted-foreground/70" />
+                className="pl-7 pr-3 py-1.5 w-40 bg-black/40 border border-border text-foreground text-xs font-mono rounded-xl outline-none focus:ring-1 focus:ring-[#22d3ee]/30 placeholder:text-muted-foreground/70" />
             </div>
             <select value={propFilter} onChange={e => setPropFilter(e.target.value)}
-              className="py-1.5 px-2.5 bg-black/40 border border-border text-zinc-300 text-xs font-mono rounded-xl outline-none focus:ring-1 focus:ring-[#FFD700]/30">
+              className="py-1.5 px-2.5 bg-black/40 border border-border text-zinc-300 text-xs font-mono rounded-xl outline-none focus:ring-1 focus:ring-[#22d3ee]/30">
               <option value="">All Prop Types</option>
               {propOptions.map(p => <option key={p} value={p}>{p}</option>)}
             </select>
@@ -357,7 +360,7 @@ export default function MarketInsightsPage() {
                       <span className="flex items-center justify-center gap-1">
                         Hit %
                         {sortKey === 'hitRate'
-                          ? sortDir === 'desc' ? <ChevronDown className="h-3 w-3 text-[#FFD700]" /> : <ChevronUp className="h-3 w-3 text-[#FFD700]" />
+                          ? sortDir === 'desc' ? <ChevronDown className="h-3 w-3 text-[#22d3ee]" /> : <ChevronUp className="h-3 w-3 text-[#22d3ee]" />
                           : null}
                       </span>
                     </th>
@@ -366,7 +369,7 @@ export default function MarketInsightsPage() {
                       <span className="flex items-center justify-center gap-1">
                         Sample
                         {sortKey === 'total'
-                          ? sortDir === 'desc' ? <ChevronDown className="h-3 w-3 text-[#FFD700]" /> : <ChevronUp className="h-3 w-3 text-[#FFD700]" />
+                          ? sortDir === 'desc' ? <ChevronDown className="h-3 w-3 text-[#22d3ee]" /> : <ChevronUp className="h-3 w-3 text-[#22d3ee]" />
                           : null}
                       </span>
                     </th>

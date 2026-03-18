@@ -10,6 +10,7 @@
     "fresh": "pnpm clean && pnpm dev",
     "migrate:props": "node migrate-weekly-props.js",
     "load-props": "tsx scripts/loadProps.ts",
+  "patch-dates": "tsx scripts/patch-dates.ts",
     "enrich": "tsx --tsconfig scripts/tsconfig.json scripts/enrichFromFirestore.ts",
     "enrich:pfr": "tsx --tsconfig scripts/tsconfig.json scripts/enrich.ts",
     "post-game": "tsx scripts/postGame.ts",
