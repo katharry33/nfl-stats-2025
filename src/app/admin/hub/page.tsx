@@ -1,255 +1,366 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { 
-  Loader2, 
-  Calendar, 
-  Users, 
-  Plus, 
-  Trash2, 
-  Search, 
-  ChevronRight, 
-  ShieldAlert 
+  Users, Calendar, Search, Plus, Database, X, 
+  Loader2, Trash2, GitPullRequest, GitMerge 
 } from 'lucide-react';
+import { HubTab } from "@/components/admin/HubTab";
+import { usePlayerRegistry } from '@/hooks/use-player-registry';
+import { useAuth } from '@/hooks/use-auth';
+import { db } from '@/lib/firebase/config';
+import { collection, addDoc, deleteDoc, doc, query, getDocs, orderBy, limit } from 'firebase/firestore';
 import { toast } from 'sonner';
-import { useAuth } from "@/lib/firebase/provider";
-import { PageLoader } from "@/components/ui/LoadingSpinner";
 
-export default function AdminHub() {
-  // 1. Auth & Admin Gate
-  const auth = useAuth();
-  
-  const [sport, setSport] = useState<'nfl' | 'nba'>('nfl');
-  const [view, setView] = useState<'registry' | 'schedule'>('registry');
-  const [data, setData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  
-  // Schedule Specific Filters
-  const [season, setSeason] = useState('2025');
-  const [week, setWeek] = useState('All');
+// 🛑 REPLACE WITH YOUR ACTUAL UID
+const ADMIN_UID = "YOUR_ACTUAL_FIREBASE_UID_HERE";
 
-  const fetchData = async () => {
-    // Prevent fetching if not authenticated or not admin
-    if (!auth?.user) return;
-    
-    setLoading(true);
+interface Player {
+  id: string;
+  player?: string;     // NFL
+  playerName?: string; // NBA
+  pfrid?: string;      // NFL
+  bdlId?: string;      // NBA
+  team: string;
+}
+
+interface Game {
+  id: string;
+  date: string;
+  homeTeam: string;
+  visitorTeam?: string;
+  awayTeam?: string;
+  homeScore?: number;
+  visitorScore?: number;
+  season: number | string;
+  status?: string;
+}
+
+export default function AdminDataHub() {
+  const { user, loading: authLoading } = useAuth();
+  const router = useRouter();
+  
+  const [view, setView] = useState<'players' | 'schedules' | 'sync'>('players');
+  const [activeSport, setActiveSport] = useState<'NFL' | 'NBA'>('NFL');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [schedules, setSchedules] = useState<Game[]>([]);
+  const [schedLoading, setSchedLoading] = useState(false);
+
+  const { players, loading } = usePlayerRegistry(activeSport);
+
+  useEffect(() => {
+    if (view === 'schedules') fetchSchedules();
+  }, [view, activeSport]);
+
+  const fetchSchedules = async () => {
+    setSchedLoading(true);
     try {
-      const params = new URLSearchParams({ season, week });
-      const res = await fetch(`/api/admin/static/${sport}/${view}?${params}`);
-      
-      if (!res.ok) throw new Error('Failed to fetch data');
-      
-      const json = await res.json();
-      setData(Array.isArray(json) ? json : []);
-    } catch (error: any) {
-      toast.error("Fetch Error", { description: error.message });
-      setData([]);
+      const colName = activeSport === 'NFL' ? 'static_schedule' : 'static_nba_schedule';
+      const q = query(collection(db, colName), orderBy('date', 'desc'), limit(50));
+      const snapshot = await getDocs(q);
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Game));
+      setSchedules(data);
+    } catch (err) {
+      toast.error("Failed to load schedules");
     } finally {
-      setLoading(false);
+      setSchedLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchData();
-  }, [sport, view, season, week, auth?.user]);
-
-  // Handle loading and auth states
-  if (!auth || auth.loading) return <PageLoader />;
-
-  // 2. Security Check (Optional: Redirect if not admin)
-  if (!auth.isAdmin) {
+  if (!authLoading && user?.uid !== ADMIN_UID) {
     return (
-      <div className="h-[70vh] flex flex-col items-center justify-center space-y-4">
-        <ShieldAlert className="h-12 w-12 text-loss" />
-        <h2 className="text-xl font-bold">Access Denied</h2>
-        <p className="text-muted-foreground text-sm">This area is restricted to operators.</p>
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-zinc-500">
+        <Database className="h-12 w-12 opacity-10 mb-4" />
+        <h1 className="text-xl font-black uppercase tracking-tighter italic text-white">Access Denied</h1>
+        <p className="text-[10px] uppercase tracking-[0.3em] mt-2">Administrative Credentials Required</p>
+        <button 
+          onClick={() => router.push('/')}
+          className="mt-8 text-[10px] font-black border border-white/10 px-6 py-2 rounded-xl hover:bg-white/5 transition-all"
+        >
+          Return to Dashboard
+        </button>
       </div>
     );
   }
 
-  const filteredData = data.filter(item => 
-    (item.player || item.matchup || item.playerName || '').toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredPlayers = (players as Player[]).filter((p: Player) => {
+    const name = activeSport === 'NFL' ? p.player : p.playerName;
+    const id = activeSport === 'NFL' ? p.pfrid : p.bdlId;
+    const team = p.team || '';
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure? This will delete the static mapping.")) return;
-    
+    return (
+      name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      team?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      id?.toString().toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  });
+
+  const handleDelete = async (playerId: string, name: string) => {
+    const collectionName = activeSport === 'NFL' ? 'static_pfrIdMap' : 'static_nbaIdMap';
+    if (!confirm(`Are you sure you want to remove ${name}?`)) return;
     try {
-      const res = await fetch(`/api/admin/static/${sport}/${view}`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id })
-      });
-      if (res.ok) {
-        toast.success("Entry deleted");
-        fetchData();
-      }
-    } catch (e) {
-      toast.error("Delete failed");
+      await deleteDoc(doc(db, collectionName, playerId));
+      toast.success("Player removed from registry");
+    } catch (err) {
+      toast.error("Failed to delete player");
     }
   };
 
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-8 animate-in fade-in duration-500">
-      {/* ── Top Navigation ── */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-black uppercase italic tracking-tighter">
-            Data <span className="text-primary">Command Center</span>
+    <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-700 p-4">
+      <header className="flex justify-between items-end border-b border-white/5 pb-8">
+        <div>
+          <h1 className="text-2xl font-black uppercase tracking-tighter italic text-white">
+            Data <span className="text-primary">Hub</span>
           </h1>
-          <div className="flex items-center gap-2 text-[10px] text-muted-foreground font-bold uppercase tracking-widest">
-            <span>Admin</span> <ChevronRight className="h-3 w-3" /> 
-            <span className={sport === 'nba' ? 'text-orange-500' : 'text-primary'}>{sport}</span> 
-            <ChevronRight className="h-3 w-3" />
-            <span>{view}</span>
-          </div>
+          <p className="text-[10px] text-zinc-500 font-black uppercase tracking-[0.3em]">System Mappings & Engine Room</p>
         </div>
+        
+        <div className="flex gap-2 bg-black/40 p-1 rounded-xl border border-white/5 backdrop-blur-md">
+          {['NFL', 'NBA'].map(s => (
+            <button 
+              key={s}
+              onClick={() => setActiveSport(s as any)}
+              className={`px-4 py-1.5 rounded-lg text-[10px] font-black transition-all ${
+                activeSport === s 
+                ? 'bg-primary text-black shadow-[0_0_15px_rgba(34,211,238,0.2)]' 
+                : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      </header>
 
-        <div className="flex bg-secondary/50 p-1 rounded-xl border border-border">
-          <button 
-            onClick={() => setSport('nfl')} 
-            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${sport === 'nfl' ? 'bg-background shadow text-primary' : 'text-muted-foreground hover:text-foreground'}`}
-          >
-            🏈 NFL
-          </button>
-          <button 
-            onClick={() => setSport('nba')} 
-            className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${sport === 'nba' ? 'bg-background shadow text-orange-500' : 'text-muted-foreground hover:text-foreground'}`}
-          >
-            🏀 NBA
-          </button>
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+        <aside className="space-y-2">
+          <HubTab active={view === 'players'} onClick={() => setView('players')} icon={Users} label="Player Registry" />
+          <HubTab active={view === 'schedules'} onClick={() => setView('schedules')} icon={Calendar} label="Schedules" />
+          <HubTab active={view === 'sync'} onClick={() => setView('sync')} icon={Database} label="Data Sync" />
+        </aside>
+
+        <div className="lg:col-span-3 bg-card/30 border border-white/5 rounded-4xl p-8 min-h-[600px] backdrop-blur-xl">
+          {view === 'players' ? (
+             <div className="space-y-6">
+               <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+                 <div className="relative w-full md:w-80">
+                   <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-600" />
+                   <input 
+                    type="text"
+                    placeholder={`Search ${activeSport}...`}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full bg-black/40 border border-white/10 rounded-2xl pl-12 pr-4 py-3 text-sm focus:ring-1 focus:ring-primary/40 outline-none transition-all placeholder:text-zinc-800 text-white"
+                   />
+                 </div>
+                 <button 
+                  onClick={() => setIsModalOpen(true)}
+                  className="w-full md:w-auto text-[10px] font-black bg-primary text-black px-6 py-3 rounded-2xl hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 uppercase tracking-widest"
+                 >
+                   <Plus className="h-4 w-4" /> Add {activeSport}
+                 </button>
+               </div>
+               
+               <div className="border border-white/5 rounded-2xl overflow-hidden bg-black/20">
+                 <table className="w-full text-left text-xs text-white">
+                   <thead className="bg-white/5 text-zinc-500 font-black uppercase text-[9px] tracking-widest">
+                     <tr>
+                       <th className="p-5">Identity</th>
+                       <th className="p-5 text-center">Team</th>
+                       <th className="p-5">{activeSport === 'NFL' ? 'PFR ID' : 'BDL ID'}</th>
+                       <th className="p-5 text-right">Actions</th>
+                     </tr>
+                   </thead>
+                   <tbody className="divide-y divide-white/5">
+                     {(loading || authLoading) ? (
+                       <tr>
+                         <td colSpan={4} className="p-20 text-center">
+                           <Loader2 className="h-6 w-6 animate-spin mx-auto text-primary opacity-50" />
+                         </td>
+                       </tr>
+                     ) : filteredPlayers.length === 0 ? (
+                       <tr>
+                         <td className="p-20 text-center text-zinc-600 italic" colSpan={4}>
+                            No records found.
+                         </td>
+                       </tr>
+                     ) : (
+                       filteredPlayers.map((player: Player) => (
+                         <tr key={player.id} className="hover:bg-white/5 transition-colors group">
+                           <td className="p-5 font-bold text-zinc-200">
+                             {activeSport === 'NFL' ? player.player : player.playerName}
+                           </td>
+                           <td className="p-5 text-center">
+                             <span className="bg-zinc-900 px-3 py-1 rounded-md text-[10px] font-black border border-white/5 text-zinc-400 uppercase tracking-tighter">
+                               {player.team}
+                             </span>
+                           </td>
+                           <td className="p-5 font-mono text-primary/70 tracking-tighter">
+                             {activeSport === 'NFL' ? player.pfrid : player.bdlId}
+                           </td>
+                           <td className="p-5 text-right">
+                              <button 
+                                onClick={() => handleDelete(player.id, (activeSport === 'NFL' ? player.player : player.playerName) || 'Unknown')}
+                                className="p-2 hover:bg-red-500/10 rounded-lg text-zinc-700 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                           </td>
+                         </tr>
+                       ))
+                     )}
+                   </tbody>
+                 </table>
+               </div>
+             </div>
+          ) : view === 'schedules' ? (
+            <div className="space-y-6">
+              <div className="flex justify-between items-center">
+                <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Live Schedule Feed</h3>
+                <button onClick={fetchSchedules} className="p-2 hover:bg-white/5 rounded-lg transition-colors">
+                  <Loader2 className={`h-4 w-4 text-primary ${schedLoading ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+
+              <div className="grid gap-3">
+                {schedLoading ? (
+                  <div className="py-20 text-center"><Loader2 className="h-8 w-8 animate-spin mx-auto opacity-20" /></div>
+                ) : schedules.length === 0 ? (
+                  <div className="py-20 text-center text-zinc-600 italic">No schedule records found.</div>
+                ) : (
+                  schedules.map((game) => (
+                    <div key={game.id} className="bg-black/20 border border-white/5 p-5 rounded-2xl flex items-center justify-between group hover:border-primary/20 transition-all">
+                      <div className="flex items-center gap-6">
+                        <div className="text-center min-w-[60px]">
+                          <p className="text-[10px] font-black text-zinc-500 uppercase">
+                            {new Date(game.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          </p>
+                          <p className="text-[8px] text-primary font-bold">{game.season}</p>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <span className="font-bold text-zinc-200">{game.visitorTeam || game.awayTeam}</span>
+                          <span className="text-[10px] text-zinc-700 font-black italic">vs</span>
+                          <span className="font-bold text-zinc-200">{game.homeTeam}</span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                         {game.homeScore !== undefined ? (
+                           <div className="flex gap-2 items-center bg-white/5 px-3 py-1.5 rounded-xl border border-white/5">
+                             <span className={(game.visitorScore || 0) > (game.homeScore || 0) ? 'text-primary' : 'text-zinc-500'}>{game.visitorScore}</span>
+                             <span className="text-[8px] text-zinc-800">|</span>
+                             <span className={(game.homeScore || 0) > (game.visitorScore || 0) ? 'text-primary' : 'text-zinc-500'}>{game.homeScore}</span>
+                           </div>
+                         ) : (
+                           <span className="text-[9px] font-black uppercase tracking-widest text-zinc-700">Pending</span>
+                         )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className='text-center py-12'>
+              <h2 className='text-xl font-black uppercase tracking-tighter italic'>Data Sync Workflow</h2>
+              <p className='text-zinc-500 my-4 text-[10px] uppercase tracking-widest'>Local JSON to Cloud Pipeline</p>
+              
+              <div className='grid grid-cols-1 md:grid-cols-3 gap-4 text-left my-8'>
+                <div className='bg-black/40 p-6 rounded-2xl border border-white/10'>
+                    <div className='flex items-center gap-4'>
+                        <GitPullRequest className='text-primary h-5 w-5' />
+                        <h3 className='text-sm font-black uppercase'>Pull</h3>
+                    </div>
+                    <p className='text-zinc-400 text-[10px] mt-3 leading-relaxed'>Update your local JSON engine from the current Firestore state.</p>
+                </div>
+                <div className='bg-black/40 p-6 rounded-2xl border border-white/10'>
+                    <div className='flex items-center gap-4'>
+                        <Users className='text-primary h-5 w-5' />
+                        <h3 className='text-sm font-black uppercase'>Edit</h3>
+                    </div>
+                    <p className='text-zinc-400 text-[10px] mt-3 leading-relaxed'>Mass-edit mappings in VS Code with Regex or Find/Replace.</p>
+                </div>
+                <div className='bg-black/40 p-6 rounded-2xl border border-white/10'>
+                    <div className='flex items-center gap-4'>
+                        <GitMerge className='text-primary h-5 w-5' />
+                        <h3 className='text-sm font-black uppercase'>Push</h3>
+                    </div>
+                    <p className='text-zinc-400 text-[10px] mt-3 leading-relaxed'>Deploy updated JSON mappings back to the cloud database.</p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* ── View Controls ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <div className="lg:col-span-1 flex flex-col gap-2">
-          <button 
-            onClick={() => setView('registry')} 
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition-all text-sm font-bold ${view === 'registry' ? 'bg-primary/10 border-primary/20 text-primary' : 'bg-card border-border text-muted-foreground hover:border-white/10 hover:bg-white/5'}`}
-          >
-            <Users className="h-4 w-4" /> Player Registry
-          </button>
-          <button 
-            onClick={() => setView('schedule')} 
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition-all text-sm font-bold ${view === 'schedule' ? 'bg-primary/10 border-primary/20 text-primary' : 'bg-card border-border text-muted-foreground hover:border-white/10 hover:bg-white/5'}`}
-          >
-            <Calendar className="h-4 w-4" /> Game Schedule
+      {isModalOpen && (
+        <AddPlayerModal 
+          sport={activeSport} 
+          onClose={() => setIsModalOpen(false)} 
+        />
+      )}
+    </div>
+  );
+}
+
+function AddPlayerModal({ sport, onClose }: { sport: 'NFL' | 'NBA', onClose: () => void }) {
+  const [formData, setFormData] = useState({ playerName: '', team: '', idValue: '' });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      const collectionName = sport === 'NFL' ? 'static_pfrIdMap' : 'static_nbaIdMap';
+      const payload = sport === 'NFL' 
+        ? { player: formData.playerName, pfrid: formData.idValue, team: formData.team.toUpperCase(), lastUpdated: new Date().toISOString() }
+        : { playerName: formData.playerName, bdlId: formData.idValue, team: formData.team.toUpperCase(), createdAt: new Date().toISOString() };
+
+      await addDoc(collection(db, collectionName), payload);
+      toast.success("Player registered");
+      onClose();
+    } catch (err) {
+      toast.error("Registration failed");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in duration-200">
+      <div className="bg-[#0a0a0c] border border-white/10 w-full max-w-md rounded-4xl p-10 shadow-2xl relative text-zinc-200">
+        <div className="flex justify-between items-center mb-8">
+          <h2 className="text-xl font-black uppercase tracking-tighter italic">Add <span className="text-primary">{sport}</span></h2>
+          <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-full text-zinc-500">
+            <X className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="lg:col-span-3 bg-[#0f1115] border border-white/5 rounded-2xl p-6 space-y-6 shadow-2xl">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="relative w-full max-w-xs">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
-              <input 
-                value={search} 
-                onChange={e => setSearch(e.target.value)} 
-                placeholder={`Filter ${view}...`} 
-                className="w-full bg-zinc-900/50 border border-white/10 rounded-lg pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary/40 font-medium" 
-              />
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-black uppercase text-zinc-600 tracking-widest">Full Name</label>
+            <input 
+              required className="w-full bg-white/3 border border-white/10 rounded-2xl px-5 py-4 text-sm outline-none text-white focus:border-primary/50 transition-colors"
+              value={formData.playerName}
+              onChange={(e) => setFormData({...formData, playerName: e.target.value})}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-5">
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-black uppercase text-zinc-600 tracking-widest">Team</label>
+              <input required className="w-full bg-white/3 border border-white/10 rounded-2xl px-5 py-4 text-sm uppercase text-white" maxLength={3} value={formData.team} onChange={(e) => setFormData({...formData, team: e.target.value})} />
             </div>
-
-            <div className="flex items-center gap-2">
-              {view === 'schedule' && (
-                <>
-                  <select 
-                    value={season} 
-                    onChange={e => setSeason(e.target.value)} 
-                    className="bg-zinc-900 border border-white/10 rounded-lg px-3 py-2 text-[11px] font-black uppercase outline-none"
-                  >
-                    <option value="2024">2024-25</option>
-                    <option value="2025">2025-26</option>
-                  </select>
-                  {/* Week filter usually only makes sense for NFL */}
-                  {sport === 'nfl' && (
-                    <select 
-                      value={week} 
-                      onChange={e => setWeek(e.target.value)} 
-                      className="bg-zinc-900 border border-white/10 rounded-lg px-3 py-2 text-[11px] font-black uppercase outline-none"
-                    >
-                      <option value="All">All Weeks</option>
-                      {Array.from({ length: 22 }, (_, i) => <option key={i+1} value={i+1}>Week {i+1}</option>)}
-                    </select>
-                  )}
-                </>
-              )}
-              
-              <button className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-xs font-bold transition-colors">
-                <Plus className="h-3.5 w-3.5" /> Add Manual
-              </button>
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-black uppercase text-zinc-600 tracking-widest">{sport === 'NFL' ? 'PFR ID' : 'BDL ID'}</label>
+              <input required className="w-full bg-white/3 border border-white/10 rounded-2xl px-5 py-4 text-sm text-white" value={formData.idValue} onChange={(e) => setFormData({...formData, idValue: e.target.value})} />
             </div>
           </div>
-
-          <div className="rounded-xl border border-white/5 overflow-hidden bg-zinc-900/20">
-            <table className="w-full text-left border-collapse">
-              <thead className="bg-white/5 text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em] border-b border-white/5">
-                <tr>
-                  {view === 'registry' ? (
-                    <>
-                      <th className="px-6 py-4">Player</th>
-                      <th className="px-6 py-4">Team</th>
-                      <th className="px-6 py-4">{sport === 'nba' ? 'BDL ID' : 'PFR ID'}</th>
-                    </>
-                  ) : (
-                    <>
-                      <th className="px-6 py-4 w-20">Week</th>
-                      <th className="px-6 py-4">Matchup</th>
-                      <th className="px-6 py-4">Date</th>
-                    </>
-                  )}
-                  <th className="px-6 py-4 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                {loading ? (
-                  <tr><td colSpan={4} className="py-20 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto text-primary" /></td></tr>
-                ) : filteredData.length === 0 ? (
-                  <tr><td colSpan={4} className="py-20 text-center text-zinc-500 text-sm italic">No entries found matching your criteria.</td></tr>
-                ) : (
-                  filteredData.map((item) => (
-                    <tr key={item.id} className="hover:bg-white/[0.02] transition-colors group">
-                      {view === 'registry' ? (
-                        <>
-                          <td className="px-6 py-4 font-bold text-zinc-200">{item.player || item.playerName}</td>
-                          <td className="px-6 py-4">
-                            <span className="bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded-[4px] text-[10px] font-black uppercase tracking-tighter">
-                              {item.team || 'FA'}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 font-mono text-[11px] text-primary">
-                            {sport === 'nba' ? item.bdlId : item.pfrid || item.pfrId}
-                          </td>
-                        </>
-                      ) : (
-                        <>
-                          <td className="px-6 py-4 font-black text-[10px] text-zinc-500 italic">
-                            {sport === 'nfl' ? `WK ${item.week}` : 'NBA'}
-                          </td>
-                          <td className="px-6 py-4 font-bold text-zinc-200 uppercase tracking-tight">
-                            {item.matchup || `${item.awayTeam} @ ${item.homeTeam}`}
-                          </td>
-                          <td className="px-6 py-4 text-[11px] text-zinc-500 font-mono">
-                            {item['game date'] || item.date}
-                          </td>
-                        </>
-                      )}
-                      <td className="px-6 py-4 text-right">
-                        <button 
-                          onClick={() => handleDelete(item.id)}
-                          className="opacity-0 group-hover:opacity-100 text-zinc-600 hover:text-loss transition-all"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+          <button type="submit" disabled={isSubmitting} className="w-full bg-primary text-black font-black uppercase py-5 rounded-3xl mt-6 tracking-widest text-xs hover:shadow-[0_0_20px_rgba(34,211,238,0.3)] transition-all">
+            {isSubmitting ? 'Syncing...' : 'Confirm Registration'}
+          </button>
+        </form>
       </div>
     </div>
   );

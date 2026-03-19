@@ -4,8 +4,7 @@ import type { NextRequest } from 'next/server';
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // 1. Define paths that SHOULD NOT be protected by the password gate
-  // We exclude static files, the login page itself, and the auth API
+  // 1. PUBLIC PATHS
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/api/auth') ||
@@ -15,27 +14,36 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // 2. Check for our custom site access cookie
+  // 2. SITE ACCESS: Global Gate
   const accessCookie = request.cookies.get('site_access');
-
-  // 3. If no cookie, redirect to our simple login page
   if (!accessCookie) {
+    // Prevent redirect loop if already on login
+    if (pathname === '/login') return NextResponse.next();
+    
     const loginUrl = new URL('/login', request.url);
     return NextResponse.redirect(loginUrl);
   }
 
+ // 3. ADMIN PROTECTION
+if (pathname.startsWith('/admin')) {
+  const userRole = request.cookies.get('user_role')?.value;
+  
+  // TEMPORARY BYPASS: Comment out these lines to access the Hub
+  /*
+  if (userRole !== 'admin') {
+    return NextResponse.redirect(new URL('/', request.url));
+  }
+  */
+}
+
   return NextResponse.next();
 }
 
-// Ensure this matches all routes except static assets
+// FIX: This must be OUTSIDE the function body
 export const config = {
   matcher: [
     /*
-     * Match all request paths except for the ones starting with:
-     * - api (internal apis that might need different auth)
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
+     * Match all paths except internal Next.js assets
      */
     '/((?!_next/static|_next/image|favicon.ico).*)',
   ],

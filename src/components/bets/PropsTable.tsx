@@ -401,6 +401,7 @@ function PropDetail({ prop }: { prop: NormalizedProp }) {
 // ─── PropsTable ───────────────────────────────────────────────────────────────
 interface PropsTableProps {
   props:            NormalizedProp[];
+  league:           'nfl' | 'nba';
   isLoading:        boolean;
   onAddToBetSlip:   (prop: NormalizedProp) => void;
   slipIds?:         Set<string>;

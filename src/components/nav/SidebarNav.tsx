@@ -9,8 +9,8 @@ import {
   Zap, 
   Target, 
   Settings,
-  FileCode,
-  ShieldCheck
+  Database,
+  ChevronRight
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -21,33 +21,34 @@ const CORE_ITEMS = [
   { title: "Insights", href: "/insights", icon: Target },
 ];
 
-const SYSTEM_DATA_ITEMS = [
+// Consolidated into the Admin Hub
+const ADMIN_ITEMS = [
   {
-    title: "PFR ID Map",
-    href: "/static-data/pfr-ids",
-    icon: FileCode
-  },
-  {
-    title: "Schedule",
-    href: "/static-data/schedule",
-    icon: History // Or use 'Calendar' if you have it imported
-  },
-  {
-    title: "Player Teams",
-    href: "/static-data/player-teams",
-    icon: ShieldCheck
-  },
+    title: "Data Hub",
+    href: "/admin/hub", // Matches your new consolidated page
+    icon: Database
+  }
 ];
 
 export function SidebarNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="flex flex-col h-full bg-[#07080a] border-r border-white/5 w-64 p-4">
+    <nav className="flex flex-col h-full bg-card/50 backdrop-blur-md border-r border-white/5 w-64 p-4">
+      {/* BRANDING / LOGO AREA */}
+      <div className="px-4 mb-10 pt-4">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center shadow-[0_0_15px_rgba(34,211,238,0.4)]">
+            <Zap className="h-5 w-5 text-black fill-current" />
+          </div>
+          <span className="font-black italic tracking-tighter text-xl uppercase">Gridiron</span>
+        </div>
+      </div>
+
       {/* SECTION: NAVIGATION */}
       <div className="mb-8">
         <p className="px-4 mb-4 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-600">
-          Navigation
+          Main Menu
         </p>
         <div className="space-y-1">
           {CORE_ITEMS.map((item) => (
@@ -56,14 +57,14 @@ export function SidebarNav() {
         </div>
       </div>
 
-      {/* SECTION: DATA MANAGEMENT (Static Data) */}
+      {/* SECTION: ADMINISTRATION (Consolidated Hub) */}
       <div className="mb-8">
         <p className="px-4 mb-4 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-600">
-          System Reference Data
+          System Management
         </p>
         <div className="space-y-1">
-          {SYSTEM_DATA_ITEMS.map((item) => (
-            <NavButton key={item.href} item={item} active={pathname === item.href} />
+          {ADMIN_ITEMS.map((item) => (
+            <NavButton key={item.href} item={item} active={pathname.startsWith(item.href)} />
           ))}
         </div>
       </div>
@@ -79,23 +80,26 @@ export function SidebarNav() {
   );
 }
 
-// Sub-component to keep the code clean and fix the layout issues
 function NavButton({ item, active }: { item: any, active: boolean }) {
   return (
     <Link
       href={item.href}
       className={cn(
-        "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group w-full",
+        "flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-300 group w-full border",
         active 
-          ? "bg-cyan-500/10 text-cyan-400 border border-cyan-500/10" 
-          : "text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-200 border border-transparent"
+          ? "bg-primary/10 text-primary border-primary/20 shadow-[inset_0_0_10px_rgba(34,211,238,0.05)]" 
+          : "text-zinc-500 hover:bg-white/3 hover:text-zinc-200 border-transparent"
       )}
     >
-      <item.icon className={cn(
-        "h-4 w-4 transition-colors",
-        active ? "text-cyan-400" : "text-zinc-600 group-hover:text-zinc-300"
-      )} />
-      <span className="font-bold text-sm tracking-tight">{item.title}</span>
+      <div className="flex items-center gap-3">
+        <item.icon className={cn(
+          "h-4 w-4 transition-all duration-300",
+          active ? "text-primary scale-110" : "text-zinc-600 group-hover:text-zinc-300"
+        )} />
+        <span className="font-bold text-sm tracking-tight">{item.title}</span>
+      </div>
+      
+      {active && <ChevronRight className="h-3 w-3 text-primary animate-pulse" />}
     </Link>
   );
 }

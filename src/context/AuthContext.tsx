@@ -3,9 +3,20 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { getAuth, onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, User } from 'firebase/auth';
 import { app } from '@/lib/firebase/client';
 
-const AuthContext = createContext<{ user: User | null; loading: boolean; login: () => Promise<void>; logout: () => Promise<void> }>({
+const ADMIN_EMAILS = ['admin@example.com', 'superadmin@example.com']; // Replace with actual admin emails
+
+interface AuthContextType {
+  user: User | null;
+  loading: boolean;
+  isAdmin: boolean;
+  login: () => Promise<void>;
+  logout: () => Promise<void>;
+}
+
+const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
+  isAdmin: false,
   login: async () => {},
   logout: async () => {},
 });
@@ -13,6 +24,7 @@ const AuthContext = createContext<{ user: User | null; loading: boolean; login: 
 export const FirebaseProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
   const auth = getAuth(app);
 
   const login = async () => {
@@ -37,6 +49,7 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
+      setIsAdmin(currentUser?.email ? ADMIN_EMAILS.includes(currentUser.email) : false);
       setLoading(false);
     });
 
@@ -44,7 +57,7 @@ export const FirebaseProvider = ({ children }: { children: React.ReactNode }) =>
   }, [auth]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, isAdmin, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

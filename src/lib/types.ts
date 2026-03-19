@@ -98,6 +98,7 @@ export interface BetLeg {
   status?:   'pending' | 'won' | 'lost' | 'push';
   book?: string;
   bestBook?: string;
+  league?: string;
 }
 
 // ─── Bet slip item (leg + metadata) ──────────────────────────────────────────

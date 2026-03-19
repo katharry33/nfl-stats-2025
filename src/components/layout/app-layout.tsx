@@ -5,37 +5,36 @@ import { SidebarNav } from '@/components/nav/SidebarNav';
 import { MobileBottomNav } from '@/components/nav/MobileBottomNav';
 import { MobileDrawer } from '@/components/nav/MobileDrawer';
 import { MobileBetSlipTrigger } from '@/components/nav/MobileBetSlipTrigger';
-import { NavigationProgress } from '@/components/ui/NavigationProgress';
 import { Header } from '@/components/layout/Header';
 import { Toaster } from 'sonner';
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <MobileNavProvider>
-      <NavigationProgress />
-
-      {/* Main Container: Prevents body scroll, allows internal scroll */}
-      <div className="flex h-screen overflow-hidden bg-[#07080a]">
+      {/* Main Flex Container: Forces height to exactly 100% of the viewport */}
+      <div className="flex h-screen w-full overflow-hidden bg-background">
         
-        {/* Desktop Sidebar: Fixed width */}
-        <aside className="hidden md:flex w-64 flex-shrink-0 border-r border-white/5 h-full">
+        {/* Fixed Desktop Sidebar */}
+        <aside className="hidden md:flex w-64 flex-shrink-0 border-r border-white/5 h-full bg-card/50">
           <SidebarNav />
         </aside>
 
-        {/* Main Content: This is the only scrollable area */}
-        <main className="flex-1 overflow-y-auto relative pb-40 md:pb-0 scroll-smooth">
+        {/* Scrollable Main Content Area */}
+        <main className="flex-1 flex flex-col min-w-0 h-full relative overflow-hidden">
           <Toaster position="top-right" richColors closeButton />
           
-          {/* Sticky Header: z-40 ensures it stays above table content */}
           <Header />
 
-          <div className="w-full max-w-[1600px] mx-auto">
-            {children}
+          {/* This div handles the actual scrolling of your pages */}
+          <div className="flex-1 overflow-y-auto custom-scrollbar bg-grid pb-32 md:pb-8">
+            <div className="w-full max-w-[1400px] mx-auto p-4 md:p-10">
+              {children}
+            </div>
           </div>
         </main>
       </div>
 
-      {/* Mobile Nav Elements */}
+      {/* Mobile Overlays */}
       <MobileBetSlipTrigger /> 
       <MobileBottomNav />
       <MobileDrawer />

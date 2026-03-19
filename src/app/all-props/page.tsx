@@ -6,7 +6,7 @@ import { useAllProps, NormalizedProp } from '@/hooks/useAllProps';
 import { PropsTable } from '@/components/bets/PropsTable';
 import { EnrichModal } from '@/components/bets/EnrichModal';
 import { ManualEntryModal } from '@/components/bets/manual-entry-modal';
-import { RefreshCw, Plus, Zap, Trophy, Basketball } from 'lucide-react';
+import { RefreshCw, Plus, Zap, Trophy, Dribbble as Basketball } from 'lucide-react';
 import { toast } from 'sonner';
 
 const SEASON_OPTIONS = [
@@ -17,7 +17,7 @@ const SEASON_OPTIONS = [
 
 const LEAGUES = [
   { id: 'nfl', label: 'NFL', icon: Trophy },
-  { id: 'nba', label: 'NBA', icon: Zap }, // Using Zap or a Basketball icon if available
+  { id: 'nba', label: 'NBA', icon: Basketball },
 ];
 
 export default function AllPropsPage() {

@@ -20,12 +20,12 @@ const STAT_MAP: Record<string, string> = {
 
 export async function fetchNBALogs(playerName: string, season: number) {
   // Now 'api' is defined in the outer scope, so it works here
-  const players = await api.nba.getPlayers({ search: playerName });
+  const players = await nbaApi.getPlayers({ search: playerName });
   if (!players.data || players.data.length === 0) return [];
   
   const playerId = players.data[0].id;
 
-  const stats = await api.nba.getStats({ 
+  const stats = await nbaApi.getStats({ 
     player_ids: [playerId], 
     seasons: [season],
     per_page: 100 
