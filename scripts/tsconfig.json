@@ -12,5 +12,5 @@
         "@/*": ["src/*"]
       }
     },
-    "include": ["./**/*.ts"]
+    "include": ["./**/*.ts", "seedNbaPlayers.js"]
   }

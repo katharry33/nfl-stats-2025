@@ -25,6 +25,7 @@ export default function BettingLogPage() {
   const [editBet,  setEditBet]  = useState<Bet | null>(null);
   const [criteria, setCriteria] = useState<ScoringCriteria | null>(null);
   const debouncedSearch = useDebounce(search, 400);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const fetchBetsRef = useRef(fetchBets);
   useEffect(() => { fetchBetsRef.current = fetchBets; }, [fetchBets]);
@@ -38,6 +39,20 @@ export default function BettingLogPage() {
       if (c !== undefined) setCriteria(c as ScoringCriteria);
     });
   }, []);
+
+  const syncNbaResults = async () => {
+    setIsSyncing(true);
+    try {
+      const res = await fetch('/api/betting-log/sync-nba', { method: 'POST' });
+      const data = await res.json();
+      toast.success(`Synced ${data.updated} NBA bets!`);
+      fetchBets(true, debouncedSearch, 'all');
+    } catch (e) {
+      toast.error("Sync failed");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const handleDelete = useCallback(async (ids: string[]) => {
     try {
@@ -82,6 +97,14 @@ export default function BettingLogPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={syncNbaResults}
+              disabled={isSyncing}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-orange-500/10 border border-orange-500/20 text-orange-500 hover:bg-orange-500/20 text-xs font-medium transition-colors"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+              Sync NBA Stats
+            </button>
             {criteria && (
               <a href="/sweet-spots"
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-primary/20 text-primary hover:bg-primary/5 text-xs font-medium transition-colors">

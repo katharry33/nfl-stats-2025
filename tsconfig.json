@@ -33,7 +33,7 @@
     "**/*.ts",
     "**/*.tsx",
     ".next/types/**/*.ts"
-  ],
+, "scripts/seedNbaPlayers.js"  ],
   "exclude": [
     "node_modules"
   ]

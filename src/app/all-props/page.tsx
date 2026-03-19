@@ -6,7 +6,7 @@ import { useAllProps, NormalizedProp } from '@/hooks/useAllProps';
 import { PropsTable } from '@/components/bets/PropsTable';
 import { EnrichModal } from '@/components/bets/EnrichModal';
 import { ManualEntryModal } from '@/components/bets/manual-entry-modal';
-import { RefreshCw, Plus, Zap } from 'lucide-react';
+import { RefreshCw, Plus, Zap, Trophy, Basketball } from 'lucide-react';
 import { toast } from 'sonner';
 
 const SEASON_OPTIONS = [
@@ -15,13 +15,20 @@ const SEASON_OPTIONS = [
   { label: '2025–26', value: '2025' },
 ];
 
+const LEAGUES = [
+  { id: 'nfl', label: 'NFL', icon: Trophy },
+  { id: 'nba', label: 'NBA', icon: Zap }, // Using Zap or a Basketball icon if available
+];
+
 export default function AllPropsPage() {
-  const [weekFilter,   setWeekFilter]   = useState('');
+  const [league, setLeague] = useState<'nfl' | 'nba'>('nfl');
+  const [weekFilter, setWeekFilter] = useState('');
   const [seasonFilter, setSeasonFilter] = useState('all');
 
-  // Pass filters to the hook so the API is queried correctly
+  // Pass 'league' to the hook so the API knows which collection to query
   const { props, loading, hasMore, loadMore, refresh, deleteProp } = useAllProps({
-    week:   weekFilter   ? parseInt(weekFilter)   : undefined,
+    league, 
+    week:   weekFilter ? parseInt(weekFilter) : undefined,
     season: seasonFilter !== 'all' ? parseInt(seasonFilter) : undefined,
   });
 
@@ -43,6 +50,7 @@ export default function AllPropsPage() {
     addLeg({
       id:        propId,
       propId,
+      league:    league, // Ensure league carries over to the bet slip
       player:    prop.player    ?? 'Unknown',
       prop:      prop.prop      ?? 'Prop',
       line:      prop.line      ?? 0,
@@ -54,10 +62,15 @@ export default function AllPropsPage() {
       season:    prop.season    ?? undefined,
       gameDate:  prop.gameDate  ?? new Date().toISOString(),
     });
+    
     toast.success(`${prop.player} added to slip`, {
-      style: { background: '#0f1115', border: '1px solid rgba(34,211,238,0.2)', color: '#22d3ee' },
+      style: { 
+        background: '#0f1115', 
+        border: `1px solid ${league === 'nba' ? 'rgba(249,115,22,0.2)' : 'rgba(34,211,238,0.2)'}`, 
+        color: league === 'nba' ? '#fb923c' : '#22d3ee' 
+      },
     });
-  }, [addLeg, slipIds]);
+  }, [addLeg, slipIds, league]);
 
   return (
     <main className="min-h-screen bg-background text-foreground p-4 md:p-8">
@@ -66,20 +79,49 @@ export default function AllPropsPage() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-black tracking-tight text-foreground italic uppercase">Historical Props</h1>
+            <div className="flex items-center gap-2">
+               <h1 className="text-2xl font-black tracking-tight text-foreground italic uppercase">
+                {league} Historical Props
+              </h1>
+            </div>
             <p className="text-muted-foreground text-sm mt-0.5">
               {loading && props.length === 0
                 ? 'Loading…'
-                : `${props.length.toLocaleString()} props shown`}
+                : `${props.length.toLocaleString()} ${league.toUpperCase()} props shown`}
             </p>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Week filter */}
+            {/* League Switcher */}
+            <div className="flex rounded-xl overflow-hidden border border-border bg-card p-1">
+              {LEAGUES.map((l) => (
+                <button
+                  key={l.id}
+                  onClick={() => {
+                    setLeague(l.id as 'nfl' | 'nba');
+                    setWeekFilter(''); // Reset week as it differs by sport
+                  }}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${
+                    league === l.id 
+                      ? 'bg-primary text-primary-foreground shadow-sm' 
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <l.icon className="h-3 w-3" />
+                  {l.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Week filter (Conditionally hide or label for NBA) */}
             <input
-              type="number" min={1} max={22} placeholder="Week #" value={weekFilter}
+              type="number" 
+              min={1} 
+              max={league === 'nfl' ? 22 : 100} 
+              placeholder={league === 'nfl' ? "Week #" : "Day #"} 
+              value={weekFilter}
               onChange={e => setWeekFilter(e.target.value)}
-              className="w-20 py-2 px-3 bg-card border border-border text-foreground text-xs font-mono rounded-xl outline-none focus:ring-1 focus:ring-primary/30"
+              className="w-24 py-2 px-3 bg-card border border-border text-foreground text-xs font-mono rounded-xl outline-none focus:ring-1 focus:ring-primary/30"
             />
 
             {/* Season toggle */}
@@ -94,10 +136,10 @@ export default function AllPropsPage() {
               ))}
             </div>
 
-            {/* Enrich */}
+            {/* Enrich Button (Passes current league context) */}
             <button onClick={() => setShowEnrich(true)}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 hover:bg-blue-500/20 text-xs font-black uppercase transition-colors">
-              <Zap className="h-3.5 w-3.5" /> Enrich
+              <Zap className="h-3.5 w-3.5" /> Enrich {league.toUpperCase()}
             </button>
 
             {/* Manual */}
@@ -123,9 +165,10 @@ export default function AllPropsPage() {
           </div>
         </div>
 
-        {/* Table */}
+        {/* Table - Needs to handle league-specific columns if needed */}
         <PropsTable
           props={props}
+          league={league}
           isLoading={loading && props.length === 0}
           onAddToBetSlip={handleAddToSlip}
           onDelete={deleteProp}
@@ -149,7 +192,7 @@ export default function AllPropsPage() {
         <ManualEntryModal
           isOpen={showManual}
           onClose={() => setShowManual(false)}
-          onAddLeg={addLeg}
+          onAddLeg={(leg) => addLeg({ ...leg, league })}
         />
       )}
 
@@ -157,9 +200,10 @@ export default function AllPropsPage() {
         isOpen={showEnrich}
         onClose={() => setShowEnrich(false)}
         onComplete={() => refresh()}
+        league={league}
         defaultWeek={weekFilter ? parseInt(weekFilter) : undefined}
         defaultSeason={seasonFilter !== 'all' ? parseInt(seasonFilter) : 2025}
-        defaultCollection="all"
+        defaultCollection={league === 'nba' ? 'nba_props' : 'nfl_props'}
       />
     </main>
   );

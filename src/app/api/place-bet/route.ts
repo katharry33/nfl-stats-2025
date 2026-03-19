@@ -32,6 +32,7 @@ export async function POST(req: Request) {
       transaction.set(betRef, {
         id: betRef.id,
         userId: uid,
+        league: selections[0]?.league || 'nfl', // New Field: Detect league from legs
         selections,
         stake,
         cashStake: cashDeduction,

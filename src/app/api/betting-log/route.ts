@@ -189,6 +189,7 @@ export async function GET(request: Request) {
     const cursor    = searchParams.get('cursor') ?? '';
     const limit     = Math.min(parseInt(searchParams.get('limit') ?? '200'), 1000);
     const bustCache = searchParams.get('bust') === '1';
+    const league = searchParams.get('league') || 'all'; // new filter
 
     const col     = adminDb.collection('bettingLog');
     const weekNum = week && week !== 'all' ? parseInt(week, 10) : null;
@@ -250,6 +251,10 @@ export async function GET(request: Request) {
 
     // ── 3. Merge, filter, sort ────────────────────────────────────────────────
     let allBets = [...newBets, ...(legacyBetsCache ?? [])];
+
+    if (league !== 'all') {
+      allBets = allBets.filter(b => b.league === league || (league === 'nfl' && !b.league));
+    }
 
     if (weekNum !== null && !isNaN(weekNum)) {
       allBets = allBets.filter(b => newBetIds.has(b.id) || b.week === weekNum);

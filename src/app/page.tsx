@@ -20,7 +20,8 @@ import Link from "next/link";
 
 export default function DashboardPage() {
   const { stats, loading } = usePerformance();
-  const { user, loading: authLoading } = useAuth();
+  const authData = useAuth() || { user: null, loading: true };
+  const { user, loading: authLoading } = authData;
 
   if (loading || authLoading) return <PageLoader />;
 

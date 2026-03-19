@@ -1,4 +1,3 @@
-// src/app/api/all-props/route.ts
 import { db } from '@/lib/firebase/admin';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -7,28 +6,44 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
 
+  // New Parameter: league (defaults to nfl for backward compatibility)
+  const league          = searchParams.get('league') || 'nfl';
   const weekParam       = searchParams.get('week');
   const seasonParam     = searchParams.get('season');
   const collectionParam = searchParams.get('collection') ?? 'all';
   const limit           = Math.min(parseInt(searchParams.get('limit') || '50', 10), 200);
   const cursor          = searchParams.get('cursor') ?? searchParams.get('lastId') ?? null;
 
-  // Determine collection
-  const season  = seasonParam ? parseInt(seasonParam, 10) : 2025;
-  const colName = collectionParam === 'weekly'
-    ? `weeklyProps_${season}`
-    : `allProps_${season}`;
+  // Determine collection based on league and season
+  const season = seasonParam ? parseInt(seasonParam, 10) : 2025;
+  
+  // Logical Branching for Collection Names
+  let colName: string;
+  if (league === 'nba') {
+    colName = `nbaProps_${season}`;
+  } else {
+    colName = collectionParam === 'weekly' 
+      ? `weeklyProps_${season}` 
+      : `allProps_${season}`;
+  }
 
   try {
     let query: FirebaseFirestore.Query = db.collection(colName);
 
-    // Server-side week filter
+    // Week Filter (Common for NFL, use sparingly for NBA)
     if (weekParam) {
       const week = parseInt(weekParam, 10);
       if (!isNaN(week)) query = query.where('week', '==', week);
     }
 
-    query = query.orderBy('week', 'desc').orderBy('__name__', 'desc').limit(limit + 1);
+    // Dynamic Sorting: NBA usually sorts by Date, NFL by Week
+    if (league === 'nba') {
+      query = query.orderBy('gameDate', 'desc').orderBy('__name__', 'desc');
+    } else {
+      query = query.orderBy('week', 'desc').orderBy('__name__', 'desc');
+    }
+
+    query = query.limit(limit + 1);
 
     // Cursor-based pagination
     if (cursor) {
@@ -38,8 +53,8 @@ export async function GET(req: NextRequest) {
 
     let snapshot = await query.get();
 
-    // Fallback: try capitalized Week field for old Sheets imports
-    if (snapshot.empty && weekParam) {
+    // Fallback for old Sheets imports (Capitalized "Week")
+    if (snapshot.empty && weekParam && league === 'nfl') {
       const week = parseInt(weekParam, 10);
       snapshot = await db.collection(colName)
         .where('Week', '==', week)
@@ -54,13 +69,18 @@ export async function GET(req: NextRequest) {
 
     const props = page.map(doc => {
       const d = doc.data() as Record<string, any>;
-      // Normalize old Sheets-imported field names (spaced/PascalCase) to camelCase
-      // so the UI always reads consistent field names regardless of import source
-      const pick = (...keys: string[]) => { for (const k of keys) { if (d[k] != null && d[k] !== '') return d[k]; } return undefined; };
+      const pick = (...keys: string[]) => { 
+        for (const k of keys) { 
+          if (d[k] != null && d[k] !== '') return d[k]; 
+        } 
+        return undefined; 
+      };
+
       return {
-        id:                doc.id,
+        id: doc.id,
+        league, // Attach league to each prop object
         ...d,
-        // Core fields — prefer camelCase, fall back to spaced/PascalCase Sheets variants
+        // Normalized Fields
         player:            pick('player', 'Player'),
         prop:              pick('prop', 'Prop'),
         line:              pick('line', 'Line'),
@@ -69,25 +89,32 @@ export async function GET(req: NextRequest) {
         week:              pick('week', 'Week'),
         season:            pick('season', 'Season'),
         overUnder:         pick('overUnder', 'over under', 'overunder', 'Over/Under', 'Over/Under?'),
-        // Analytics — prefer enriched camelCase, fall back to old Sheets spaced fields
-        // playerAvg: skip 0 (failed enrichment) so old Sheets "player avg" value wins
-        playerAvg:         (() => { for (const k of ['playerAvg', 'player avg', 'Player Avg']) { const v = d[k]; if (v != null && v !== '' && v !== 0) return v; } return d['playerAvg'] ?? d['player avg'] ?? d['Player Avg']; })(),
+        
+        // Analytics & Enrichment
+        playerAvg:         (() => { 
+          for (const k of ['playerAvg', 'player avg', 'Player Avg']) { 
+            const v = d[k]; if (v != null && v !== '' && v !== 0) return v; 
+          } 
+          return d['playerAvg'] ?? d['player avg'] ?? d['Player Avg']; 
+        })(),
         opponentRank:      pick('opponentRank', 'opponent rank', 'Opponent Rank'),
         opponentAvgVsStat: pick('opponentAvgVsStat', 'opponent avg vs stat', 'Opponent Avg vs Stat'),
-        scoreDiff:         pick('scoreDiff', 'prop.scoreDiff', 'prop.scoreDiff'),
-        seasonHitPct:      pick('seasonHitPct', 'prop.seasonHitPct%', 'prop.seasonHitPct%', 'hit %'),
+        scoreDiff:         pick('scoreDiff', 'prop.scoreDiff'),
+        seasonHitPct:      pick('seasonHitPct', 'prop.seasonHitPct%', 'hit %'),
         confidenceScore:   pick('confidenceScore', 'confidence score', 'Confidence Score'),
         edgeEV:            pick('edgeEV', 'edge ev', 'Edge EV', 'edge/ev'),
         winProbability:    pick('winProbability', 'win probability', 'Win Probability'),
         projWinPct:        pick('projWinPct', 'proj win %', 'Proj Win %'),
         kellyFraction:     pick('kellyFraction', 'kelly fraction', 'Kelly Fraction'),
         bestOdds:          pick('bestOdds', 'best odds', 'Best Odds'),
-        // Game result fields
-        gameStat:          pick('gameStat', 'game stats', 'Game Stats', 'game stat'),
-        actualResult:      pick('actualResult', 'actual stats', 'Actual Stats', 'actual result'),
+        
+        // Game Metadata
+        gameStat:          pick('gameStat', 'game stats', 'game stat'),
+        actualResult:      pick('actualResult', 'actual stats', 'actual result'),
         gameDate:          pick('gameDate', 'game date', 'Game Date'),
       };
     });
+
     const nextCursor = hasMore ? page[page.length - 1]?.id : null;
 
     const propTypes = [...new Set(props.map((p: any) =>
@@ -99,7 +126,7 @@ export async function GET(req: NextRequest) {
       propTypes,
       hasMore,
       cursor:     nextCursor,
-      lastId:     nextCursor, // legacy alias
+      lastId:     nextCursor,
       totalCount: props.length,
     });
 
@@ -113,10 +140,20 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+    const league = body.league || 'nfl';
     const season = body.season ?? 2025;
-    const colName = `allProps_${season}`;
+    
+    // Choose collection based on league
+    const colPrefix = league === 'nba' ? 'nbaProps' : 'allProps';
+    const colName = `${colPrefix}_${season}`;
+    
     const ref = db.collection(colName).doc();
-    await ref.set({ ...body, createdAt: new Date().toISOString() });
+    await ref.set({ 
+      ...body, 
+      league, // Ensure league is persisted
+      createdAt: new Date().toISOString() 
+    });
+    
     return NextResponse.json({ id: ref.id, ok: true });
   } catch (err: any) {
     console.error('POST /api/all-props:', err);

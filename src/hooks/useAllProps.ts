@@ -1,8 +1,8 @@
-
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 export interface NormalizedProp {
   id: string;
+  league: 'nfl' | 'nba'; // Added league to the interface
   player: string | null;
   team: string | null;
   prop: string | null;
@@ -33,6 +33,7 @@ export interface NormalizedProp {
 }
 
 interface UseAllPropsParams {
+  league?: 'nfl' | 'nba'; // Added league param
   week?: number;
   season?: number;
   initialLoad?: boolean;
@@ -40,72 +41,90 @@ interface UseAllPropsParams {
 
 const API_BASE = '/api';
 
-async function fetchFromApi(endpoint: string): Promise<any[]> {
-  try {
-    const res = await fetch(`${API_BASE}/${endpoint}`);
-    if (!res.ok) {
-      console.error(`Failed to fetch ${endpoint}: ${res.statusText}`);
-      return [];
-    }
-    return await res.json();
-  } catch (err) {
-    console.error(`Error fetching ${endpoint}:`, err);
-    return [];
-  }
-}
-
-export function useAllProps({ week, season, initialLoad = false }: UseAllPropsParams = {}) {
+export function useAllProps({ 
+  league = 'nfl', 
+  week, 
+  season, 
+  initialLoad = true 
+}: UseAllPropsParams = {}) {
   const [props, setProps] = useState<NormalizedProp[]>([]);
-  const [loading, setLoading] = useState(initialLoad);
+  const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [offset, setOffset] = useState(0);
   const limit = 50;
 
-  const buildUrl = useCallback(() => {
-    const url = new URL(`${API_BASE}/props`);
-    if (week) url.searchParams.append('week', String(week));
-    if (season) url.searchParams.append('season', String(season));
-    url.searchParams.append('offset', String(offset));
-    url.searchParams.append('limit', String(limit));
-    return url.toString();
-  }, [week, season, offset]);
+  // Track the current request to prevent race conditions when switching leagues
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const loadData = useCallback(async (isNewQuery: boolean) => {
-    if (isNewQuery) {
-      setOffset(0);
-      setProps([]);
+    // Cancel any pending requests if we are starting a fresh query (e.g., league switch)
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
     }
+    abortControllerRef.current = new AbortController();
+
+    const currentOffset = isNewQuery ? 0 : offset;
+    
+    if (isNewQuery) {
+      setProps([]);
+      setOffset(0);
+    }
+    
     setLoading(true);
 
     try {
-      const url = buildUrl();
-      const res = await fetch(url);
+      const url = new URL(`${window.location.origin}${API_BASE}/props`);
+      url.searchParams.append('league', league); // Crucial: Tell API which sport
+      if (week) url.searchParams.append('week', String(week));
+      if (season) url.searchParams.append('season', String(season));
+      url.searchParams.append('offset', String(currentOffset));
+      url.searchParams.append('limit', String(limit));
+
+      const res = await fetch(url.toString(), {
+        signal: abortControllerRef.current.signal
+      });
+      
+      if (!res.ok) throw new Error('Network response was not ok');
+      
       const newData = await res.json();
       
       setProps(prev => isNewQuery ? newData : [...prev, ...newData]);
       setHasMore(newData.length === limit);
-      setOffset(prev => prev + newData.length);
+      setOffset(currentOffset + newData.length);
 
-    } catch (error) {
+    } catch (error: any) {
+      if (error.name === 'AbortError') return; // Ignore cancellations
       console.error("Failed to fetch props:", error);
     } finally {
       setLoading(false);
     }
-  }, [buildUrl, limit]);
+  }, [league, week, season, offset, limit]);
 
+  // Trigger load on mount OR when filters change
   useEffect(() => {
-    if (initialLoad) {
-      loadData(true);
-    }
-  }, [initialLoad, loadData]);
+    loadData(true);
+    
+    return () => {
+      if (abortControllerRef.current) abortControllerRef.current.abort();
+    };
+  }, [league, week, season]); // Hook re-runs automatically when league/week/season change
 
   const refresh = () => loadData(true);
 
   const deleteProp = async (id: string) => {
-    // DB-side deletion removed for this example.
-    // Simulating by filtering out from the local state.
+    // Local optimistic update
     setProps(prev => prev.filter(p => p.id !== id));
+    
+    // Suggestion: Add an actual DELETE fetch here later
+    // await fetch(`/api/props/${id}?league=${league}`, { method: 'DELETE' });
   };
 
-  return { props, loading, hasMore, loadMore: () => loadData(false), refresh, deleteProp };
+  return { 
+    props, 
+    loading, 
+    hasMore, 
+    loadMore: () => loadData(false), 
+    refresh, 
+    deleteProp 
+  };
 }
