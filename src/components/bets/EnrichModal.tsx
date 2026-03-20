@@ -1,8 +1,24 @@
-// src/components/bets/EnrichModal.tsx
 import { useState } from 'react';
 import { toast } from 'sonner';
 
-export function EnrichModal({ isOpen, onClose, onComplete, defaultWeek, defaultSeason }: any) {
+interface EnrichModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onComplete: () => any;
+  league: "nba" | "nfl";
+  defaultSeason: number;
+  defaultCollection: string;
+  defaultWeek?: number; // Add this line
+}
+
+export function EnrichModal({
+  isOpen,
+  onClose,
+  onComplete,
+  defaultDate,
+  defaultSeason,
+  defaultCollection = 'all',
+}: EnrichModalProps) {
   const [loading, setLoading] = useState(false);
   const [force, setForce] = useState(false);
 
@@ -15,9 +31,9 @@ export function EnrichModal({ isOpen, onClose, onComplete, defaultWeek, defaultS
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          collection: 'all',
+          collection: defaultCollection,
           season: defaultSeason,
-          week: defaultWeek,
+          date: defaultDate, // Pass date to API
           skipEnriched: !force,
         }),
       });
@@ -40,14 +56,17 @@ export function EnrichModal({ isOpen, onClose, onComplete, defaultWeek, defaultS
 
   if (!isOpen) return null;
 
+  const displayTarget = defaultDate 
+    ? `Date ${defaultDate}` 
+    : `the ${defaultSeason} season`;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="bg-card border border-border w-full max-w-md p-6 rounded-2xl shadow-2xl">
-        <h2 className="text-xl font-black uppercase italic italic text-primary">Prop Enrichment</h2>
+        <h2 className="text-xl font-black uppercase italic text-primary">Prop Enrichment</h2>
         <p className="text-muted-foreground text-sm mt-2">
           This will fetch player averages, defensive stats, and calculate win probabilities for 
-          <span className="text-foreground font-bold"> Week {defaultWeek || 'All'} </span> 
-          of the <span className="text-foreground font-bold"> {defaultSeason} </span> season.
+          <span className="text-foreground font-bold"> {displayTarget}</span>.
         </p>
 
         <div className="mt-6 space-y-4">

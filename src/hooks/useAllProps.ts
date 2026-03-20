@@ -1,143 +1,105 @@
+'use client';
+
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 export interface NormalizedProp {
   id: string;
-  league: 'nfl' | 'nba';
-  player: string | null;
-  team: string | null;
-  prop: string | null;
-  line: number | null;
-  overUnder: string | null;
-  odds: number | null;
-  bestOdds: number | null;
-  bestBook: string | null;
-  matchup: string | null;
-  gameDate: string | null;
-  week: number | null;
-  season: number | null;
-  valueIcon: string | null;
-  playerAvg: number | null;
-  seasonHitPct: number | null;
-  opponentRank: number | null;
-  opponentAvgVsStat: number | null;
-  scoreDiff: number | null;
-  confidenceScore: number | null;
-  avgWinProb: number | null;
-  bestEdgePct: number | null;
-  expectedValue: number | null;
-  kellyPct: number | null;
-  projWinPct: number | null;
-  impliedProb: number | null;
-  fdOdds: number | null;
-  dkOdds: number | null;
-  pace?: number;        
-  defRating?: number;   
+  player: string;
+  team: string;
+  prop: string;
+  line: number;
+  type?: string; // 'Over' or 'Under'
+  price?: number;
+  matchup?: string;
+  league?: string;
+  confidenceScore?: number;
+  valueIcon?: string;
+  lastUpdated?: string;
 }
 
-interface UseAllPropsParams {
-  league?: 'nfl' | 'nba';
-  week?: number;
-  season?: number;
+interface UseAllPropsOptions {
+  league: string;
+  season: string | number;
+  week?: number | string;
+  date?: string;
+  limit?: number;
 }
-
-const API_BASE = '/api';
 
 export function useAllProps({ 
-  league = 'nba', 
+  league, 
+  season, 
   week, 
-  season = 2025 
-}: UseAllPropsParams = {}) {
+  date, 
+  limit = 50 
+}: UseAllPropsOptions) {
   const [props, setProps] = useState<NormalizedProp[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
-  const limit = 50;
+  const [hasMore, setHasMore] = useState(true);
 
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  const loadData = useCallback(async (isNewQuery: boolean) => {
-    // 1. Manage Abort Controller to prevent race conditions
+  const fetchProps = useCallback(async (currentOffset: number, isRefresh: boolean = false) => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
     abortControllerRef.current = new AbortController();
 
-    const currentOffset = isNewQuery ? 0 : offset;
-    
-    if (isNewQuery) {
-      setProps([]);
-      setOffset(0);
-      setHasMore(true);
-    }
-    
-    setLoading(true);
-
     try {
-      const url = new URL(`${window.location.origin}${API_BASE}/all-props`);
-      url.searchParams.append('league', league);
-      url.searchParams.append('season', String(season));
-      if (week) url.searchParams.append('week', String(week));
-      url.searchParams.append('offset', String(currentOffset));
-      url.searchParams.append('limit', String(limit));
-
-      const res = await fetch(url.toString(), {
-        signal: abortControllerRef.current.signal
-      });
+      setLoading(true);
       
-      const newData = await res.json();
+      const params = new URLSearchParams({
+        league,
+        season: String(season),
+        offset: String(currentOffset),
+        limit: String(limit),
+      });
 
-      // 2. Validate Response
-      if (res.ok && Array.isArray(newData)) {
-        setProps(prev => isNewQuery ? newData : [...prev, ...newData]);
-        setHasMore(newData.length === limit);
-        setOffset(currentOffset + newData.length);
-      } else {
-        console.error("API Error or Malformed Data:", newData);
-        if (isNewQuery) setProps([]); 
-        setHasMore(false);
+      if (week) params.append('week', String(week));
+      if (date) params.append('date', date);
+
+      // FIXED: Pointed to /api/props instead of /api/all-props
+      const response = await fetch(`/api/props?${params.toString()}`, {
+        signal: abortControllerRef.current.signal,
+        headers: { 'Cache-Control': 'no-cache' }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server responded with ${response.status}`);
       }
 
-    } catch (error: any) {
-      if (error.name === 'AbortError') return;
-      console.error("Failed to fetch props:", error);
+      const data: NormalizedProp[] = await response.json();
+
+      setProps(prev => isRefresh ? data : [...prev, ...data]);
+      setHasMore(data.length >= limit);
+      setError(null);
+    } catch (err: any) {
+      if (err.name === 'AbortError') return;
+      console.error('Fetch Error:', err);
+      setError(err.message || 'Failed to fetch props');
     } finally {
       setLoading(false);
     }
-  }, [league, week, season, offset]);
+  }, [league, season, week, date, limit]);
 
-  // 3. Trigger initial load and reset on dependency change
   useEffect(() => {
-    loadData(true);
+    setOffset(0);
+    fetchProps(0, true);
+    return () => abortControllerRef.current?.abort();
+  }, [league, season, week, date, fetchProps]);
 
-    return () => {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-    };
-  }, [league, season, week]); // dependencies that trigger a fresh fetch
+  const loadMore = useCallback(() => {
+    if (loading || !hasMore) return;
+    const nextOffset = offset + limit;
+    setOffset(nextOffset);
+    fetchProps(nextOffset, false);
+  }, [loading, hasMore, offset, limit, fetchProps]);
 
-  const refresh = () => loadData(true);
+  const refresh = useCallback(() => {
+    setOffset(0);
+    fetchProps(0, true);
+  }, [fetchProps]);
 
-  const deleteProp = async (id: string) => {
-    // Optimistic Update
-    setProps(prev => prev.filter(p => p.id !== id));
-    
-    try {
-      // Ensure we hit the right collection for deletion too
-      await fetch(`${API_BASE}/all-props/${id}?league=${league}&season=${season}`, { 
-        method: 'DELETE' 
-      });
-    } catch (error) {
-      console.error("Delete failed on server:", error);
-    }
-  };
-
-  return { 
-    props, 
-    loading, 
-    hasMore, 
-    loadMore: () => loadData(false), 
-    refresh, 
-    deleteProp 
-  };
+  return { props, loading, error, hasMore, loadMore, refresh };
 }

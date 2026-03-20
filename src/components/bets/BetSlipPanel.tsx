@@ -9,10 +9,13 @@ import { toDecimal } from '@/lib/utils/odds';
 import type { Bonus } from '@/lib/types';
 
 interface BetSlipPanelProps {
-  week: number;
+  week?: number;
+  selections: any[];
+  onRemove: (legId: string) => void; // Add this
+  onClear: () => void;              // Add this
 }
 
-export function BetSlipPanel({ week }: BetSlipPanelProps) {
+export function BetSlipPanel({ week, selections: initialSelections }: BetSlipPanelProps) {
   const router = useRouter();
   const { user } = useAuth();
   const {

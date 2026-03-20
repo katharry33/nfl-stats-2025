@@ -1,0 +1,29 @@
+name: Daily NBA Prop Sync
+
+on:
+  schedule:
+    - cron: '0 10 * * *' # Runs at 10:00 UTC daily
+  workflow_dispatch:      # Allows you to run it manually from the "Actions" tab
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/checkout@v4
+        with:
+          node-version: '20'
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Create Service Account File
+        run: echo '${{ secrets.SERVICE_ACCOUNT_JSON }}' > serviceAccountKey.json
+
+      - name: Run Master Sync
+        run: node scripts/nba/dailyMasterSync.mjs
+        env:
+          BDL_API_KEY: '69d21e57-4a04-47ea-bf29-dd63fe1e2a39'

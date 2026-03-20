@@ -71,7 +71,7 @@ async function syncBdlIds() {
             // Use playerName for NBA to match your Hub's logic
             playerName: rawName, 
             bdl_meta: { ... },
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           });
           
           console.log(`✅ Linked: ${rawName} -> BDL ID ${match.id} (${match.team ? match.team.abbreviation : 'N/A'})`);

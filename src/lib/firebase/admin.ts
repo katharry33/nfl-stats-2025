@@ -1,5 +1,6 @@
 // src/lib/firebase/admin.ts
 import * as admin from 'firebase-admin';
+import { getFirestore } from 'firebase-admin/firestore';
 
 const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
 
@@ -11,7 +12,6 @@ const firebaseAdminConfig = {
 
 export function getAdminApp() {
   if (!admin.apps.length) {
-    // DIAGNOSTIC LOG: This will show in your terminal (not browser)
     if (!firebaseAdminConfig.privateKey) {
       console.error("❌ CRITICAL: FIREBASE_PRIVATE_KEY is missing from environment!");
     }
@@ -28,7 +28,11 @@ export function getAdminApp() {
   return admin.app();
 }
 
-export const adminDb = getAdminApp().firestore();
+getAdminApp(); // Initialize on load
+
+export const adminDb = getFirestore();
+// Add this alias if you don't want to rename everything in batchEnrich.ts
+export const db = adminDb;
 
 console.log("🛠️ Admin Init Check - ProjectID:", firebaseAdminConfig.projectId);
 console.log("🛠️ Admin Init Check - Email:", firebaseAdminConfig.clientEmail ? "✅ Found" : "❌ MISSING");

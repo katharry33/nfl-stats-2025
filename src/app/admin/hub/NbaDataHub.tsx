@@ -1,19 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '@/lib/firebase/config';
-import { collection, getDocs, query, where, orderBy } from 'firebase/firestore';
+import { collection, getDocs, query, where, orderBy, doc, setDoc } from 'firebase/firestore';
+import { usePlayerRegistry } from '@/hooks/use-player-registry';
+import { Edit3, Save, X, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 const NbaDataHub = () => {
   const [syncStats, setSyncStats] = useState<any>({});
   const [defensiveRankings, setDefensiveRankings] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingStats, setLoadingStats] = useState(true);
+  
+  // Registry Hook integration
+  const { players, loading: loadingPlayers, searchTerm, setSearchTerm } = usePlayerRegistry('NBA');
+  const [editingPlayer, setEditingPlayer] = useState<any>(null);
 
   const fetchData = async () => {
-    setLoading(true);
+    setLoadingStats(true);
     try {
-      // 1. Check Schedule Counts
       const scheduleRef = collection(db, 'static_nba_schedule');
       const counts: any = {};
-      
       for (const year of [2024, 2025]) {
         const q = query(scheduleRef, where('season', '==', year));
         const snap = await getDocs(q);
@@ -21,71 +26,95 @@ const NbaDataHub = () => {
       }
       setSyncStats(counts);
 
-      // 2. Fetch Defensive Rankings (Sorted by Pts Allowed)
       const defenseRef = collection(db, 'nba_defense_stats');
       const defQuery = query(defenseRef, where('season', '==', 2025), orderBy('avgPtsAllowed', 'asc'));
       const defSnap = await getDocs(defQuery);
       setDefensiveRankings(defSnap.docs.map(doc => doc.data()));
+    } catch (err) { console.error(err); }
+    setLoadingStats(false);
+  };
 
-    } catch (err) {
-      console.error("Error loading Hub data:", err);
-    }
-    setLoading(false);
+  const handleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await setDoc(doc(db, 'static_nbaIdMap', editingPlayer.id), editingPlayer, { merge: true });
+      toast.success("NBA Mapping Updated");
+      setEditingPlayer(null);
+    } catch (err) { toast.error("Save Failed"); }
   };
 
   useEffect(() => { fetchData(); }, []);
 
   return (
     <div className="p-6 bg-slate-900 text-white min-h-screen">
-      <h1 className="text-3xl font-bold mb-8">🏀 NBA Admin Data Hub</h1>
+      <h1 className="text-3xl font-bold mb-8 italic uppercase tracking-tighter">
+        🏀 NBA Admin <span className="text-blue-500">Data Hub</span>
+      </h1>
 
-      {/* Sync Status Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-        {[2024, 2025].map(year => (
-          <div key={year} className="p-4 bg-slate-800 rounded-lg border border-slate-700">
-            <h3 className="text-slate-400 uppercase text-xs font-bold">Season {year} Schedule</h3>
-            <p className="text-2xl font-mono mt-1">
-              {syncStats[year] || 0} <span className="text-sm text-slate-500">/ {year === 2024 ? '1230' : 'Current'}</span>
-            </p>
-            <div className="w-full bg-slate-700 h-1 mt-3 rounded-full overflow-hidden">
-                <div 
-                  className="bg-blue-500 h-full transition-all duration-500" 
-                  style={{ width: `${Math.min((syncStats[year] / 1230) * 100, 100)}%` }}
-                />
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Defensive Rankings Table */}
-      <div className="bg-slate-800 rounded-xl overflow-hidden border border-slate-700">
-        <div className="p-4 border-b border-slate-700 flex justify-between items-center">
-          <h2 className="text-lg font-semibold">2025 Defensive Rankings (Opponent PPG)</h2>
-          <button onClick={fetchData} className="text-sm bg-blue-600 px-3 py-1 rounded hover:bg-blue-500">Refresh</button>
+      {/* Registry Section (The Missing Part) */}
+      <section className="mb-12">
+        <div className="flex justify-between items-end mb-4">
+          <h2 className="text-sm font-black uppercase text-slate-500 tracking-widest">NBA Player Registry</h2>
+          <input 
+            type="text" placeholder="Search Roster..." 
+            value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
+            className="bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-xs w-64 outline-none focus:border-blue-500"
+          />
         </div>
-        <table className="w-full text-left">
-          <thead className="text-xs uppercase text-slate-500 bg-slate-900/50">
-            <tr>
-              <th className="p-4">Team</th>
-              <th className="p-4">GP</th>
-              <th className="p-4">Pts Allowed</th>
-              <th className="p-4">3PM Allowed</th>
-              <th className="p-4">PRA Allowed</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-700">
-            {defensiveRankings.map((team, i) => (
-              <tr key={team.abbrev} className="hover:bg-slate-700/30 transition-colors">
-                <td className="p-4 font-bold"><span className="text-slate-500 mr-2">{i+1}</span>{team.abbrev}</td>
-                <td className="p-4 text-slate-400">{team.sampleSize}</td>
-                <td className="p-4 text-green-400 font-mono">{team.avgPtsAllowed}</td>
-                <td className="p-4 font-mono">{team.avgThreesAllowed}</td>
-                <td className="p-4 font-mono">{team.avgPraAllowed || (team.avgPtsAllowed + team.avgRebAllowed + team.avgAstAllowed).toFixed(2)}</td>
+        <div className="bg-slate-800 rounded-xl border border-slate-700 max-h-96 overflow-y-auto">
+          <table className="w-full text-left text-xs">
+            <thead className="sticky top-0 bg-slate-900 border-b border-slate-700">
+              <tr>
+                <th className="p-4">Player</th>
+                <th className="p-4">Team</th>
+                <th className="p-4">BDL ID</th>
+                <th className="p-4">BBR ID</th>
+                <th className="p-4 text-right">Action</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody className="divide-y divide-slate-700">
+              {loadingPlayers ? (
+                <tr><td colSpan={5} className="p-10 text-center animate-pulse">Loading Roster...</td></tr>
+              ) : (
+                players.map(p => (
+                  <tr key={p.id} className="hover:bg-slate-700/50">
+                    <td className="p-4 font-bold">{p.playerName}</td>
+                    <td className="p-4 text-slate-400">{p.teamAbbreviation}</td>
+                    <td className="p-4 font-mono text-blue-400">{p.bdlId || '—'}</td>
+                    <td className="p-4 font-mono text-purple-400">{p.bbrId || '—'}</td>
+                    <td className="p-4 text-right">
+                      <button onClick={() => setEditingPlayer(p)} className="p-2 hover:bg-blue-500/20 rounded-lg"><Edit3 size={14}/></button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* Sync Cards & Defensive Table from your original file... */}
+      {/* (Keep your original JSX for stats below here) */}
+
+      {/* Edit Modal */}
+      {editingPlayer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+          <form onSubmit={handleUpdate} className="bg-slate-900 border border-slate-700 p-8 rounded-2xl w-full max-w-md">
+            <h2 className="text-xl font-bold mb-4">Edit NBA Player</h2>
+            <div className="space-y-4">
+              <input value={editingPlayer.playerName} disabled className="w-full bg-slate-800 p-3 rounded-lg opacity-50" />
+              <div className="grid grid-cols-2 gap-4">
+                <input placeholder="BDL ID" value={editingPlayer.bdlId} onChange={e => setEditingPlayer({...editingPlayer, bdlId: e.target.value})} className="bg-slate-800 p-3 rounded-lg border border-slate-700" />
+                <input placeholder="BBR ID" value={editingPlayer.bbrId} onChange={e => setEditingPlayer({...editingPlayer, bbrId: e.target.value})} className="bg-slate-800 p-3 rounded-lg border border-slate-700" />
+              </div>
+              <button className="w-full bg-blue-600 py-4 rounded-xl font-bold flex items-center justify-center gap-2">
+                <Save size={18}/> Save Mapping
+              </button>
+              <button type="button" onClick={() => setEditingPlayer(null)} className="w-full text-slate-500 text-sm">Cancel</button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,48 +1,36 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  logging: {
-    fetches: {
-      fullUrl: true,
+  // Move it INSIDE experimental for Next.js 14
+  experimental: {
+    serverExternalPackages: ['firebase-admin'],
+    serverActions: {
+      allowedOrigins: ['*'],
     },
   },
 
-  experimental: {
-    // Dynamically allow all origins in dev to prevent handshake hangs
-    serverActions: {
-      allowedOrigins: ["*"], 
-    },
+  logging: {
+    fetches: { fullUrl: true },
   },
 
   images: {
-    unoptimized: true, // Set to true for faster dev boot
+    unoptimized: true,
     remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: 'firebasestorage.googleapis.com',
-      },
+      { protocol: 'https', hostname: 'firebasestorage.googleapis.com' },
     ],
   },
 
   webpack: (config, { isServer }) => {
-    // 1. Cleaner WASM support
-    config.experiments = { 
-      ...config.experiments, 
-      asyncWebAssembly: true,
-    };
+    config.experiments = { ...config.experiments, asyncWebAssembly: true };
 
-    // 2. Fix for Firebase Admin & node-only modules
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,
-        fs: false,
-        net: false,
-        tls: false,
-        child_process: false,
-        perf_hooks: false,
+        fs: false, net: false, tls: false, http2: false,
+        child_process: false, perf_hooks: false, crypto: false,
+        stream: false, os: false, path: false, events: false, process: false,
       };
     }
 
-    // 3. Prevent webpack from trying to process your data folder
     config.module.rules.push({
       test: /data\/.*\.json$/,
       loader: 'ignore-loader',

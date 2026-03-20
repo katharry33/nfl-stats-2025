@@ -1,60 +1,70 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { useBetSlip } from '@/hooks/useBetSlip';
+// Ensure these are exported as named exports in your hook file
 import { useAllProps, NormalizedProp } from '@/hooks/useAllProps';
 import { PropsTable } from '@/components/bets/PropsTable';
 import { EnrichModal } from '@/components/bets/EnrichModal';
 import { ManualEntryModal } from '@/components/bets/manual-entry-modal';
-import { RefreshCw, Plus, Zap, Loader2, Database, Target, X } from 'lucide-react';
+import { RefreshCw, Plus, Zap, Loader2, Database, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
-import { useSweetSpots } from '@/hooks/useSweetSpots';
 
 interface BetBuilderClientProps {
-  initialWeek?: number;
+  initialDate?: string;
   season?:      number;
+  league?:      'nfl' | 'nba' | 'ncaab';
 }
 
 export default function BetBuilderClient({
-  initialWeek,
-  season = 2025,
+  initialDate,
+  season = 2025, 
+  league = 'nba',
 }: BetBuilderClientProps) {
+  const router = useRouter();
+  
+  const activeDate = useMemo(() => {
+    if (initialDate) return initialDate;
+    return new Date().toISOString().split('T')[0];
+  }, [initialDate]);
 
-  // ── Data hooks ─────────────────────────────────────────────────────────────
   const {
-    props: allProps,
+    props: allProps = [],
     loading,
     error,
     hasMore,
     loadMore,
     refresh,
-  } = useAllProps({ week: initialWeek, season });
+  } = useAllProps({ 
+    league, 
+    date: activeDate, 
+    season: String(season) // Ensure season is passed as string to match hook expectation
+  });
 
-  const { selections, addLeg, isInitialized, ...betSlipRest } = useBetSlip();
+  const { selections, addLeg, ...betSlipRest } = useBetSlip();
   
-  // Safe extraction of clear method
+  // Dynamic check for clearSlip function name in hook
   const clearSlip = (betSlipRest as any).clearSlip
     ?? (betSlipRest as any).clearSelections
     ?? (betSlipRest as any).clearLegs
     ?? (betSlipRest as any).reset
     ?? null;
 
-  const { criteria } = useSweetSpots();
-
-  // ── UI state ───────────────────────────────────────────────────────────────
   const [showManual,    setShowManual]    = useState(false);
   const [showEnrich,    setShowEnrich]    = useState(false);
   const [selectedType,  setSelectedType]  = useState<string>('All');
 
-  // ── Derived values ─────────────────────────────────────────────────────────
+  // FIX: Added Type for parameter 'p'
   const propTypes = useMemo(() => {
-    const types = new Set(allProps.map(p => p.prop).filter(Boolean));
+    const types = new Set(allProps.map((p: NormalizedProp) => p.prop).filter(Boolean));
     return ['All', ...Array.from(types).sort()];
   }, [allProps]);
 
+  // FIX: Added Type for parameter 'p'
   const filteredProps = useMemo(() => {
     if (selectedType === 'All') return allProps;
-    return allProps.filter(p => p.prop === selectedType);
+    return allProps.filter((p: NormalizedProp) => p.prop === selectedType);
   }, [allProps, selectedType]);
 
   const slipIds = useMemo(
@@ -62,7 +72,13 @@ export default function BetBuilderClient({
     [selections],
   );
 
-  // ── Handlers ───────────────────────────────────────────────────────────────
+  const handleDateChange = (offset: number) => {
+    const date = new Date(activeDate + 'T12:00:00Z');
+    date.setDate(date.getDate() + offset);
+    const newDateStr = date.toISOString().split('T')[0];
+    router.push(`/bet-builder?league=${league}&date=${newDateStr}&season=${season}`);
+  };
+
   const handleAddToSlip = useCallback((prop: NormalizedProp) => {
     const propId = String(prop.id);
     if (slipIds.has(propId)) {
@@ -70,37 +86,28 @@ export default function BetBuilderClient({
       return;
     }
     addLeg({
-      id:        propId,
+      id:          propId,
       propId,
-      player:    prop.player    ?? 'Unknown',
-      prop:      prop.prop      ?? 'Prop',
-      line:      prop.line      ?? 0,
+      player:      prop.player    ?? 'Unknown',
+      prop:        prop.prop      ?? 'Prop',
+      line:        prop.line      ?? 0,
       selection: (prop.overUnder as 'Over' | 'Under') || 'Over',
-      odds:      prop.bestOdds  ?? prop.odds ?? -110,
-      matchup:   prop.matchup   ?? '',
-      team:      prop.team      ?? '',
-      week:      prop.week,
-      season:    prop.season,
-      gameDate:  prop.gameDate  ?? new Date().toISOString(),
+      // @ts-ignore - bestOdds might be dynamic from enrichment
+      odds:        prop.bestOdds  ?? -110,
+      matchup:     prop.matchup   ?? '',
+      team:        prop.team      ?? '',
+      week:        (prop as any).week,
+      season:      prop.season,
+      gameDate:    prop.gameDate  ?? new Date().toISOString(),
     });
     
-    // Updated Toast to Obsidian/Cyan
-    toast.success(`${prop.player} added to slip`, {
-      style: { 
-        background: '#111111', 
-        border: '1px solid rgba(34,211,238,0.2)', 
-        color: '#ffffff',
-        fontFamily: 'monospace',
-        fontSize: '10px',
-        textTransform: 'uppercase'
-      },
-    });
+    toast.success(`${prop.player} added to slip`);
   }, [addLeg, slipIds]);
+
+  const firstProp = allProps[0];
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-
-      {/* Header - Industrial Slate Style */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#111111] border border-white/5 p-6 rounded-[2rem] shadow-xl">
         <div className="flex items-center gap-4">
           <div className="h-12 w-12 rounded-2xl bg-cyan-500/10 flex items-center justify-center border border-cyan-500/20">
@@ -108,40 +115,37 @@ export default function BetBuilderClient({
           </div>
           <div>
             <h2 className="text-xl font-black italic tracking-tighter uppercase text-white">Prop Builder</h2>
-            <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-2">
+            <div className="text-slate-500 text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-2">
               {loading ? 'Syncing...' : `${allProps.length} nodes available`}
-              {initialWeek && (
-                <span className="text-cyan-400">· WK{initialWeek}</span>
-              )}
-              {criteria && (
-                <span className="text-cyan-400/50">· Sweet Spot Engine Active</span>
-              )}
-            </p>
+              
+              <span className="text-cyan-400 flex items-center gap-1.5 ml-2">
+                <button onClick={() => handleDateChange(-1)} className="p-0.5 rounded-md hover:bg-white/10 transition-colors">
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </button>
+                <span className="font-mono">· {activeDate}</span>
+                <button onClick={() => handleDateChange(1)} className="p-0.5 rounded-md hover:bg-white/10 transition-colors">
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              </span>
+            </div>
           </div>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Dropdown Styled for Dark Mode */}
+          <div className="w-8 h-8 rounded-xl bg-black border border-white/10 flex items-center justify-center font-black text-[9px] text-[#FFD700] italic shrink-0">
+            {(firstProp?.league || league).slice(0, 3).toUpperCase()}
+          </div>
+
           <select
             value={selectedType}
             onChange={e => setSelectedType(e.target.value)}
-            className="bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest text-slate-400 outline-none focus:border-cyan-500/50 transition-all appearance-none cursor-pointer"
+            className="bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-[10px] font-black uppercase tracking-widest text-slate-400 outline-none focus:border-cyan-500/50 transition-all appearance-none cursor-pointer min-w-[120px]"
           >
-            {propTypes.map(type => (
+            {/* FIX: Ensure key and value are strings, not objects */}
+            {propTypes.map((type: string) => (
               <option key={type} value={type}>{type}</option>
             ))}
           </select>
-
-          {criteria && (
-            <a
-              href="/sweet-spots"
-              className="flex items-center gap-1.5 px-3 py-2 bg-cyan-500/5 border border-cyan-500/20 rounded-xl text-cyan-400/70 hover:text-cyan-400 transition-colors"
-              title="View Sweet Spot Engine"
-            >
-              <Target className="h-4 w-4" />
-              <span className="text-[9px] font-black uppercase hidden sm:block">Sweet Spots</span>
-            </a>
-          )}
 
           {(selections?.length ?? 0) > 0 && (
             <button
@@ -153,7 +157,6 @@ export default function BetBuilderClient({
             </button>
           )}
 
-          {/* Action Buttons - Ghost Style */}
           <button
             onClick={() => setShowEnrich(true)}
             className="p-2.5 bg-cyan-500/5 text-cyan-400 border border-cyan-500/10 rounded-xl hover:bg-cyan-500/10 transition-all"
@@ -180,7 +183,6 @@ export default function BetBuilderClient({
         </div>
       </div>
 
-      {/* Error Message */}
       {error && (
         <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-400 text-[10px] font-black uppercase tracking-widest flex justify-between items-center">
           <div className="flex items-center gap-2">
@@ -193,53 +195,47 @@ export default function BetBuilderClient({
         </div>
       )}
 
-      {/* Table Container */}
       <div className="min-h-[400px] bg-[#111111]/30 rounded-[2rem] border border-white/5 overflow-hidden">
         <PropsTable
           props={filteredProps}
+          league={league}
           isLoading={loading && allProps.length === 0}
           onAddToBetSlip={handleAddToSlip}
           slipIds={slipIds}
-          sweetSpotCriteria={criteria}
         />
       </div>
 
-      {/* Load More - Industrial Action Button */}
       {hasMore && (
         <div className="flex justify-center pt-8 pb-12">
           <button
             onClick={() => loadMore()}
             disabled={loading}
-            className="flex items-center gap-3 px-12 py-5 bg-[#111111] border border-white/10 rounded-2xl hover:border-cyan-500/40 hover:bg-[#161616] transition-all group active:scale-95"
+            className="flex items-center gap-3 px-12 py-5 bg-[#111111] border border-white/10 rounded-2xl hover:border-cyan-500/40 hover:bg-[#161616] transition-all group"
           >
-            {loading
-              ? <Loader2 className="h-5 w-5 animate-spin text-cyan-400" />
-              : <Database className="h-5 w-5 text-slate-600 group-hover:text-cyan-400 transition-colors" />
-            }
-            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 group-hover:text-white">
+            {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Database className="h-5 w-5" />}
+            <span className="text-[10px] font-black uppercase tracking-[0.3em]">
               {loading ? 'Accessing Ledger...' : 'Expand Data Pool'}
             </span>
           </button>
         </div>
       )}
 
-      {/* Modals - These typically handle their own internal colors */}
       {showManual && (
-        <ManualEntryModal
-          isOpen={showManual}
-          onClose={() => setShowManual(false)}
-          onAddLeg={addLeg}
-        />
+        <ManualEntryModal isOpen={showManual} onClose={() => setShowManual(false)} onAddLeg={addLeg} />
       )}
 
-      <EnrichModal
-        isOpen={showEnrich}
-        onClose={() => setShowEnrich(false)}
-        onComplete={() => { refresh(); setShowEnrich(false); }}
-        defaultWeek={initialWeek}
-        defaultSeason={season}
-        defaultCollection="all"
-      />
+      {showEnrich && (
+        <EnrichModal
+          isOpen={showEnrich}
+          onClose={() => setShowEnrich(false)}
+          onComplete={() => { refresh(); setShowEnrich(false); }}
+          league={league as 'nba' | 'nfl'}
+          // @ts-ignore - Field naming alignment
+          defaultDate={activeDate}
+          defaultSeason={season}
+          defaultCollection="all"
+        />
+      )}
     </div>
   );
 }

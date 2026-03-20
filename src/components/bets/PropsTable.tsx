@@ -1,259 +1,233 @@
 'use client';
 
-import React, { useState, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
-  ChevronUp, ChevronDown, Trash2, Plus, PlusCircle, Check,
-  Loader2, Settings2, Search, X, ChevronsUpDown, GripVertical,
+  ChevronUp, ChevronDown, ChevronsUpDown,
+  Plus, Check, Loader2, Search,
 } from 'lucide-react';
 import type { NormalizedProp } from '@/hooks/useAllProps';
-import { SweetSpotBadge } from '@/components/bets/SweetSpotBadge';
-import { scoreProp, type ScoringCriteria } from '@/lib/utils/sweetSpotScore';
 
-// ─── Column definitions ───────────────────────────────────────────────────────
-interface ColDef { id: string; label: string; default: boolean; }
+// --- Interfaces ---
+interface PropsTableProps {
+  props:          NormalizedProp[];
+  league:         'nfl' | 'nba' | 'ncaab';
+  isLoading:      boolean;
+  onAddToBetSlip: (prop: NormalizedProp) => void;
+  slipIds?:       Set<string>;
+  onEdit?:        (prop: NormalizedProp) => void;
+  onDelete?:      (id: string) => Promise<void>; // Add this line
+}
 
+interface ColDef {
+  id:      string;
+  label:   string;
+  default: boolean;
+  nbaOnly?: boolean;
+}
+
+// --- Column definitions ---
 const ALL_COLUMNS: ColDef[] = [
-  { id: 'week',        label: 'Wk/Date',    default: true  },
-  { id: 'player',      label: 'Player',      default: true  },
-  { id: 'team',        label: 'Team',        default: false },
-  { id: 'matchup',     label: 'Matchup',     default: true  },
-  { id: 'propLine',    label: 'Prop / Line', default: true  },
-  { id: 'gameStat',    label: 'Game Stat',   default: true  },
-  { id: 'result',      label: 'Result',      default: true  },
-  { id: 'playerAvg',   label: 'Player Avg',  default: false },
-  { id: 'scoreDiff',   label: 'Score Diff',  default: true  },
-  { id: 'oppRank',     label: 'Opp Rank',    default: false },
-  { id: 'oppAvg',      label: 'Opp Avg',     default: false },
-  { id: 'hitPct',      label: 'Hit %',       default: true  },
-  { id: 'avgWinProb',  label: 'Win Prob',    default: false },
-  { id: 'edge',        label: 'Edge / EV',   default: true  },
-  { id: 'conf',        label: 'Confidence',  default: true  },
-  { id: 'projWinPct',  label: 'Proj Win %',  default: false },
-  { id: 'impliedProb', label: 'Implied',     default: false },
-  { id: 'kelly',       label: 'Kelly %',     default: false },
-  { id: 'pace',        label: 'Pace',        default: true  },
-  { id: 'defRating',   label: 'Def Rtg',     default: true  },
-  { id: 'odds',        label: 'Odds',        default: false },
+  { id: 'week',         label: 'Week',           default: false },
+  { id: 'player',       label: 'Player',         default: true  },
+  { id: 'matchup',      label: 'Matchup',        default: true  },
+  { id: 'propLine',     label: 'Prop / Line',    default: true  },
+  { id: 'playerAvg',    label: 'Season Avg',     default: true  },
+  { id: 'scoreDiff',    label: 'Avg vs Line',    default: true  },
+  { id: 'hitPct',       label: 'Hit %',          default: true  },
+  { id: 'edge',         label: 'Edge %',         default: true  },
+  { id: 'conf',         label: 'Confidence',     default: true  },
+  { id: 'pace',         label: 'Pace',           default: true, nbaOnly: true },
+  { id: 'defRating',    label: 'Def Rating',     default: true, nbaOnly: true },
 ];
 
-const STORAGE_KEY = 'sweetspot_col_order_v3';
-const DEFAULT_COL_ORDER = ALL_COLUMNS.filter(c => c.default).map(c => c.id);
+// --- Helpers ---
+const nv  = (v: any) => (v == null || isNaN(Number(v)) ? -Infinity : Number(v));
+const fmt = (v: any, dp = 1) => { 
+  const x = Number(v); 
+  return v == null || isNaN(x) ? '—' : x.toFixed(dp); 
+};
 
-// ─── Helpers & Accessors ──────────────────────────────────────────────────────
-function n(v: any): number { return v == null || isNaN(Number(v)) ? -Infinity : Number(v); }
-function fmtNum(v: any, dp = 1): string {
-  const x = Number(v);
-  return v == null || isNaN(x) ? '—' : x.toFixed(dp);
-}
-function fmtPct(v: any, dp = 0): string {
+function fmtPct(v: any, dp = 0) {
   if (v == null || v === '') return '—';
   const x = Number(v);
   if (isNaN(x) || x === 0) return '—';
-  const pct = x <= 1.5 ? x * 100 : x;
-  return pct.toFixed(dp) + '%';
-}
-function fmtOdds(v: any): string {
-  const x = Number(v);
-  if (!x || !isFinite(x)) return '—';
-  return x > 0 ? `+${x}` : `${x}`;
+  return (x <= 1.5 ? x * 100 : x).toFixed(dp) + '%';
 }
 
-function getGameStat(prop: any): number | null {
-  const raw = prop.gameStat ?? prop.gamestats ?? prop.gameStats ?? null;
-  const x = Number(raw);
-  return isNaN(x) || raw === null ? null : x;
-}
-function getHit(prop: any): boolean | null {
-  const stat = getGameStat(prop);
-  const line = prop.line;
-  const ou = (prop.overUnder || '').toLowerCase();
-  if (stat == null || line == null || !ou) return null;
-  return ou === 'over' ? stat > line : ou === 'under' ? stat < line : null;
-}
-function getScoreDiff(prop: any): number | null {
-  if (prop.playerAvg != null && prop.line != null) return Math.round((prop.playerAvg - prop.line) * 10) / 10;
-  return prop.scoreDiff ?? null;
+function getSortVal(p: NormalizedProp, key: string): number | string {
+  switch (key) {
+    case 'player':    return p.player ?? '';
+    case 'playerAvg': return nv(p.playerAvg);
+    case 'scoreDiff': return nv(p.scoreDiff);
+    case 'hitPct':    return nv(p.seasonHitPct);
+    case 'edge':      return nv(p.bestEdgePct);
+    case 'conf':      return nv(p.confidenceScore);
+    case 'pace':      return nv(p.pace);
+    case 'defRating': return nv(p.defRating);
+    default:          return '';
+  }
 }
 
-// ─── Color Classes ────────────────────────────────────────────────────────────
-const scoreDiffCls = (d: number | null) => d && d > 0 ? 'text-[#22d3ee]' : 'text-red-400';
-const oppRankCls = (r: number | null) => r && r <= 10 ? 'text-[#22d3ee]' : 'text-zinc-500';
-const hitPctCls = (v: number | null) => v && v > 0.6 ? 'text-[#22d3ee]' : 'text-zinc-400';
-const evCls = (v: number | null) => v && v > 0 ? 'text-emerald-400' : 'text-zinc-500';
-const confCls = (v: number | null) => v && v > 0.7 ? 'text-[#22d3ee]' : 'text-zinc-400';
+function SortTh({ col, label, sortKey, sortDir, onSort }: any) {
+  const active = sortKey === col;
+  return (
+    <th onClick={() => onSort(col)} className="px-4 py-3 cursor-pointer select-none group">
+      <div className="flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-slate-500 group-hover:text-white transition-colors">
+        {label}
+        {active 
+          ? (sortDir === 'desc' ? <ChevronDown className="h-3 w-3 text-cyan-400" /> : <ChevronUp className="h-3 w-3 text-cyan-400" />)
+          : <ChevronsUpDown className="h-3 w-3 opacity-20 group-hover:opacity-100" />
+        }
+      </div>
+    </th>
+  );
+}
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+// --- Main Component ---
 export function PropsTable({
-  props = [], league, isLoading, onAddToBetSlip, slipIds = new Set(), onDelete,
-  showSweetSpots, sweetSpotCriteria,
-}: any) {
-  const [colOrder, setColOrder] = useState<string[]>(DEFAULT_COL_ORDER);
-  const [sortKey, setSortKey] = useState<any>('conf');
+  props = [], league, isLoading, onAddToBetSlip,
+  slipIds = new Set(),
+}: PropsTableProps) {
+  
+  const initialCols = useMemo(() => {
+    return ALL_COLUMNS
+      .filter(c => c.default && (league === 'nba' || !c.nbaOnly))
+      .map(c => c.id);
+  }, [league]);
+
+  const [colOrder] = useState<string[]>(initialCols);
+  const [sortKey, setSortKey] = useState<string>('conf');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [search, setSearch] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const safeProps = Array.isArray(props) ? props : [];
+  const handleSort = useCallback((key: string) => {
+    setSortDir(prev => (key === sortKey ? (prev === 'desc' ? 'asc' : 'desc') : 'desc'));
+    setSortKey(key);
+  }, [sortKey]);
 
-  const handleSort = (key: any) => {
-    if (key === sortKey) setSortDir(prev => prev === 'desc' ? 'asc' : 'desc');
-    else { setSortKey(key); setSortDir('desc'); }
-  };
+  const filtered = useMemo(() =>
+    props.filter(p =>
+      (p.player ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      (p.team   ?? '').toLowerCase().includes(search.toLowerCase())
+    ), [props, search]);
 
-  const filtered = useMemo(() => {
-    return safeProps.filter(p => 
-      (p.player || '').toLowerCase().includes(search.toLowerCase()) ||
-      (p.team || '').toLowerCase().includes(search.toLowerCase())
-    );
-  }, [safeProps, search]);
+  const sorted = useMemo(() =>
+    ([...filtered].sort((a, b) => {
+      const av = getSortVal(a, sortKey), bv = getSortVal(b, sortKey);
+      if (typeof av === 'string') return sortDir === 'asc' ? av.localeCompare(bv as string) : (bv as string).localeCompare(av);
+      return sortDir === 'asc' ? (av as number) - (bv as number) : (bv as number) - (av as number);
+    })), [filtered, sortKey, sortDir]);
 
-  const sorted = useMemo(() => {
-    return [...filtered].sort((a, b) => {
-      const av = a[sortKey];
-      const bv = b[sortKey];
-      return sortDir === 'asc' ? (av > bv ? 1 : -1) : (bv > av ? 1 : -1);
-    });
-  }, [filtered, sortKey, sortDir]);
-
-  if (isLoading && safeProps.length === 0) {
-    return <div className="p-20 text-center animate-pulse text-zinc-500 font-black italic">LOADING PROPS...</div>;
-  }
+  if (isLoading) return (
+    <div className="flex flex-col items-center justify-center py-20">
+      <Loader2 className="h-8 w-8 animate-spin mb-4 text-cyan-400" />
+      <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Accessing Ledger...</span>
+    </div>
+  );
 
   return (
-    <div className="space-y-4">
-      {/* Search Bar */}
-      <div className="flex items-center gap-3 bg-black/20 p-2 rounded-2xl border border-white/5">
-        <Search className="h-4 w-4 text-zinc-600 ml-2" />
-        <input 
-          value={search} 
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Search player, team..." 
-          className="bg-transparent outline-none text-xs font-mono text-white w-full"
-        />
+    <div className="bg-transparent overflow-hidden">
+      <div className="flex items-center gap-4 p-4 border-b border-white/5 bg-black/20">
+        <div className="relative flex-1 max-w-xs">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500" />
+          <input 
+            value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search Player/Team..."
+            className="w-full pl-9 pr-3 py-2 bg-black/40 border border-white/10 rounded-xl text-[10px] uppercase font-bold tracking-widest text-white outline-none focus:border-cyan-500/50 transition-all" 
+          />
+        </div>
       </div>
 
-      <div className="rounded-2xl border border-white/[0.06] overflow-hidden bg-[#0f1115]">
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse">
-            <thead className="bg-black/40 border-b border-white/[0.06]">
-              <tr>
-                <th className="px-3 py-3 w-4" />
-                {colOrder.map(id => {
-                  const label = ALL_COLUMNS.find(c => c.id === id)?.label || id;
-                  if ((id === 'pace' || id === 'defRating') && league !== 'nba') return null;
-                  return (
-                    <th key={id} onClick={() => handleSort(id)} className="px-3 py-3 text-left cursor-pointer group">
-                      <div className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-zinc-600 group-hover:text-zinc-400">
-                        {label} {sortKey === id && (sortDir === 'desc' ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />)}
-                      </div>
-                    </th>
-                  );
-                })}
-                <th className="px-3 py-3 text-right" />
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((prop, idx) => {
-                const id = String(prop.id || idx);
-                const isExpanded = expandedId === id;
-                const inSlip = slipIds.has(id);
-                const gameStat = getGameStat(prop);
-                const hit = getHit(prop);
-                const scoreDiffVal = getScoreDiff(prop);
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr className="bg-black/40">
+              <th className="px-4 py-3 w-8" />
+              {colOrder.map(id => (
+                <SortTh key={id} col={id} label={ALL_COLUMNS.find(c => c.id === id)?.label ?? ''} sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+              ))}
+              <th className="px-4 py-3 text-right text-[10px] font-black uppercase text-slate-500">Slip</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((prop, idx) => {
+              const id = String(prop.id ?? idx);
+              const isExp = expandedId === id;
+              const inSlip = slipIds.has(id);
+              const isOver = (prop.overUnder ?? '').toLowerCase() === 'over';
 
-                return (
-                  <React.Fragment key={id}>
-                    <tr 
-                      onClick={() => setExpandedId(isExpanded ? null : id)}
-                      className={`border-t border-white/[0.04] cursor-pointer transition-colors hover:bg-white/[0.02] ${isExpanded ? 'bg-white/[0.03]' : ''}`}
-                    >
-                      <td className="px-3 py-4 text-zinc-700"><ChevronRight className={`h-3 w-3 transition-transform ${isExpanded ? 'rotate-90 text-[#22d3ee]' : ''}`} /></td>
-                      
-                      {colOrder.map(colId => {
-                        const isNBA = prop.league === 'nba';
-                        switch (colId) {
-                          case 'week': return <td key={colId} className="px-3 py-4 text-zinc-500 text-xs font-mono uppercase">{prop.week ? `WK${prop.week}` : '—'}</td>;
-                          case 'player': return (
-                            <td key={colId} className="px-3 py-4">
-                              <div className="flex flex-col"><span className="text-zinc-100 text-xs font-bold leading-none">{prop.player}</span><span className="text-zinc-600 text-[9px] font-black uppercase mt-1">{prop.team}</span></div>
-                            </td>
-                          );
-                          case 'matchup': return <td key={colId} className="px-3 py-4 text-zinc-500 text-[10px] font-mono uppercase">{prop.matchup}</td>;
-                          case 'propLine': return (
-                            <td key={colId} className="px-3 py-4">
-                              <div className="flex flex-col text-center"><span className="text-zinc-500 text-[9px] font-black uppercase">{prop.prop}</span><span className="text-[#22d3ee] text-xs font-mono font-bold">{prop.overUnder} {prop.line}</span></div>
-                            </td>
-                          );
-                          case 'gameStat': return <td key={colId} className="px-3 py-4 text-center text-zinc-300 text-xs font-mono font-bold">{gameStat ?? '—'}</td>;
-                          case 'result': return (
-                            <td key={colId} className="px-3 py-4 text-center">
-                              {hit !== null ? <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${hit ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>{hit ? 'WON' : 'LOST'}</span> : <span className="text-zinc-700 text-[9px] font-black italic">PENDING</span>}
-                            </td>
-                          );
-                          case 'scoreDiff': return <td key={colId} className={`px-3 py-4 text-center text-xs font-mono font-bold ${scoreDiffCls(scoreDiffVal)}`}>{scoreDiffVal ? (scoreDiffVal > 0 ? `+${scoreDiffVal}` : scoreDiffVal) : '—'}</td>;
-                          case 'hitPct': return <td key={colId} className={`px-3 py-4 text-center text-xs font-mono font-bold ${hitPctCls(prop.seasonHitPct)}`}>{fmtPct(prop.seasonHitPct)}</td>;
-                          case 'conf': return <td key={colId} className={`px-3 py-4 text-center text-xs font-mono font-bold ${confCls(prop.confidenceScore)}`}>{fmtPct(prop.confidenceScore)}</td>;
-                          case 'pace': return league === 'nba' ? <td key={colId} className="px-3 py-4 text-center text-zinc-500 text-xs font-mono">{isNBA ? fmtNum(prop.pace) : '—'}</td> : null;
-                          case 'defRating': return league === 'nba' ? <td key={colId} className="px-3 py-4 text-center text-zinc-500 text-xs font-mono">{isNBA ? fmtNum(prop.defRating) : '—'}</td> : null;
-                          case 'edge': return <td key={colId} className={`px-3 py-4 text-center text-xs font-mono font-bold ${evCls(prop.bestEdgePct)}`}>{fmtPct(prop.bestEdgePct)}</td>;
-                          case 'odds': return <td key={colId} className="px-3 py-4 text-center text-[#818cf8] text-xs font-mono font-bold">{fmtOdds(prop.odds)}</td>;
-                          default: return null;
-                        }
-                      })}
-
-                      <td className="px-3 py-4 text-right" onClick={e => e.stopPropagation()}>
-                        <button 
-                          onClick={() => onAddToBetSlip(prop)}
-                          className={`p-2 rounded-xl transition-all ${inSlip ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/5 text-zinc-500 hover:text-white hover:bg-white/10'}`}
-                        >
-                          {inSlip ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-                        </button>
+              return (
+                <React.Fragment key={id}>
+                  <tr onClick={() => setExpandedId(isExp ? null : id)} className={`border-b border-white/5 cursor-pointer hover:bg-white/[0.02] ${isExp ? 'bg-white/[0.03]' : ''}`}>
+                    <td className="px-4 py-4 text-center">
+                      <ChevronDown className={`h-3 w-3 transition-transform ${isExp ? '' : '-rotate-90 text-slate-600'}`} />
+                    </td>
+                    {colOrder.map(colId => {
+                      switch (colId) {
+                        case 'player': return (
+                          <td key={colId} className="px-4 py-4">
+                            <p className="text-[11px] font-black text-white italic uppercase">{prop.player}</p>
+                            <p className="text-[9px] text-slate-500 font-bold uppercase">{prop.team}</p>
+                          </td>
+                        );
+                        case 'propLine': return (
+                          <td key={colId} className="px-4 py-4 text-center">
+                            <p className="text-[9px] uppercase text-slate-500 font-black mb-0.5">{prop.prop}</p>
+                            <p className="text-xs font-black text-cyan-400 font-mono">
+                              {prop.line} <span className={isOver ? 'text-emerald-400' : 'text-rose-400'}>{prop.overUnder?.charAt(0)}</span>
+                            </p>
+                          </td>
+                        );
+                        case 'playerAvg': return <td key={colId} className="px-4 py-4 text-center font-mono text-[11px] text-slate-300">{fmt(prop.playerAvg)}</td>;
+                        case 'scoreDiff': return (
+                          <td key={colId} className="px-4 py-4 text-center font-mono text-[11px] font-black">
+                            <span className={Number(prop.scoreDiff) > 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                              {prop.scoreDiff != null ? (Number(prop.scoreDiff) > 0 ? `+${fmt(prop.scoreDiff)}` : fmt(prop.scoreDiff)) : '—'}
+                            </span>
+                          </td>
+                        );
+                        case 'pace': return <td key={colId} className="px-4 py-4 text-center font-mono text-[11px] text-orange-400">{fmt(prop.pace)}</td>;
+                        case 'defRating': return <td key={colId} className="px-4 py-4 text-center font-mono text-[11px] text-slate-400">{fmt(prop.defRating)}</td>;
+                        case 'hitPct': return <td key={colId} className="px-4 py-4 text-center font-mono text-[11px] font-black text-white">{fmtPct(prop.seasonHitPct)}</td>;
+                        case 'edge': return <td key={colId} className="px-4 py-4 text-center font-mono text-[11px] text-emerald-400">+{fmtPct(prop.bestEdgePct, 1)}</td>;
+                        case 'conf': return <td key={colId} className="px-4 py-4 text-center font-mono text-[11px] font-black text-cyan-400 bg-cyan-400/5">{fmtPct(prop.confidenceScore)}</td>;
+                        default: return <td key={colId} className="px-4 py-4 text-center">—</td>;
+                      }
+                    })}
+                    <td className="px-4 py-4 text-right" onClick={e => e.stopPropagation()}>
+                      <button onClick={() => !inSlip && onAddToBetSlip(prop)}
+                        className={`p-2 rounded-xl transition-all ${inSlip ? 'bg-emerald-500/20 text-emerald-400' : 'bg-white/5 text-slate-400 hover:bg-cyan-500 hover:text-white'}`}>
+                        {inSlip ? <Check className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                      </button>
+                    </td>
+                  </tr>
+                  {isExp && (
+                    <tr className="bg-white/[0.01]">
+                      <td colSpan={colOrder.length + 2} className="p-6 border-b border-white/5">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                           <DetailBox label="Kelly Criterion" value={fmtPct(prop.kellyPct, 1)} />
+                           <DetailBox label="Implied Prob" value={fmtPct(prop.impliedProb)} />
+                           <DetailBox label="Matchup" value={prop.matchup || 'N/A'} isText />
+                        </div>
                       </td>
                     </tr>
-
-                    {isExpanded && (
-                      <tr>
-                        <td colSpan={colOrder.length + 2} className="bg-black/40 border-t border-white/5 p-6">
-                          {(() => {
-                            const isNBA = prop.league === 'nba';
-                            
-                            return (
-                              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                                {[
-                                  ['Implied Prob', fmtPct(prop.impliedProb)],
-                                  ['Proj Win %', fmtPct(prop.projWinPct)],
-                                  ['Kelly %', fmtPct(prop.kellyPct, 1)],
-                                  ['Season Avg', fmtNum(prop.playerAvg)],
-                                  ['Opp Rank', `#${prop.opponentRank || '—'}`],
-                                  ['Opp vs Stat', fmtNum(prop.opponentAvgVsStat)],
-                                  // These were causing the errors
-                                  ['NBA Pace', isNBA ? fmtNum(prop.pace) : 'N/A'],
-                                  ['Def Rating', isNBA ? fmtNum(prop.defRating) : 'N/A'],
-                                  ['Best Odds', fmtOdds(prop.bestOdds)],
-                                  ['Best Book', prop.bestBook || '—']
-                                ].map(([label, val]) => (
-                                  <div key={label} className="bg-white/5 p-3 rounded-xl border border-white/5">
-                                    <p className="text-[8px] font-black uppercase tracking-widest text-zinc-600 mb-1">{label}</p>
-                                    <p className="text-xs font-mono font-bold text-zinc-300">{val}</p>
-                                  </div>
-                                ))}
-                              </div>
-                            );
-                          })()}
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   );
 }
 
-const ChevronRight = ({ className }: { className?: string }) => (
-  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" /></svg>
-);
+function DetailBox({ label, value, isText = false }: { label: string, value: any, isText?: boolean }) {
+  return (
+    <div className="bg-black/40 p-3 rounded-2xl border border-white/10">
+      <p className="text-[8px] uppercase font-black text-slate-500 mb-1 tracking-widest">{label}</p>
+      <p className={`text-xs font-black uppercase ${isText ? 'text-slate-300' : 'text-white font-mono'}`}>{value ?? '—'}</p>
+    </div>
+  );
+}
