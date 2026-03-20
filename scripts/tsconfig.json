@@ -12,5 +12,5 @@
         "@/*": ["src/*"]
       }
     },
-    "include": ["./**/*.ts", "seedNbaPlayers.js"]
+    "include": ["./**/*.ts", "seedNbaPlayers.js", "syncTeamMappings.js"]
   }

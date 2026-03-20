@@ -6,7 +6,7 @@ import { useAllProps, NormalizedProp } from '@/hooks/useAllProps';
 import { PropsTable } from '@/components/bets/PropsTable';
 import { EnrichModal } from '@/components/bets/EnrichModal';
 import { ManualEntryModal } from '@/components/bets/manual-entry-modal';
-import { RefreshCw, Plus, Zap, Trophy, Dribbble as Basketball } from 'lucide-react';
+import { RefreshCw, Plus, Zap, Trophy, Loader2, Dribbble as Basketball } from 'lucide-react';
 import { toast } from 'sonner';
 
 const SEASON_OPTIONS = [
@@ -16,8 +16,8 @@ const SEASON_OPTIONS = [
 ];
 
 const LEAGUES = [
-  { id: 'nfl', label: 'NFL', icon: Trophy },
-  { id: 'nba', label: 'NBA', icon: Basketball },
+  { id: 'nfl', label: 'NFL', icon: Trophy, color: '#22d3ee' },
+  { id: 'nba', label: 'NBA', icon: Basketball, color: '#fb923c' },
 ];
 
 export default function AllPropsPage() {
@@ -25,7 +25,7 @@ export default function AllPropsPage() {
   const [weekFilter, setWeekFilter] = useState('');
   const [seasonFilter, setSeasonFilter] = useState('all');
 
-  // Pass 'league' to the hook so the API knows which collection to query
+  // Hook handles data fetching based on the active league
   const { props, loading, hasMore, loadMore, refresh, deleteProp } = useAllProps({
     league, 
     week:   weekFilter ? parseInt(weekFilter) : undefined,
@@ -47,10 +47,11 @@ export default function AllPropsPage() {
       toast.error(`${prop.player} already in slip`);
       return;
     }
+    
     addLeg({
       id:        propId,
       propId,
-      league:    league, // Ensure league carries over to the bet slip
+      league:    league, 
       player:    prop.player    ?? 'Unknown',
       prop:      prop.prop      ?? 'Prop',
       line:      prop.line      ?? 0,
@@ -63,11 +64,13 @@ export default function AllPropsPage() {
       gameDate:  prop.gameDate  ?? new Date().toISOString(),
     });
     
+    const activeColor = LEAGUES.find(l => l.id === league)?.color;
+
     toast.success(`${prop.player} added to slip`, {
       style: { 
         background: '#0f1115', 
-        border: `1px solid ${league === 'nba' ? 'rgba(249,115,22,0.2)' : 'rgba(34,211,238,0.2)'}`, 
-        color: league === 'nba' ? '#fb923c' : '#22d3ee' 
+        border: `1px solid ${activeColor}33`, // 20% opacity hex
+        color: activeColor 
       },
     });
   }, [addLeg, slipIds, league]);
@@ -76,118 +79,119 @@ export default function AllPropsPage() {
     <main className="min-h-screen bg-background text-foreground p-4 md:p-8">
       <div className="max-w-[1600px] mx-auto space-y-5">
 
-        {/* Header */}
+        {/* Header Section */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
                <h1 className="text-2xl font-black tracking-tight text-foreground italic uppercase">
-                {league} Historical Props
+                {league} <span style={{ color: LEAGUES.find(l => l.id === league)?.color }}>Historical</span> Props
               </h1>
             </div>
-            <p className="text-muted-foreground text-sm mt-0.5">
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground mt-1">
               {loading && props.length === 0
-                ? 'Loading…'
-                : `${props.length.toLocaleString()} ${league.toUpperCase()} props shown`}
-            </p>
+                ? 'Connecting to Engine...'
+                // Use props?.length to safely check if it exists before calling toLocaleString()
+: `${(props?.length || 0).toLocaleString()} Indexed ${league.toUpperCase()} Lines`}
+                </p>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
             {/* League Switcher */}
-            <div className="flex rounded-xl overflow-hidden border border-border bg-card p-1">
+            <div className="flex rounded-xl overflow-hidden border border-white/5 bg-black/40 p-1 backdrop-blur-md">
               {LEAGUES.map((l) => (
                 <button
                   key={l.id}
                   onClick={() => {
                     setLeague(l.id as 'nfl' | 'nba');
-                    setWeekFilter(''); // Reset week as it differs by sport
+                    setWeekFilter(''); 
                   }}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${
+                  className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${
                     league === l.id 
-                      ? 'bg-primary text-primary-foreground shadow-sm' 
-                      : 'text-muted-foreground hover:text-foreground'
+                      ? 'bg-white/10 text-white shadow-xl' 
+                      : 'text-zinc-500 hover:text-zinc-300'
                   }`}
                 >
-                  <l.icon className="h-3 w-3" />
+                  <l.icon className="h-3.5 w-3.5" style={{ color: league === l.id ? l.color : 'inherit' }} />
                   {l.label}
                 </button>
               ))}
             </div>
 
-            {/* Week filter (Conditionally hide or label for NBA) */}
-            <input
-              type="number" 
-              min={1} 
-              max={league === 'nfl' ? 22 : 100} 
-              placeholder={league === 'nfl' ? "Week #" : "Day #"} 
-              value={weekFilter}
-              onChange={e => setWeekFilter(e.target.value)}
-              className="w-24 py-2 px-3 bg-card border border-border text-foreground text-xs font-mono rounded-xl outline-none focus:ring-1 focus:ring-primary/30"
-            />
+            {/* Contextual Filter (Week for NFL, Game Day for NBA) */}
+            <div className="relative">
+              <input
+                type="number" 
+                placeholder={league === 'nfl' ? "WEEK" : "DAY"} 
+                value={weekFilter}
+                onChange={e => setWeekFilter(e.target.value)}
+                className="w-20 py-2.5 px-3 bg-black/40 border border-white/5 text-white text-[10px] font-black rounded-xl outline-none focus:border-primary/50 transition-all text-center placeholder:text-zinc-700"
+              />
+            </div>
 
-            {/* Season toggle */}
-            <div className="flex rounded-xl overflow-hidden border border-border">
+            {/* Season Selector */}
+            <div className="flex rounded-xl overflow-hidden border border-white/5 bg-black/20">
               {SEASON_OPTIONS.map(s => (
-                <button key={s.value} onClick={() => setSeasonFilter(s.value)}
-                  className={`px-2.5 py-2 text-[9px] font-black uppercase whitespace-nowrap transition-colors ${
-                    seasonFilter === s.value ? 'bg-primary/20 text-primary' : 'bg-card text-muted-foreground hover:text-foreground'
+                <button 
+                  key={s.value} 
+                  onClick={() => setSeasonFilter(s.value)}
+                  className={`px-3 py-2.5 text-[9px] font-black uppercase transition-colors ${
+                    seasonFilter === s.value 
+                    ? 'bg-white/5 text-primary' 
+                    : 'text-zinc-600 hover:text-zinc-400'
                   }`}>
                   {s.label}
                 </button>
               ))}
             </div>
 
-            {/* Enrich Button (Passes current league context) */}
-            <button onClick={() => setShowEnrich(true)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 hover:bg-blue-500/20 text-xs font-black uppercase transition-colors">
-              <Zap className="h-3.5 w-3.5" /> Enrich {league.toUpperCase()}
+            <div className="h-8 w-[1px] bg-white/5 mx-1" />
+
+            {/* Action Buttons */}
+            <button 
+              onClick={() => setShowEnrich(true)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 hover:bg-blue-500/20 text-[10px] font-black uppercase transition-all group"
+            >
+              <Zap className="h-3.5 w-3.5 group-hover:fill-current" /> 
+              Enrich
             </button>
 
-            {/* Manual */}
-            <button onClick={() => setShowManual(true)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border text-muted-foreground hover:text-foreground text-xs font-black uppercase transition-colors">
-              <Plus className="h-3.5 w-3.5" /> Manual
+            <button 
+              onClick={() => refresh()} 
+              disabled={loading}
+              className="p-2.5 rounded-xl border border-white/5 text-zinc-500 hover:text-white transition-all disabled:opacity-20"
+            >
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
-
-            {/* Refresh */}
-            <button onClick={() => refresh()} disabled={loading}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border text-muted-foreground hover:text-foreground text-xs font-black uppercase transition-colors disabled:opacity-40">
-              <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-              Refresh
-            </button>
-
-            {/* Go to slip */}
-            {(selections ?? []).length > 0 && isInitialized && (
-              <a href="/parlay-studio"
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-black uppercase hover:bg-primary/90 transition-colors">
-                Slip ({selections.length}) →
-              </a>
-            )}
           </div>
         </div>
 
-        {/* Table - Needs to handle league-specific columns if needed */}
-        <PropsTable
-          props={props}
-          league={league}
-          isLoading={loading && props.length === 0}
-          onAddToBetSlip={handleAddToSlip}
-          onDelete={deleteProp}
-          slipIds={slipIds}
-        />
+        {/* The Data Table */}
+        <div className="bg-card/30 border border-white/5 rounded-3xl overflow-hidden backdrop-blur-xl">
+          <PropsTable
+            props={props}
+            league={league}
+            isLoading={loading && props.length === 0}
+            onAddToBetSlip={handleAddToSlip}
+            onDelete={deleteProp}
+            slipIds={slipIds}
+          />
+        </div>
 
         {hasMore && (
-          <div className="flex justify-center py-8">
+          <div className="flex justify-center py-12">
             <button
               onClick={loadMore}
               disabled={loading}
-              className="px-6 py-2 bg-card hover:bg-border text-foreground rounded-xl border border-border transition-all disabled:opacity-50"
+              className="px-8 py-3 bg-white/5 hover:bg-white/10 text-white text-[10px] font-black uppercase tracking-widest rounded-2xl border border-white/5 transition-all flex items-center gap-3"
             >
-              {loading ? 'Loading More...' : 'Load More'}
+              {loading && <Loader2 className="h-3 w-3 animate-spin" />}
+              Load More Prop Data
             </button>
           </div>
         )}
       </div>
 
+      {/* Modals */}
       {showManual && (
         <ManualEntryModal
           isOpen={showManual}
@@ -202,7 +206,8 @@ export default function AllPropsPage() {
         onComplete={() => refresh()}
         league={league}
         defaultWeek={weekFilter ? parseInt(weekFilter) : undefined}
-        defaultSeason={seasonFilter !== 'all' ? parseInt(seasonFilter) : 2025}
+        defaultSeason={seasonFilter === 'all' ? 2025 : parseInt(seasonFilter)}
+        // Ensures the enrichment script targets the correct sport collection
         defaultCollection={league === 'nba' ? 'nba_props' : 'nfl_props'}
       />
     </main>

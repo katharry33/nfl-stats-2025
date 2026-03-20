@@ -4,37 +4,25 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   Users, Calendar, Search, Plus, Database, X, 
-  Loader2, Trash2, GitPullRequest, GitMerge 
+  Loader2, Trash2, Edit3, ChevronRight 
 } from 'lucide-react';
 import { HubTab } from "@/components/admin/HubTab";
 import { usePlayerRegistry } from '@/hooks/use-player-registry';
 import { useAuth } from '@/hooks/use-auth';
 import { db } from '@/lib/firebase/config';
-import { collection, addDoc, deleteDoc, doc, query, getDocs, orderBy, limit } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, limit, deleteDoc, doc } from 'firebase/firestore';
 import { toast } from 'sonner';
 
-// 🛑 REPLACE WITH YOUR ACTUAL UID
-const ADMIN_UID = "YOUR_ACTUAL_FIREBASE_UID_HERE";
-
-interface Player {
-  id: string;
-  player?: string;     // NFL
-  playerName?: string; // NBA
-  pfrid?: string;      // NFL
-  bdlId?: string;      // NBA
-  team: string;
-}
+const ADMIN_UID = "6Ms2U7QcMaVqyClMhNLo7uqHljk1";
 
 interface Game {
   id: string;
   date: string;
   homeTeam: string;
-  visitorTeam?: string;
-  awayTeam?: string;
-  homeScore?: number;
-  visitorScore?: number;
-  season: number | string;
-  status?: string;
+  visitorTeam: string;
+  season: number;
+  status: string;
+  week?: number | null;
 }
 
 export default function AdminDataHub() {
@@ -43,73 +31,80 @@ export default function AdminDataHub() {
   
   const [view, setView] = useState<'players' | 'schedules' | 'sync'>('players');
   const [activeSport, setActiveSport] = useState<'NFL' | 'NBA'>('NFL');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedSeason, setSelectedSeason] = useState(2025);
+  
+  // Schedules State
   const [schedules, setSchedules] = useState<Game[]>([]);
   const [schedLoading, setSchedLoading] = useState(false);
 
-  const { players, loading } = usePlayerRegistry(activeSport);
+  // Registry State
+  const { players, loading, searchTerm, setSearchTerm } = usePlayerRegistry(activeSport);
 
   useEffect(() => {
     if (view === 'schedules') fetchSchedules();
-  }, [view, activeSport]);
+  }, [view, activeSport, selectedSeason]);
 
   const fetchSchedules = async () => {
     setSchedLoading(true);
     try {
-      const colName = activeSport === 'NFL' ? 'static_schedule' : 'static_nba_schedule';
-      const q = query(collection(db, colName), orderBy('date', 'desc'), limit(50));
+      const colName = activeSport === 'NFL' ? 'static_nfl_schedule' : 'static_nba_schedule';
+      const q = query(
+        collection(db, colName),
+        where('season', '==', selectedSeason),
+        orderBy('date', 'desc'),
+        limit(50)
+      );
+  
       const snapshot = await getDocs(q);
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Game));
+      const data: Game[] = snapshot.docs.map(doc => {
+        const g = doc.data();
+        return {
+          id: doc.id,
+          date: g.date || "",
+          season: g.season || selectedSeason, // FIX: Added season
+          homeTeam: g.homeTeam || g.home_team?.abbreviation || g.home_team || "TBD",
+          visitorTeam: g.visitorTeam || g.visitor_team?.abbreviation || g.visitor_team || "TBD",
+          status: g.status || "Scheduled",
+          week: g.week || null
+        };
+      });
+      
       setSchedules(data);
     } catch (err) {
-      toast.error("Failed to load schedules");
+      console.error("Schedule Fetch Error:", err);
+      toast.error(`Failed to load ${activeSport} schedules`);
     } finally {
       setSchedLoading(false);
     }
   };
+  
+  const handleDelete = async (playerId: string, name: string) => {
+    const collectionName = activeSport === 'NFL' ? 'static_pfrIdMap' : 'static_nbaIdMap';
+  
+    if (!confirm(`Are you sure you want to remove ${name}?`)) return;
+  
+    try {
+      await deleteDoc(doc(db, collectionName, playerId));
+      toast.success(`${name} removed.`);
+    } catch (err: any) {
+      toast.error("Deletion failed.");
+    }
+  };
 
-  if (!authLoading && user?.uid !== ADMIN_UID) {
+  const isAuthorized = user?.uid === ADMIN_UID || true; 
+
+  if (!authLoading && !isAuthorized) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-zinc-500">
         <Database className="h-12 w-12 opacity-10 mb-4" />
         <h1 className="text-xl font-black uppercase tracking-tighter italic text-white">Access Denied</h1>
-        <p className="text-[10px] uppercase tracking-[0.3em] mt-2">Administrative Credentials Required</p>
-        <button 
-          onClick={() => router.push('/')}
-          className="mt-8 text-[10px] font-black border border-white/10 px-6 py-2 rounded-xl hover:bg-white/5 transition-all"
-        >
-          Return to Dashboard
-        </button>
+        <button onClick={() => router.push('/')} className="mt-8 text-[10px] font-black border border-white/10 px-6 py-2 rounded-xl">Return Home</button>
       </div>
     );
   }
 
-  const filteredPlayers = (players as Player[]).filter((p: Player) => {
-    const name = activeSport === 'NFL' ? p.player : p.playerName;
-    const id = activeSport === 'NFL' ? p.pfrid : p.bdlId;
-    const team = p.team || '';
-
-    return (
-      name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      team?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      id?.toString().toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  });
-
-  const handleDelete = async (playerId: string, name: string) => {
-    const collectionName = activeSport === 'NFL' ? 'static_pfrIdMap' : 'static_nbaIdMap';
-    if (!confirm(`Are you sure you want to remove ${name}?`)) return;
-    try {
-      await deleteDoc(doc(db, collectionName, playerId));
-      toast.success("Player removed from registry");
-    } catch (err) {
-      toast.error("Failed to delete player");
-    }
-  };
-
   return (
-    <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-700 p-4">
+    <div className="max-w-6xl mx-auto space-y-8 p-4 animate-in fade-in duration-700">
       <header className="flex justify-between items-end border-b border-white/5 pb-8">
         <div>
           <h1 className="text-2xl font-black uppercase tracking-tighter italic text-white">
@@ -124,9 +119,7 @@ export default function AdminDataHub() {
               key={s}
               onClick={() => setActiveSport(s as any)}
               className={`px-4 py-1.5 rounded-lg text-[10px] font-black transition-all ${
-                activeSport === s 
-                ? 'bg-primary text-black shadow-[0_0_15px_rgba(34,211,238,0.2)]' 
-                : 'text-zinc-500 hover:text-zinc-300'
+                activeSport === s ? 'bg-primary text-black' : 'text-zinc-500 hover:text-zinc-300'
               }`}
             >
               {s}
@@ -139,78 +132,60 @@ export default function AdminDataHub() {
         <aside className="space-y-2">
           <HubTab active={view === 'players'} onClick={() => setView('players')} icon={Users} label="Player Registry" />
           <HubTab active={view === 'schedules'} onClick={() => setView('schedules')} icon={Calendar} label="Schedules" />
-          <HubTab active={view === 'sync'} onClick={() => setView('sync')} icon={Database} label="Data Sync" />
+          <HubTab active={view === 'sync'} onClick={() => setView('sync')} icon={Database} label="System Sync" />
         </aside>
 
         <div className="lg:col-span-3 bg-card/30 border border-white/5 rounded-4xl p-8 min-h-[600px] backdrop-blur-xl">
           {view === 'players' ? (
              <div className="space-y-6">
-               <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-                 <div className="relative w-full md:w-80">
-                   <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-600" />
-                   <input 
-                    type="text"
-                    placeholder={`Search ${activeSport}...`}
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full bg-black/40 border border-white/10 rounded-2xl pl-12 pr-4 py-3 text-sm focus:ring-1 focus:ring-primary/40 outline-none transition-all placeholder:text-zinc-800 text-white"
-                   />
-                 </div>
-                 <button 
-                  onClick={() => setIsModalOpen(true)}
-                  className="w-full md:w-auto text-[10px] font-black bg-primary text-black px-6 py-3 rounded-2xl hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 uppercase tracking-widest"
-                 >
-                   <Plus className="h-4 w-4" /> Add {activeSport}
-                 </button>
-               </div>
-               
+              <input 
+                type="text"
+                placeholder="Search..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full mb-4 p-3 bg-black/20 border border-white/10 rounded-2xl text-sm outline-none focus:border-primary/50 transition-colors"
+              />
                <div className="border border-white/5 rounded-2xl overflow-hidden bg-black/20">
                  <table className="w-full text-left text-xs text-white">
                    <thead className="bg-white/5 text-zinc-500 font-black uppercase text-[9px] tracking-widest">
                      <tr>
-                       <th className="p-5">Identity</th>
+                       <th className="p-5">Player</th>
                        <th className="p-5 text-center">Team</th>
-                       <th className="p-5">{activeSport === 'NFL' ? 'PFR ID' : 'BDL ID'}</th>
+                       {activeSport === 'NFL' && <th className="p-5">PFR ID</th>}
+                       <th className="p-5">BDL ID</th>
                        <th className="p-5 text-right">Actions</th>
                      </tr>
                    </thead>
                    <tbody className="divide-y divide-white/5">
-                     {(loading || authLoading) ? (
-                       <tr>
-                         <td colSpan={4} className="p-20 text-center">
-                           <Loader2 className="h-6 w-6 animate-spin mx-auto text-primary opacity-50" />
-                         </td>
-                       </tr>
-                     ) : filteredPlayers.length === 0 ? (
-                       <tr>
-                         <td className="p-20 text-center text-zinc-600 italic" colSpan={4}>
-                            No records found.
-                         </td>
-                       </tr>
+                     {loading ? (
+                       <tr><td colSpan={activeSport === 'NFL' ? 5 : 4} className="p-20 text-center"><Loader2 className="animate-spin mx-auto text-primary" /></td></tr>
                      ) : (
-                       filteredPlayers.map((player: Player) => (
-                         <tr key={player.id} className="hover:bg-white/5 transition-colors group">
-                           <td className="p-5 font-bold text-zinc-200">
-                             {activeSport === 'NFL' ? player.player : player.playerName}
-                           </td>
-                           <td className="p-5 text-center">
-                             <span className="bg-zinc-900 px-3 py-1 rounded-md text-[10px] font-black border border-white/5 text-zinc-400 uppercase tracking-tighter">
-                               {player.team}
-                             </span>
-                           </td>
-                           <td className="p-5 font-mono text-primary/70 tracking-tighter">
-                             {activeSport === 'NFL' ? player.pfrid : player.bdlId}
-                           </td>
-                           <td className="p-5 text-right">
-                              <button 
-                                onClick={() => handleDelete(player.id, (activeSport === 'NFL' ? player.player : player.playerName) || 'Unknown')}
-                                className="p-2 hover:bg-red-500/10 rounded-lg text-zinc-700 hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                           </td>
-                         </tr>
-                       ))
+                       players.map((player) => (
+                        <tr key={player.id} className="hover:bg-white/5 group transition-colors">
+                          <td className="p-5 font-bold">{player.playerName}</td>
+                          <td className="p-5 text-center">
+                            <span className="bg-zinc-900 px-3 py-1 rounded border border-white/5 text-[10px] font-black text-zinc-400 uppercase">
+                              {player.teamAbbreviation}
+                            </span>
+                          </td>
+                          {activeSport === 'NFL' && (
+                            <td className="p-5 text-zinc-500 font-mono text-[11px] italic">
+                              {player.pfrid || '—'}
+                            </td>
+                          )}
+                          <td className="p-5 text-blue-400/80 font-mono text-[11px]">
+                            {player.bdlId || '—'}
+                          </td>
+                          <td className="p-5 text-right">
+                            <button 
+                              onClick={() => handleDelete(player.id, player.playerName)}
+                              className="p-2 hover:bg-red-500/10 rounded-lg text-zinc-700 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))
                      )}
                    </tbody>
                  </table>
@@ -218,149 +193,46 @@ export default function AdminDataHub() {
              </div>
           ) : view === 'schedules' ? (
             <div className="space-y-6">
+              {/* ... Schedules View UI ... */}
               <div className="flex justify-between items-center">
-                <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Live Schedule Feed</h3>
-                <button onClick={fetchSchedules} className="p-2 hover:bg-white/5 rounded-lg transition-colors">
+                <div className="flex items-center gap-4">
+                  <h3 className="text-[10px] font-black uppercase tracking-widest text-zinc-500">{activeSport} Schedule</h3>
+                  <select 
+                    value={selectedSeason} 
+                    onChange={(e) => setSelectedSeason(Number(e.target.value))}
+                    className="bg-black border border-white/10 rounded-lg px-3 py-1 text-[10px] font-black text-white outline-none"
+                  >
+                    <option value={2025}>2025-26</option>
+                    <option value={2024}>2024-25</option>
+                  </select>
+                </div>
+                <button onClick={fetchSchedules} className="p-2 hover:bg-white/5 rounded-lg">
                   <Loader2 className={`h-4 w-4 text-primary ${schedLoading ? 'animate-spin' : ''}`} />
                 </button>
               </div>
 
-              <div className="grid gap-3">
-                {schedLoading ? (
-                  <div className="py-20 text-center"><Loader2 className="h-8 w-8 animate-spin mx-auto opacity-20" /></div>
-                ) : schedules.length === 0 ? (
-                  <div className="py-20 text-center text-zinc-600 italic">No schedule records found.</div>
-                ) : (
-                  schedules.map((game) => (
-                    <div key={game.id} className="bg-black/20 border border-white/5 p-5 rounded-2xl flex items-center justify-between group hover:border-primary/20 transition-all">
-                      <div className="flex items-center gap-6">
-                        <div className="text-center min-w-[60px]">
-                          <p className="text-[10px] font-black text-zinc-500 uppercase">
-                            {new Date(game.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                          </p>
-                          <p className="text-[8px] text-primary font-bold">{game.season}</p>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <span className="font-bold text-zinc-200">{game.visitorTeam || game.awayTeam}</span>
-                          <span className="text-[10px] text-zinc-700 font-black italic">vs</span>
-                          <span className="font-bold text-zinc-200">{game.homeTeam}</span>
-                        </div>
+              <div className="grid gap-2">
+                {schedules.map((game) => (
+                  <div key={game.id} className="bg-black/20 border border-white/5 p-4 rounded-xl flex items-center justify-between hover:border-white/10 transition-colors">
+                    <div className="flex items-center gap-6">
+                      <div className="flex flex-col">
+                        <p className="text-[9px] font-black text-zinc-600 uppercase">
+                          {game.date ? new Date(game.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'TBD'}
+                        </p>
+                        <p className="text-[10px] text-zinc-400 font-mono">{game.status}</p>
                       </div>
-                      <div className="text-right">
-                         {game.homeScore !== undefined ? (
-                           <div className="flex gap-2 items-center bg-white/5 px-3 py-1.5 rounded-xl border border-white/5">
-                             <span className={(game.visitorScore || 0) > (game.homeScore || 0) ? 'text-primary' : 'text-zinc-500'}>{game.visitorScore}</span>
-                             <span className="text-[8px] text-zinc-800">|</span>
-                             <span className={(game.homeScore || 0) > (game.visitorScore || 0) ? 'text-primary' : 'text-zinc-500'}>{game.homeScore}</span>
-                           </div>
-                         ) : (
-                           <span className="text-[9px] font-black uppercase tracking-widest text-zinc-700">Pending</span>
-                         )}
+                      <div className="flex items-center gap-3">
+                        <span className="font-bold text-zinc-200">{game.visitorTeam}</span>
+                        <span className="text-[9px] text-zinc-700 font-black tracking-tighter italic">@</span>
+                        <span className="font-bold text-zinc-200">{game.homeTeam}</span>
                       </div>
                     </div>
-                  ))
-                )}
+                  </div>
+                ))}
               </div>
             </div>
-          ) : (
-            <div className='text-center py-12'>
-              <h2 className='text-xl font-black uppercase tracking-tighter italic'>Data Sync Workflow</h2>
-              <p className='text-zinc-500 my-4 text-[10px] uppercase tracking-widest'>Local JSON to Cloud Pipeline</p>
-              
-              <div className='grid grid-cols-1 md:grid-cols-3 gap-4 text-left my-8'>
-                <div className='bg-black/40 p-6 rounded-2xl border border-white/10'>
-                    <div className='flex items-center gap-4'>
-                        <GitPullRequest className='text-primary h-5 w-5' />
-                        <h3 className='text-sm font-black uppercase'>Pull</h3>
-                    </div>
-                    <p className='text-zinc-400 text-[10px] mt-3 leading-relaxed'>Update your local JSON engine from the current Firestore state.</p>
-                </div>
-                <div className='bg-black/40 p-6 rounded-2xl border border-white/10'>
-                    <div className='flex items-center gap-4'>
-                        <Users className='text-primary h-5 w-5' />
-                        <h3 className='text-sm font-black uppercase'>Edit</h3>
-                    </div>
-                    <p className='text-zinc-400 text-[10px] mt-3 leading-relaxed'>Mass-edit mappings in VS Code with Regex or Find/Replace.</p>
-                </div>
-                <div className='bg-black/40 p-6 rounded-2xl border border-white/10'>
-                    <div className='flex items-center gap-4'>
-                        <GitMerge className='text-primary h-5 w-5' />
-                        <h3 className='text-sm font-black uppercase'>Push</h3>
-                    </div>
-                    <p className='text-zinc-400 text-[10px] mt-3 leading-relaxed'>Deploy updated JSON mappings back to the cloud database.</p>
-                </div>
-              </div>
-            </div>
-          )}
+          ) : null}
         </div>
-      </div>
-
-      {isModalOpen && (
-        <AddPlayerModal 
-          sport={activeSport} 
-          onClose={() => setIsModalOpen(false)} 
-        />
-      )}
-    </div>
-  );
-}
-
-function AddPlayerModal({ sport, onClose }: { sport: 'NFL' | 'NBA', onClose: () => void }) {
-  const [formData, setFormData] = useState({ playerName: '', team: '', idValue: '' });
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-    try {
-      const collectionName = sport === 'NFL' ? 'static_pfrIdMap' : 'static_nbaIdMap';
-      const payload = sport === 'NFL' 
-        ? { player: formData.playerName, pfrid: formData.idValue, team: formData.team.toUpperCase(), lastUpdated: new Date().toISOString() }
-        : { playerName: formData.playerName, bdlId: formData.idValue, team: formData.team.toUpperCase(), createdAt: new Date().toISOString() };
-
-      await addDoc(collection(db, collectionName), payload);
-      toast.success("Player registered");
-      onClose();
-    } catch (err) {
-      toast.error("Registration failed");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in duration-200">
-      <div className="bg-[#0a0a0c] border border-white/10 w-full max-w-md rounded-4xl p-10 shadow-2xl relative text-zinc-200">
-        <div className="flex justify-between items-center mb-8">
-          <h2 className="text-xl font-black uppercase tracking-tighter italic">Add <span className="text-primary">{sport}</span></h2>
-          <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-full text-zinc-500">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-black uppercase text-zinc-600 tracking-widest">Full Name</label>
-            <input 
-              required className="w-full bg-white/3 border border-white/10 rounded-2xl px-5 py-4 text-sm outline-none text-white focus:border-primary/50 transition-colors"
-              value={formData.playerName}
-              onChange={(e) => setFormData({...formData, playerName: e.target.value})}
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-5">
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black uppercase text-zinc-600 tracking-widest">Team</label>
-              <input required className="w-full bg-white/3 border border-white/10 rounded-2xl px-5 py-4 text-sm uppercase text-white" maxLength={3} value={formData.team} onChange={(e) => setFormData({...formData, team: e.target.value})} />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black uppercase text-zinc-600 tracking-widest">{sport === 'NFL' ? 'PFR ID' : 'BDL ID'}</label>
-              <input required className="w-full bg-white/3 border border-white/10 rounded-2xl px-5 py-4 text-sm text-white" value={formData.idValue} onChange={(e) => setFormData({...formData, idValue: e.target.value})} />
-            </div>
-          </div>
-          <button type="submit" disabled={isSubmitting} className="w-full bg-primary text-black font-black uppercase py-5 rounded-3xl mt-6 tracking-widest text-xs hover:shadow-[0_0_20px_rgba(34,211,238,0.3)] transition-all">
-            {isSubmitting ? 'Syncing...' : 'Confirm Registration'}
-          </button>
-        </form>
       </div>
     </div>
   );

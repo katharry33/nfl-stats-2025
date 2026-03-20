@@ -12,3 +12,4 @@ realkey.json
 .env.local
 .env.production
 dist
+data/

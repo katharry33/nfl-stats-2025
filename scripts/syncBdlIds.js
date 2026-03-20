@@ -66,15 +66,11 @@ async function syncBdlIds() {
             );
             if (teamMatch) match = teamMatch;
           }
-
           await doc.ref.update({
             bdlId: match.id,
-            bdl_meta: {
-              firstName: match.first_name,
-              lastName: match.last_name,
-              team: match.team ? match.team.abbreviation : 'N/A',
-              position: match.position
-            },
+            // Use playerName for NBA to match your Hub's logic
+            playerName: rawName, 
+            bdl_meta: { ... },
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
           });
           

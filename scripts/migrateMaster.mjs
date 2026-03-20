@@ -4,7 +4,7 @@ import fs from 'fs';
 
 const sport = process.argv[2]?.toUpperCase(); // NFL or NBA
 if (!['NFL', 'NBA'].includes(sport)) {
-  console.error("❌ Please specify sport: node migrateMaster.mjs NFL");
+  console.error("❌ Please specify sport: node scripts/migrateMaster.mjs NFL");
   process.exit(1);
 }
 
@@ -13,9 +13,14 @@ initializeApp({ credential: cert(serviceAccount) });
 const db = getFirestore();
 
 async function migrate() {
-  // Logic maps to your new folder structure
-  const filePath = `./data/${sport.toLowerCase()}/master-registry.json`;
-  const collectionName = sport === 'NFL' ? 'static_pfrIdMap' : 'nba_player_registry';
+  const filePath = `./data_backup/${sport.toLowerCase()}/master-registry.json`;
+  // Standardized to match your collect script
+  const collectionName = sport === 'NFL' ? 'static_pfrIdMap' : 'static_nbaIdMap';
+
+  if (!fs.existsSync(filePath)) {
+    console.error(`❌ File not found: ${filePath}`);
+    return;
+  }
 
   const rawData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
   console.log(`🚀 Migrating ${rawData.length} ${sport} players to ${collectionName}...`);
@@ -26,20 +31,18 @@ async function migrate() {
     const chunk = rawData.slice(i, i + batchSize);
 
     chunk.forEach((p) => {
-      // Use bdlId as primary key, pfrId as fallback
-      const docRef = db.collection(collectionName).doc(p.bdlId);
-      
-      const payload = {
-        playerName: p.playerName,
-        bdlId: p.bdlId,
-        pfrId: p.pfrId || null,
-        team: p.team.toUpperCase(),
-        lastUpdated: new Date().toISOString(),
-        // Backwards compatibility for NFL-specific keys
-        ...(sport === 'NFL' && { player: p.playerName, pfrid: p.pfrId || p.bdlId })
-      };
+      // Use the 'id' field we saved during the pull phase
+      const docId = p.id || p.bdlId;
+      if (!docId) return;
 
-      batch.set(docRef, payload, { merge: true });
+      const docRef = db.collection(collectionName).doc(String(docId));
+      
+      const { id, ...dataToSave } = p;
+
+      batch.set(docRef, {
+        ...dataToSave,
+        lastUpdated: new Date().toISOString()
+      }, { merge: true });
     });
 
     await batch.commit();

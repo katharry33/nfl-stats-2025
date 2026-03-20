@@ -10,7 +10,8 @@ import {
   Target, 
   Settings,
   Database,
-  ChevronRight
+  ChevronRight,
+  Clock
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -27,6 +28,10 @@ const ADMIN_ITEMS = [
     title: "Data Hub",
     href: "/admin/hub", // Matches your new consolidated page
     icon: Database
+  },
+  {title:"Historical Props",
+    href: "/all-props",
+    icon: Clock
   }
 ];
 

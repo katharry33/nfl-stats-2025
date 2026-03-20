@@ -1,34 +1,12 @@
 // src/lib/enrichment/scoring.ts
-// Exact port of Google Sheets enrichment formulas
 
-import type { NFLProp } from '@/lib/types';
-
-type PropResult = 'won' | 'lost' | 'push' | 'pending';
-
-// ─── Column formula translations ────────────────────────────────────────────
-//  L  yardsScore       = playerAvg * 0.7 + opponentAvgVsStat * 0.3
-//  M  rankScore        = ((opponentRank - 16.5) / 32) * 10
-//  N  totalScore       = yardsScore + rankAdjustment
-//  O  scoreDiff        = totalScore - line
-//  P  scalingFactor    = scoreDiff / 10
-//  Q  winProbability   = EXP(-scalingFactor)
-//  R  prediction       = scoreDiff > 0 → "Over", < 0 → "Under"
-//  S  projWinPct       = Over: 1/(1+winProb)   Under: winProb/(1+winProb)
-//  T  seasonHitPct     (pre-filled by PFR enrichment — not computed here)
-//  U  avgWinProb       = avg(projWinPct, seasonHitPct)  or projWinPct alone
-//  V  bestOdds         (pre-filled from BettingPros / Odds API)
-//  W  impliedProb      = odds>0 → 100/(odds+100)  else ABS(odds)/(ABS(odds)+100)
-//  X  bestEdgePct      = avgWinProb - impliedProb
-//  Y  expectedValue    = avgWinProb * payout - (1 - avgWinProb)
-//  Z  kellyPct         = (b*p - q) / b, capped by prop type
-//  AA valueIcon        = edge>10% → 🔥  edge>5% → ⚠️  else → ❄️
-//  AB confidenceScore  = 0.4*projWinPct + 0.4*seasonHitPct + 0.2*avgWinProb
-// ────────────────────────────────────────────────────────────────────────────
-
-// Standard juice used when no odds are stored.
-// Allows EV/Kelly/Edge to always compute — props without real odds
-// get a conservative baseline rather than showing "—".
+/**
+ * Standard juice used when no odds are stored.
+ * Allows EV/Kelly/Edge to always compute.
+ */
 const DEFAULT_ODDS = -110;
+
+export type PropResult = 'won' | 'lost' | 'push' | 'pending';
 
 export interface ScoringInput {
   playerAvg:         number;
@@ -49,84 +27,95 @@ export interface ScoringOutput {
   winProbability:  number;
   overUnder:       'Over' | 'Under';
   projWinPct:      number;
-  avgWinProb:      number | null;
+  avgWinProb:      number; // Guaranteed number for downstream math
   impliedProb:     number;
   bestEdgePct:     number;
   expectedValue:   number;
   kellyPct:        number | null;
-  valueIcon:       string;
   confidenceScore: number;
 }
+
+// ─── Helper Functions ────────────────────────────────────────────────────────
 
 function impliedProbFromOdds(odds: number): number {
   if (odds > 0) return 100 / (odds + 100);
   return Math.abs(odds) / (Math.abs(odds) + 100);
 }
 
-function kellyCap(propNorm: string): number {
+function kellyCap(propNorm: string, sport: string): number {
   const p = propNorm.toLowerCase();
+  // NBA is higher frequency/volatility; we use a flatter 5% cap
+  if (sport === 'nba') return 0.05; 
+  
+  // NFL specific caps based on prop variance
   if (p.includes('anytime td')) return 0.02;
   if (p.includes('pass tds') || p.includes('passing td')) return 0.05;
   return 0.10;
 }
 
-export function computeScoring(input: ScoringInput): ScoringOutput {
+// ─── Main Scoring Logic ──────────────────────────────────────────────────────
+
+/**
+ * computeScoring
+ * Port of the Gridiron Guru Google Sheets enrichment formulas.
+ * Supports both NFL (32 teams) and NBA (30 teams) via midpoint normalization.
+ */
+export function computeScoring(input: ScoringInput, sport: 'nfl' | 'nba' = 'nfl'): ScoringOutput {
   const {
     playerAvg, opponentRank, opponentAvgVsStat,
     line, seasonHitPct, propNorm,
   } = input;
 
-  // Use stored odds or fall back to -110 (standard juice).
-  // This ensures EV/Kelly/Edge always compute even when no line is stored.
+  // Use stored odds or fallback to -110
   const odds = (input.odds != null && input.odds !== 0) ? input.odds : DEFAULT_ODDS;
 
-  // L – N: blended model score
-  const yardsScore     = playerAvg * 0.7 + opponentAvgVsStat * 0.3;
-  const rankAdjustment = ((opponentRank - 16.5) / 32) * 10; // rank 1 = −5.2, rank 32 = +4.8
-  const totalScore     = yardsScore + rankAdjustment;
+  // 1. Midpoint logic: NFL (32 teams) = 16.5 | NBA (30 teams) = 15.5
+  const leagueSize = sport === 'nfl' ? 32 : 30;
+  const midPoint = (leagueSize + 1) / 2;
 
-  // O – Q
-  const scoreDiff     = totalScore - line;
+  // 2. Blended model score (70/30 Weighting)
+  const yardsScore = playerAvg * 0.7 + opponentAvgVsStat * 0.3;
+  const rankAdjustment = ((opponentRank - midPoint) / leagueSize) * 10; 
+  const totalScore = yardsScore + rankAdjustment;
+
+  // 3. Probability Calculations
+  const scoreDiff = totalScore - line;
   const scalingFactor = scoreDiff / 10;
-  const winProbability = Math.exp(-scalingFactor);
+  
+  // Guard against extreme scaling causing Infinity in Math.exp
+  const safeScaling = Math.max(Math.min(scalingFactor, 10), -10);
+  const winProbability = Math.exp(-safeScaling);
 
-  // R – S
   const overUnder = scoreDiff >= 0 ? 'Over' : 'Under';
   const projWinPct = overUnder === 'Over'
     ? 1 / (1 + winProbability)
     : winProbability / (1 + winProbability);
 
-  // U: blend model + historical when hit% available
+  // 4. Blend Model + Historical (Season Hit %)
+  // If no hit rate exists, we rely 100% on the model projection
   const avgWinProb = seasonHitPct != null
     ? (projWinPct + seasonHitPct) / 2
-    : null;
+    : projWinPct;
 
-  // The win probability used for all downstream calcs
-  const winProb = avgWinProb ?? projWinPct;
-
-  // W – Z: always compute (odds defaults to -110 if missing)
+  // 5. Betting Metrics (Edge, EV, Kelly)
   const impliedProb = impliedProbFromOdds(odds);
-  const bestEdgePct = winProb - impliedProb;
+  const bestEdgePct = avgWinProb - impliedProb;
 
   const payout = odds > 0 ? odds / 100 : 100 / Math.abs(odds);
-  const expectedValue = winProb * payout - (1 - winProb);
+  const expectedValue = avgWinProb * payout - (1 - avgWinProb);
 
   let kellyPct: number | null = null;
   if (bestEdgePct > 0) {
-    const rawKelly = (payout * winProb - (1 - winProb)) / payout;
-    kellyPct = Math.min(rawKelly, kellyCap(propNorm));
+    const rawKelly = (payout * avgWinProb - (1 - avgWinProb)) / payout;
+    kellyPct = Math.min(rawKelly, kellyCap(propNorm, sport));
   }
 
-  // AA
-  const valueIcon = bestEdgePct > 0.10 ? '🔥' : bestEdgePct > 0.05 ? '⚠️' : '❄️';
-
-  // AB: confidence
-  //   With seasonHitPct:    40% model + 40% historical + 20% blend
-  //   Without seasonHitPct: pure model probability
+  // 6. Confidence Score
   const confidenceScore = seasonHitPct != null
-    ? 0.4 * projWinPct + 0.4 * seasonHitPct + 0.2 * (avgWinProb ?? projWinPct)
+    ? 0.4 * projWinPct + 0.4 * seasonHitPct + 0.2 * avgWinProb
     : projWinPct;
 
+  // 7. Precision Rounding (r4 = 0.0000, r3 = 0.000)
   const r4 = (v: number) => Math.round(v * 10000) / 10000;
   const r3 = (v: number) => Math.round(v * 1000)  / 1000;
 
@@ -139,17 +128,21 @@ export function computeScoring(input: ScoringInput): ScoringOutput {
     winProbability:  r4(winProbability),
     overUnder,
     projWinPct:      r4(projWinPct),
-    avgWinProb:      avgWinProb != null ? r4(avgWinProb) : null,
+    avgWinProb:      r4(avgWinProb),
     impliedProb:     r4(impliedProb),
     bestEdgePct:     r4(bestEdgePct),
     expectedValue:   r4(expectedValue),
     kellyPct:        kellyPct != null ? r4(kellyPct) : null,
-    valueIcon,
     confidenceScore: r4(confidenceScore),
   };
 }
 
-// ─── Best odds picker ─────────────────────────────────────────────────────────
+// ─── Utility Functions ───────────────────────────────────────────────────────
+
+/**
+ * pickBestOdds
+ * Compares books and returns the best available American odds.
+ */
 export function pickBestOdds(
   fdOdds?: number | null,
   dkOdds?: number | null,
@@ -170,7 +163,10 @@ export function pickBestOdds(
   return { odds: candidates[0].odds, book: candidates[0].book };
 }
 
-// ─── Post-game result scoring ─────────────────────────────────────────────────
+/**
+ * determineResult
+ * Standardizes whether a prop hit based on the actual stats.
+ */
 export function determineResult(
   actualStat: number,
   line:       number,
@@ -183,6 +179,10 @@ export function determineResult(
   return 'pending';
 }
 
+/**
+ * calculateProfitLoss
+ * Computes return based on wager and American odds.
+ */
 export function calculateProfitLoss(
   betAmount: number,
   odds:      number,

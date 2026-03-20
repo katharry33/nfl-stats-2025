@@ -1,3 +1,9 @@
+// scripts/seedNbaPlayers.js
+
+const dotenv = require('dotenv');
+// This covers both .env and .env.local scenarios
+dotenv.config(); 
+dotenv.config({ path: '.env.local' });
 const admin = require('firebase-admin');
 const axios = require('axios');
 
@@ -13,19 +19,27 @@ const COLLECTION_NAME = 'static_nbaIdMap';
 
 async function seedNbaPlayers() {
   console.log('🏀 Resuming NBA Player Seeding...');
-  
-  // UPDATE THIS to 500 to pick up where it failed
+
+  if (!BDL_API_KEY) {
+    console.error('❌ FATAL: BDL_API_KEY is missing from .env.');
+    return;
+  }
+
+  // Set to 500 based on your last failure point
   let cursor = 500; 
   let hasNextPage = true;
 
   try {
     while (hasNextPage) {
-      console.log(`Fetching batch starting at cursor: ${cursor}...`);
+      console.log(`📡 Fetching batch starting at cursor: ${cursor}...`);
       
       try {
         const response = await axios.get('https://api.balldontlie.io/v1/players', {
           params: { cursor: cursor, per_page: 100 },
-          headers: { Authorization: BDL_API_KEY }
+          headers: { 
+            // Standardizing the Authorization Header
+            'Authorization': BDL_API_KEY.trim()
+          }
         });
 
         const players = response.data.data;
@@ -37,37 +51,44 @@ async function seedNbaPlayers() {
         }
 
         const batch = db.batch();
+        
         players.forEach(player => {
-          const docId = `${player.first_name}_${player.last_name}`.toLowerCase().replace(/[^a-z0-9_]/g, '');
-          const docRef = db.collection(COLLECTION_NAME).doc(docId);
+          const fullName = `${player.first_name} ${player.last_name}`;
 
-          batch.set(docRef, {
-            name: `${player.first_name} ${player.last_name}`,
+          const playerData = {
             bdlId: player.id,
-            team: player.team ? player.team.abbreviation : 'N/A',
-            position: player.position || 'N/A',
-            league: 'NBA',
+            name: fullName,           // Primary name field
+            playerName: fullName,     // Duplicate for Hub compatibility
+            firstName: player.first_name,
+            lastName: player.last_name,
+            team: player.team?.abbreviation || 'N/A',
+            position: player.position,
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
-          }, { merge: true });
+          };
+          
+          // Use the ID as the document name to prevent duplicates
+          const docRef = db.collection('static_nbaIdMap').doc(player.id.toString());
+          batch.set(docRef, playerData);
         });
 
         await batch.commit();
-        console.log(`✅ Processed ${players.length} players (Up to ID: ${players[players.length-1].id}).`);
+        console.log(`✅ Processed 100 players. Last ID: ${players[players.length-1].id}`);
 
         if (meta.next_cursor) {
           cursor = meta.next_cursor;
-          // Wait 15 seconds between batches to stay under the 429 limit
-          console.log('⏳ Waiting 15s for rate limit safety...');
-          await new Promise(r => setTimeout(r, 15000));
+          console.log(`⏳ Cooling down 10s... Next cursor: ${cursor}`);
+          await new Promise(r => setTimeout(r, 10000));
         } else {
           hasNextPage = false;
         }
 
       } catch (innerErr) {
-        if (innerErr.response && innerErr.response.status === 429) {
-          console.warn('🛑 Rate limit hit! Cooling down for 60 seconds...');
+        if (innerErr.response?.status === 429) {
+          console.warn('🛑 Rate limit! Cooling down 60s...');
           await new Promise(r => setTimeout(r, 60000));
-          // Don't increment cursor, just loop again
+        } else if (innerErr.response?.status === 401) {
+          console.error('❌ 401 Unauthorized. Verify your API key is correct and your account is active.');
+          process.exit(1); 
         } else {
           throw innerErr;
         }

@@ -1,39 +1,93 @@
-// src/lib/enrichment/engine.ts
-
 import { computeScoring } from './scoring';
-import { calculateRecommendation } from './kelly'; // The code you just shared
+import { calculateRecommendation } from './kelly';
+import { 
+  getNFLStat, fetchNFLLogs, 
+  getNBAStat, fetchNBALogs 
+} from './sports-adapters';
+import { 
+  getStaticBdlId, 
+  getStaticPlayerTeam 
+} from './firestore-static';
 
-export async function enrichSingleProp(prop: NFLProp, balance: number) {
-  // 1. Get the pre-calculated stats from your new collections
-  // This uses the "No-Scrape" BallDontLie data we discussed
-  const stats = await getPlayerWeeklyStats(prop.player, prop.propNorm, prop.season, prop.week);
+export interface EnrichmentResult {
+  recommendedWager: number;
+  kellyFraction: number;
+  edge: number;
+  avgWinProb: number;
+  confidenceScore: number;
+  [key: string]: any; 
+}
+
+/**
+ * Universal Enrichment Engine
+ * Detects sport and applies the correct BDL data adapters.
+ */
+export async function enrichSingleProp(
+  prop: any, 
+  balance: number, 
+  sport: 'nfl' | 'nba' = 'nfl'
+): Promise<EnrichmentResult | any> {
   
-  if (!stats) return prop;
+  const { player, propNorm, season, line, bestOdds } = prop;
 
-  // 2. Run the math model (Blended Averages + Defense Ranks)
+  // 1. DATA ACQUISITION
+  const bdlId = await getStaticBdlId(player, sport);
+  if (!bdlId) {
+    console.warn(`⚠️ No BDL ID found for ${player}.`);
+    return prop;
+  }
+
+  // 2. FETCH LOGS VIA SPORT ADAPTER
+  const logs = sport === 'nfl' 
+    ? await fetchNFLLogs(bdlId, season) 
+    : await fetchNBALogs(bdlId, season);
+
+  if (!logs || logs.length === 0) return prop;
+
+  // 3. CALCULATE AVERAGES & HIT RATES
+  const getStat = sport === 'nfl' ? getNFLStat : getNBAStat;
+  
+  const values = logs
+    .map((game: any) => getStat(game, propNorm))
+    .filter((v: number | null) => v !== null) as number[];
+
+  if (values.length === 0) return prop;
+
+  const avg = values.reduce((a, b) => a + b, 0) / values.length;
+  const hitCount = values.filter(v => prop.overUnder === 'Over' ? v > line : v < line).length;
+  const hitRate = hitCount / values.length;
+
+  // 4. RUN THE MATH MODEL
+  // We pass 'sport' here so scoring knows if it's a 30 or 32 team league
   const scoring = computeScoring({
-    playerAvg: stats.avg,
-    seasonHitPct: stats.hitRate, // This is the 'estimatedHitRate'
-    opponentRank: prop.opponentRank,
-    opponentAvgVsStat: prop.opponentAvgVsStat,
-    line: prop.line,
-    odds: prop.bestOdds,
-    propNorm: prop.propNorm
-  });
+    playerAvg: avg,
+    seasonHitPct: hitRate,
+    opponentRank: prop.opponentRank || 16,
+    opponentAvgVsStat: prop.opponentAvgVsStat || avg,
+    line: line,
+    odds: bestOdds || -110,
+    propNorm: propNorm
+  }, sport);
 
-  // 3. Calculate the actual Wager Recommendation
-  // We use the 'avgWinProb' (the blend of your model + historical hit rate)
+  // 5. CALCULATE KELLY RECOMMENDATION
+  // Fallback to 50% if avgWinProb is somehow missing to prevent crash
+  const winProbForKelly = (scoring.avgWinProb ?? 0.5) * 100;
+  
   const rec = calculateRecommendation(
-    scoring.avgWinProb * 100, 
-    String(prop.bestOdds || -110), 
+    winProbForKelly, 
+    String(bestOdds || -110), 
     balance
   );
 
+  // 6. RETURN STANDARDIZED PROP OBJECT
   return {
     ...prop,
     ...scoring,
+    playerAvg: Math.round(avg * 10) / 10,
+    seasonHitPct: Math.round(hitRate * 1000) / 1000,
     recommendedWager: rec.recommendedWager,
     kellyFraction: rec.kellyFraction,
-    edge: scoring.bestEdgePct
+    edge: scoring.bestEdgePct,
+    lastEnriched: new Date().toISOString()
   };
 }

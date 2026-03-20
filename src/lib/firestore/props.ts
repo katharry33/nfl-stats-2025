@@ -27,3 +27,14 @@ export async function getTopValueBets(week: number, season: number = 2025) {
 
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
+export async function updateProps(updates: any[], sport: string, season: number) {
+  const batch = db.batch();
+  const collectionName = `${sport}_props_${season}`;
+  
+  updates.forEach(({ id, data }) => {
+    const ref = db.collection(collectionName).doc(id);
+    batch.set(ref, data, { merge: true });
+  });
+
+  return batch.commit();
+}

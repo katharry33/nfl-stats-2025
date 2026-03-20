@@ -36,6 +36,11 @@ const ALL_COLUMNS: ColDef[] = [
   { id: 'season',      label: 'Season',      default: false },
 ];
 
+const NBA_SPECIFIC_COLUMNS = [
+  { id: 'pace', label: 'Pace', default: true },
+  { id: 'defRating', label: 'Def Rtg', default: true },
+];
+
 const STORAGE_KEY = 'sweetspot_col_order_v2';
 const DEFAULT_COL_ORDER = ALL_COLUMNS.filter(c => c.default).map(c => c.id);
 const VALID_COL_IDS = new Set(ALL_COLUMNS.map(c => c.id));
@@ -64,7 +69,9 @@ function saveColOrder(order: string[]) {
 type SortKey =
   | 'week' | 'player' | 'matchup' | 'propLine' | 'playerAvg' | 'scoreDiff'
   | 'oppRank' | 'oppAvg' | 'hitPct' | 'avgWinProb' | 'edge' | 'conf'
-  | 'projWinPct' | 'impliedProb' | 'kelly' | 'odds' | 'gameStat' | 'result';
+  | 'projWinPct' | 'impliedProb' | 'kelly' | 'odds' | 'gameStat' | 'result'
+  | 'pace' | 'defRating';
+
 type SortDir = 'asc' | 'desc';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -203,6 +210,8 @@ function getSortVal(p: NormalizedProp, key: SortKey): number | string {
     case 'gameStat':    return n(getGameStat(p));
     case 'result':      return getActualResult(p) ?? '';
     case 'odds':        return n(p.odds);
+    case 'pace':        return n(p.pace);
+    case 'defRating':   return n(p.defRating);
     default:            return '';
   }
 }
@@ -413,7 +422,7 @@ interface PropsTableProps {
 const PAGE_SIZE = 50;
 
 export function PropsTable({
-  props = [], isLoading, onAddToBetSlip, slipIds = new Set(), onDelete,
+  props = [], league, isLoading, onAddToBetSlip, slipIds = new Set(), onDelete,
   showSweetSpots, sweetSpotCriteria,
 }: PropsTableProps) {
   // Column order persisted to localStorage
@@ -443,6 +452,14 @@ export function PropsTable({
 
   const visibleSet = useMemo(() => new Set(colOrder), [colOrder]);
 
+  const columns = useMemo(() => {
+    const base = ALL_COLUMNS.filter(c => visibleSet.has(c.id));
+    if (league === 'nba') {
+      return [...base, ...NBA_SPECIFIC_COLUMNS.filter(c => visibleSet.has(c.id))];
+    }
+    return base;
+  }, [league, visibleSet]);
+
   const handleColToggle = useCallback((id: string) => {
     setColOrder(prev => {
       const next = prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id];
@@ -463,7 +480,8 @@ export function PropsTable({
   }, [sortKey]);
 
   const matchupOptions = useMemo(
-    () => Array.from(new Set(props.map(p => p.matchup).filter(Boolean))).sort() as string[],
+    // Use (props || []) to ensure it's always an array
+    () => Array.from(new Set((props || []).map(p => p?.matchup).filter(Boolean))).sort() as string[],
     [props],
   );
   const propOptions = useMemo(
@@ -660,6 +678,8 @@ export function PropsTable({
                     case 'valueIcon':   return <th key={id} className="px-3 py-2.5 text-[9px] font-black uppercase tracking-widest text-zinc-600 text-center">Value</th>;
                     case 'odds':        return <ST key={id} label="Odds"        c="odds"        cls="text-center" />;
                     case 'season':      return <th key={id} className="px-3 py-2.5 text-[9px] font-black uppercase tracking-widest text-zinc-600 text-center">Season</th>;
+                    case 'pace':        return league === 'nba' ? <ST key={id} label="Pace"        c="pace"        cls="text-center" /> : null;
+                    case 'defRating':   return league === 'nba' ? <ST key={id} label="Def Rtg"     c="defRating"   cls="text-center" /> : null;
                     default: return null;
                   }
                 })}
@@ -895,6 +915,21 @@ export function PropsTable({
                           case 'season': return (
                             <td key={colId} className="px-3 py-3 text-center font-mono text-[10px] text-zinc-600">
                               {prop.season ?? '—'}
+                            </td>
+                          );
+                          case 'pace': return (
+                            <td key={colId} className="px-3 py-3 text-center">
+                              <span className="text-zinc-300 text-xs font-mono font-bold">
+                                {prop.league === 'nba' ? fmtNum(prop.pace) : '—'}
+                              </span>
+                            </td>
+                          );
+
+                          case 'defRating': return (
+                            <td key={colId} className="px-3 py-3 text-center">
+                              <span className="text-zinc-300 text-xs font-mono font-bold">
+                                {prop.league === 'nba' ? fmtNum(p.defRating) : '—'}
+                              </span>
                             </td>
                           );
 
