@@ -11,7 +11,8 @@ import {
   Settings,
   Database,
   ChevronRight,
-  Clock
+  Clock,
+  TargetIcon
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -20,6 +21,7 @@ const CORE_ITEMS = [
   { title: "Betting Log", href: "/betting-log", icon: History },
   { title: "Bet Builder", href: "/bet-builder", icon: Zap },
   { title: "Insights", href: "/insights", icon: Target },
+  { title: "Sweet Spots", href: "/sweet-spots", icon: Target}
 ];
 
 // Consolidated into the Admin Hub

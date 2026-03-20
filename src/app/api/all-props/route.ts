@@ -12,16 +12,17 @@ import {
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   
-  // Use 'league' to match your hook's param, fallback to 'sport' for backward compatibility
-  const league = (searchParams.get('league') || searchParams.get('sport') || 'nba').toLowerCase();
-  const type = searchParams.get('type') || 'props'; // Default to 'props' for useAllProps
+  const league = (searchParams.get('league') || 'nba').toLowerCase();
+  const season = searchParams.get('season') || '2025';
+  const type = searchParams.get('type') || 'props';
 
   try {
-    // 1. Fetching Props (for your PropsTable)
+    // 1. Fetching Props
     if (type === 'props' || type === 'players') {
-      const collectionName = league === 'nba' ? 'props_nba' : 'props_nfl';
-      
-      // Note: Ensure your Firestore documents include 'pace' and 'defRating' for NBA
+      const collectionName = league === 'nba' 
+        ? `nbaProps_${season}` 
+        : `allProps_${season}`;
+
       const q = query(
         collection(db, collectionName), 
         orderBy('confidenceScore', 'desc'), 
@@ -31,7 +32,7 @@ export async function GET(request: NextRequest) {
       const snapshot = await getDocs(q);
       const data = snapshot.docs.map(doc => ({
         id: doc.id,
-        league, // Explicitly pass league for the frontend logic
+        league, 
         ...doc.data()
       }));
 
@@ -44,7 +45,6 @@ export async function GET(request: NextRequest) {
       
       const q = query(
         collection(db, colName), 
-        // Handles multiple formats of season year
         where('season', 'in', [2024, 2025, '2025']), 
         orderBy('date', 'desc'), 
         limit(50)
@@ -63,7 +63,6 @@ export async function GET(request: NextRequest) {
 
   } catch (error: any) {
     console.error("Route Error:", error);
-    // Return a structured error for the frontend hook to catch
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

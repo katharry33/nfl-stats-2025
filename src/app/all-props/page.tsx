@@ -9,27 +9,21 @@ import { ManualEntryModal } from '@/components/bets/manual-entry-modal';
 import { RefreshCw, Plus, Zap, Trophy, Loader2, Dribbble as Basketball } from 'lucide-react';
 import { toast } from 'sonner';
 
-const SEASON_OPTIONS = [
-  { label: 'All',     value: 'all'  },
-  { label: '2024–25', value: '2024' },
-  { label: '2025–26', value: '2025' },
-];
-
 const LEAGUES = [
   { id: 'nfl', label: 'NFL', icon: Trophy, color: '#22d3ee' },
   { id: 'nba', label: 'NBA', icon: Basketball, color: '#fb923c' },
 ];
 
 export default function AllPropsPage() {
-  const [league, setLeague] = useState<'nfl' | 'nba'>('nfl');
+  const [activeLeague, setActiveLeague] = useState<'nfl' | 'nba'>('nfl');
+  const [activeSeason, setActiveSeason] = useState<number>(2025);
   const [weekFilter, setWeekFilter] = useState('');
-  const [seasonFilter, setSeasonFilter] = useState('all');
 
   // Hook handles data fetching based on the active league
   const { props, loading, hasMore, loadMore, refresh, deleteProp } = useAllProps({
-    league, 
-    week:   weekFilter ? parseInt(weekFilter) : undefined,
-    season: seasonFilter !== 'all' ? parseInt(seasonFilter) : undefined,
+    league: activeLeague,
+    season: activeSeason,
+    week: weekFilter ? parseInt(weekFilter) : undefined,
   });
 
   const { selections, addLeg, isInitialized } = useBetSlip();
@@ -49,31 +43,31 @@ export default function AllPropsPage() {
     }
     
     addLeg({
-      id:        propId,
+      id: propId,
       propId,
-      league:    league, 
-      player:    prop.player    ?? 'Unknown',
-      prop:      prop.prop      ?? 'Prop',
-      line:      prop.line      ?? 0,
+      league: activeLeague, 
+      player: prop.player ?? 'Unknown',
+      prop: prop.prop ?? 'Prop',
+      line: prop.line ?? 0,
       selection: (prop.overUnder as 'Over' | 'Under') || 'Over',
-      odds:      prop.bestOdds  ?? prop.odds ?? -110,
-      matchup:   prop.matchup   ?? '',
-      team:      prop.team      ?? '',
-      week:      prop.week      ?? undefined,
-      season:    prop.season    ?? undefined,
-      gameDate:  prop.gameDate  ?? new Date().toISOString(),
+      odds: prop.bestOdds ?? prop.odds ?? -110,
+      matchup: prop.matchup ?? '',
+      team: prop.team ?? '',
+      week: prop.week ?? undefined,
+      season: prop.season ?? undefined,
+      gameDate: prop.gameDate ?? new Date().toISOString(),
     });
     
-    const activeColor = LEAGUES.find(l => l.id === league)?.color;
+    const activeColor = LEAGUES.find(l => l.id === activeLeague)?.color;
 
     toast.success(`${prop.player} added to slip`, {
       style: { 
         background: '#0f1115', 
-        border: `1px solid ${activeColor}33`, // 20% opacity hex
+        border: `1px solid ${activeColor}33`,
         color: activeColor 
       },
     });
-  }, [addLeg, slipIds, league]);
+  }, [addLeg, slipIds, activeLeague]);
 
   return (
     <main className="min-h-screen bg-background text-foreground p-4 md:p-8">
@@ -84,15 +78,14 @@ export default function AllPropsPage() {
           <div>
             <div className="flex items-center gap-2">
                <h1 className="text-2xl font-black tracking-tight text-foreground italic uppercase">
-                {league} <span style={{ color: LEAGUES.find(l => l.id === league)?.color }}>Historical</span> Props
+                {activeLeague} <span style={{ color: LEAGUES.find(l => l.id === activeLeague)?.color }}>Historical</span> Props
               </h1>
             </div>
             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground mt-1">
               {loading && props.length === 0
                 ? 'Connecting to Engine...'
-                // Use props?.length to safely check if it exists before calling toLocaleString()
-: `${(props?.length || 0).toLocaleString()} Indexed ${league.toUpperCase()} Lines`}
-                </p>
+                : `${(props?.length || 0).toLocaleString()} Indexed ${activeLeague.toUpperCase()} Lines`}
+            </p>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
@@ -102,16 +95,16 @@ export default function AllPropsPage() {
                 <button
                   key={l.id}
                   onClick={() => {
-                    setLeague(l.id as 'nfl' | 'nba');
+                    setActiveLeague(l.id as 'nfl' | 'nba');
                     setWeekFilter(''); 
                   }}
                   className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${
-                    league === l.id 
+                    activeLeague === l.id 
                       ? 'bg-white/10 text-white shadow-xl' 
                       : 'text-zinc-500 hover:text-zinc-300'
                   }`}
                 >
-                  <l.icon className="h-3.5 w-3.5" style={{ color: league === l.id ? l.color : 'inherit' }} />
+                  <l.icon className="h-3.5 w-3.5" style={{ color: activeLeague === l.id ? l.color : 'inherit' }} />
                   {l.label}
                 </button>
               ))}
@@ -121,7 +114,7 @@ export default function AllPropsPage() {
             <div className="relative">
               <input
                 type="number" 
-                placeholder={league === 'nfl' ? "WEEK" : "DAY"} 
+                placeholder={activeLeague === 'nfl' ? "WEEK" : "DAY"} 
                 value={weekFilter}
                 onChange={e => setWeekFilter(e.target.value)}
                 className="w-20 py-2.5 px-3 bg-black/40 border border-white/5 text-white text-[10px] font-black rounded-xl outline-none focus:border-primary/50 transition-all text-center placeholder:text-zinc-700"
@@ -129,20 +122,14 @@ export default function AllPropsPage() {
             </div>
 
             {/* Season Selector */}
-            <div className="flex rounded-xl overflow-hidden border border-white/5 bg-black/20">
-              {SEASON_OPTIONS.map(s => (
-                <button 
-                  key={s.value} 
-                  onClick={() => setSeasonFilter(s.value)}
-                  className={`px-3 py-2.5 text-[9px] font-black uppercase transition-colors ${
-                    seasonFilter === s.value 
-                    ? 'bg-white/5 text-primary' 
-                    : 'text-zinc-600 hover:text-zinc-400'
-                  }`}>
-                  {s.label}
-                </button>
-              ))}
-            </div>
+            <select 
+              value={activeSeason} 
+              onChange={(e) => setActiveSeason(Number(e.target.value))}
+              className="bg-black/40 border border-white/5 text-white text-[10px] font-black rounded-xl outline-none focus:border-primary/50 transition-all px-3 py-2.5"
+            >
+              <option value={2025}>2025 Season</option>
+              <option value={2024}>2024 Season</option>
+            </select>
 
             <div className="h-8 w-[1px] bg-white/5 mx-1" />
 
@@ -169,7 +156,7 @@ export default function AllPropsPage() {
         <div className="bg-card/30 border border-white/5 rounded-3xl overflow-hidden backdrop-blur-xl">
           <PropsTable
             props={props}
-            league={league}
+            league={activeLeague}
             isLoading={loading && props.length === 0}
             onAddToBetSlip={handleAddToSlip}
             onDelete={deleteProp}
@@ -196,7 +183,7 @@ export default function AllPropsPage() {
         <ManualEntryModal
           isOpen={showManual}
           onClose={() => setShowManual(false)}
-          onAddLeg={(leg) => addLeg({ ...leg, league })}
+          onAddLeg={(leg) => addLeg({ ...leg, league: activeLeague })}
         />
       )}
 
@@ -204,11 +191,10 @@ export default function AllPropsPage() {
         isOpen={showEnrich}
         onClose={() => setShowEnrich(false)}
         onComplete={() => refresh()}
-        league={league}
+        league={activeLeague}
         defaultWeek={weekFilter ? parseInt(weekFilter) : undefined}
-        defaultSeason={seasonFilter === 'all' ? 2025 : parseInt(seasonFilter)}
-        // Ensures the enrichment script targets the correct sport collection
-        defaultCollection={league === 'nba' ? 'nba_props' : 'nfl_props'}
+        defaultSeason={activeSeason}
+        defaultCollection={activeLeague === 'nba' ? 'nba_props' : 'nfl_props'}
       />
     </main>
   );

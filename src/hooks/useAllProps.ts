@@ -30,21 +30,23 @@ export interface NormalizedProp {
   impliedProb: number | null;
   fdOdds: number | null;
   dkOdds: number | null;
-    pace?: number;        // Add this
-    defRating?: number;   // Add this
-  }
-
+  pace?: number;        
+  defRating?: number;   
+}
 
 interface UseAllPropsParams {
   league?: 'nfl' | 'nba';
   week?: number;
   season?: number;
-  initialLoad?: boolean;
 }
 
 const API_BASE = '/api';
 
-export function useAllProps({ league = 'nba', week, season }: UseAllPropsParams = {}) {
+export function useAllProps({ 
+  league = 'nba', 
+  week, 
+  season = 2025 
+}: UseAllPropsParams = {}) {
   const [props, setProps] = useState<NormalizedProp[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -54,7 +56,7 @@ export function useAllProps({ league = 'nba', week, season }: UseAllPropsParams 
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const loadData = useCallback(async (isNewQuery: boolean) => {
-    // Cancel pending requests to prevent race conditions
+    // 1. Manage Abort Controller to prevent race conditions
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -71,10 +73,10 @@ export function useAllProps({ league = 'nba', week, season }: UseAllPropsParams 
     setLoading(true);
 
     try {
-      const url = new URL(`${window.location.origin}${API_BASE}/props`);
+      const url = new URL(`${window.location.origin}${API_BASE}/all-props`);
       url.searchParams.append('league', league);
+      url.searchParams.append('season', String(season));
       if (week) url.searchParams.append('week', String(week));
-      if (season) url.searchParams.append('season', String(season));
       url.searchParams.append('offset', String(currentOffset));
       url.searchParams.append('limit', String(limit));
 
@@ -82,13 +84,18 @@ export function useAllProps({ league = 'nba', week, season }: UseAllPropsParams 
         signal: abortControllerRef.current.signal
       });
       
-      if (!res.ok) throw new Error('Network response was not ok');
-      
       const newData = await res.json();
-      
-      setProps(prev => isNewQuery ? newData : [...prev, ...newData]);
-      setHasMore(newData.length === limit);
-      setOffset(currentOffset + newData.length);
+
+      // 2. Validate Response
+      if (res.ok && Array.isArray(newData)) {
+        setProps(prev => isNewQuery ? newData : [...prev, ...newData]);
+        setHasMore(newData.length === limit);
+        setOffset(currentOffset + newData.length);
+      } else {
+        console.error("API Error or Malformed Data:", newData);
+        if (isNewQuery) setProps([]); 
+        setHasMore(false);
+      }
 
     } catch (error: any) {
       if (error.name === 'AbortError') return;
@@ -98,20 +105,31 @@ export function useAllProps({ league = 'nba', week, season }: UseAllPropsParams 
     }
   }, [league, week, season, offset]);
 
-  // Sync effect: Triggered whenever league or filters change
+  // 3. Trigger initial load and reset on dependency change
   useEffect(() => {
     loadData(true);
-    
+
     return () => {
-      if (abortControllerRef.current) abortControllerRef.current.abort();
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
     };
-  }, [league, week, season]);
+  }, [league, season, week]); // dependencies that trigger a fresh fetch
 
   const refresh = () => loadData(true);
 
   const deleteProp = async (id: string) => {
+    // Optimistic Update
     setProps(prev => prev.filter(p => p.id !== id));
-    // Optional: await fetch(`${API_BASE}/props/${id}?league=${league}`, { method: 'DELETE' });
+    
+    try {
+      // Ensure we hit the right collection for deletion too
+      await fetch(`${API_BASE}/all-props/${id}?league=${league}&season=${season}`, { 
+        method: 'DELETE' 
+      });
+    } catch (error) {
+      console.error("Delete failed on server:", error);
+    }
   };
 
   return { 

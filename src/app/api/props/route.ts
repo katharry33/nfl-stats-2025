@@ -1,46 +1,82 @@
 // src/app/api/props/route.ts
-// GET /api/props?week=14&season=2025&prop=Pass+Yards&minEdge=0.05
-// Reads from HISTORICAL allProps_{season} collection (post-game, finalized)
-// Used by analytics / history pages
-
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
+import { NormalizedProp } from '@/hooks/useAllProps';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = req.nextUrl;
-    const season    = parseInt(searchParams.get('season')  ?? '2025');
-    const week      = parseInt(searchParams.get('week')    ?? '0');
-    const prop      = searchParams.get('prop')      ?? null;
-    const team      = searchParams.get('team')      ?? null;
-    const minEdge   = parseFloat(searchParams.get('minEdge')  ?? '0');
-    const valueOnly = searchParams.get('valueOnly') === 'true';
-    const limit     = Math.min(parseInt(searchParams.get('limit') ?? '1000'), 5000);
+    const league = searchParams.get('league') || 'nfl';
+    const season = searchParams.get('season') || '2025';
+    const week = searchParams.get('week');
+    const offset = parseInt(searchParams.get('offset') ?? '0');
+    const limit = parseInt(searchParams.get('limit') ?? '50');
 
-    let query = adminDb
-      .collection(`allProps_${season}`)
-      .orderBy('confidenceScore', 'desc') as FirebaseFirestore.Query;
+    const collectionName = league === 'nba' 
+      ? `nbaProps_${season}` 
+      : `allProps_${season}`;
 
-    // Firestore-side filters
-    if (week > 0)   query = query.where('week', '==', week);
-    if (minEdge > 0) query = query.where('bestEdgePct', '>', minEdge);
+    console.log(`Fetching from: ${collectionName}`);
 
-    query = query.limit(limit);
+    let query: FirebaseFirestore.Query = adminDb.collection(collectionName);
 
-    const snapshot = await query.get();
+    if (week) {
+      query = query.where('week', '==', parseInt(week));
+    }
 
-    let props = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const snapshot = await query
+      .orderBy('confidenceScore', 'desc')
+      .offset(offset)
+      .limit(limit)
+      .get();
 
-    // Client-side filters
-    if (prop)      props = props.filter(p => (p as any).prop === prop);
-    if (team)      props = props.filter(p => (p as any).team === team);
-    if (valueOnly) props = props.filter(p => ['🔥', '⚠️'].includes((p as any).valueIcon));
+    if (snapshot.empty) {
+      return NextResponse.json([]);
+    }
 
-    return NextResponse.json({ props, count: props.length, season, week: week || null });
-  } catch (err) {
-    console.error('[/api/props] Error:', err);
-    return NextResponse.json({ error: 'Failed to fetch props' }, { status: 500 });
+    const props: NormalizedProp[] = snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        league: data.league,
+        player: data.player ?? null,
+        team: data.team ?? null,
+        prop: data.prop ?? null,
+        line: data.line ?? null,
+        overUnder: data.overUnder ?? null,
+        odds: data.odds ?? null,
+        bestOdds: data.bestOdds ?? null,
+        bestBook: data.bestBook ?? null,
+        matchup: data.matchup ?? null,
+        gameDate: data.gameDate ?? null,
+        week: data.week ?? null,
+        season: data.season ?? null,
+        valueIcon: data.valueIcon ?? null,
+        playerAvg: data.playerAvg ?? null,
+        seasonHitPct: data.seasonHitPct ?? null,
+        opponentRank: data.opponentRank ?? null,
+        opponentAvgVsStat: data.opponentAvgVsStat ?? null,
+        scoreDiff: data.scoreDiff ?? null,
+        confidenceScore: data.confidenceScore ?? null,
+        avgWinProb: data.avgWinProb ?? null,
+        bestEdgePct: data.bestEdgePct ?? null,
+        expectedValue: data.expectedValue ?? null,
+        kellyPct: data.kellyPct ?? null,
+        projWinPct: data.projWinPct ?? null,
+        impliedProb: data.impliedProb ?? null,
+        fdOdds: data.fdOdds ?? null,
+        dkOdds: data.dkOdds ?? null,
+        pace: data.pace ?? null,
+        defRating: data.defRating ?? null,
+      };
+    });
+
+    return NextResponse.json(props);
+
+  } catch (err: any) {
+    console.error(`Error in /api/props for ${URLSearchParams.toString()}:`, err);
+    return NextResponse.json({ error: err.message || 'Failed to fetch props' }, { status: 500 });
   }
 }

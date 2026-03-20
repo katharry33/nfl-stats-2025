@@ -525,9 +525,15 @@ export async function enrichAllPropsCollection(opts: EnrichAllOptions): Promise<
 
   const rawProps = docs.map(d => {
     const r = d.data() as Record<string, any>;
+    const playerName = pick(r, 'player', 'Player');
+    
+    if (!playerName || playerName === "") {
+      console.log(`⚠️ Document ${d.id} is missing a player name. It will appear empty in the UI.`);
+    }
+
     return {
       id:                d.id,
-      player:            pick(r, 'player', 'Player')                                              ?? '',
+      player:            playerName ?? '',
       prop:              pick(r, 'prop', 'Prop')                                                  ?? '',
       line:              pick(r, 'line', 'Line')                                                  ?? 0,
       team:              pick(r, 'team', 'Team')                                                  ?? '',
@@ -591,9 +597,29 @@ export async function enrichAllPropsCollection(opts: EnrichAllOptions): Promise<
     console.log('✅ Pre-pass: all docs already have dates (or no schedule found)');
   }
 
+  // ── Cleanup Pass: Remove docs that can't be enriched ──────────────────────
+  const validRawProps = [];
+  const deleteBatch = db.batch();
+  let deleteCount = 0;
+
+  for (const p of rawProps) {
+    // If it's missing the absolute essentials, delete it from Firestore
+    if (!p.player || !p.prop || p.player.trim() === "") {
+      deleteBatch.delete(db.collection(writeCollection).doc(p.id));
+      deleteCount++;
+    } else {
+      validRawProps.push(p);
+    }
+  }
+
+  if (deleteCount > 0) {
+    await deleteBatch.commit();
+    console.log(`🧹 Cleaned up ${deleteCount} empty/malformed documents from ${writeCollection}`);
+  }
+
   // ── Main enrichment batch ─────────────────────────────────────────────────
   return runEnrichmentBatch({
-    rawProps,
+    rawProps: validRawProps, // Use the cleaned list
     pfrIdMap,
     playerTeamMap,
     getDefense: (opp, stat, s) => getTeamDefenseStats(opp, stat, s),
