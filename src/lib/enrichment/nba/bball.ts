@@ -2,8 +2,8 @@
 // Basketball Reference scraper — NBA equivalent of pfr.ts.
 // Uses Node 18+ native fetch. No external deps.
 
-import type { BRGame } from '../types/nba';
-import { normalizeNBAProp, splitNBACombo } from '../shared/normalize-nba';
+import type { BRGame } from '../types';
+import { normalizeNBAProp, splitNBACombo } from './normalize-nba';
 
 const BR_CACHE = new Map<string, BRGame[]>();
 

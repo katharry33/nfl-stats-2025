@@ -2,63 +2,85 @@
 
 import { useState, useEffect } from 'react';
 import { db } from '@/lib/firebase/config'; 
-import { collection, query, onSnapshot, orderBy, limit } from 'firebase/firestore';
+import { collection, query, onSnapshot, limit } from 'firebase/firestore';
 
 export function usePlayerRegistry(sport: 'NFL' | 'NBA') {
   const [players, setPlayers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
 
+  const normalize = (name: string) => name?.toLowerCase().replace(/[^a-z0-9]/g, '') || '';
+
   useEffect(() => {
     setLoading(true);
-    setPlayers([]);
-
-    // Keep using your primary mapping collections
-    const collectionName = sport === 'NFL' ? 'static_playerTeamMapping' : 'static_nbaIdMap';
     
-    try {
-      const colRef = collection(db, collectionName);
-      // Removed the 'where' filter temporarily to ensure data shows up so you can fix it
-      const q = query(colRef, orderBy('playerName', 'asc'), limit(1000));
-
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const playerMap = new Map();
-
-        snapshot.docs.forEach(doc => {
+    if (sport === 'NBA') {
+      const q = query(collection(db, 'static_nbaIdMap'), limit(1000));
+      return onSnapshot(q, (snap) => {
+        const results = snap.docs.map(doc => {
           const data = doc.data();
-          
-          // Logic: If a 'sport' field exists, it must match. 
-          // If it DOESN'T exist, we show it anyway so it can be edited/assigned.
-          const docSport = data.sport?.toUpperCase();
-          if (docSport && docSport !== sport) return;
-
-          playerMap.set(doc.id, {
+          return {
             id: doc.id,
-            playerName: data.playerName || data.player || "Unknown",
+            playerName: data.playerName || data.player || "Unknown NBA Player",
             teamAbbreviation: data.teamAbbreviation || data.team || "---",
             bdlId: data.bdlId || data.bdl_id || "",
-            bbrId: data.bbrId || "",
-            pfrid: data.pfrid || data.pfrId || "",
-            sport: docSport || sport, // Fallback to current tab sport
+            bbrId: data.bbrId || data.bbr_id || "",
             ...data
-          });
+          };
         });
-
-        const allPlayers = Array.from(playerMap.values());
-        const filtered = allPlayers.filter(p => {
-          const s = searchTerm.toLowerCase();
-          return p.playerName.toLowerCase().includes(s) || p.teamAbbreviation.toLowerCase().includes(s);
-        });
-
-        setPlayers(filtered);
+        setPlayers(results);
         setLoading(false);
       });
+    } else {
+      // NFL Joined Logic
+      const teamRef = collection(db, 'static_playerTeamMapping');
+      const idRef = collection(db, 'static_pfrIdMap');
 
-      return () => unsubscribe();
-    } catch (err) {
-      setLoading(false);
+      return onSnapshot(teamRef, (teamSnap) => {
+        const unsubIds = onSnapshot(idRef, (idSnap) => {
+          const idLookup = new Map();
+          idSnap.docs.forEach(d => {
+            const data = d.data();
+            // Key by normalized version of the 'player' field
+            const lookupKey = normalize(data.player || data.playerName || d.id);
+            idLookup.set(lookupKey, data);
+          });
+
+          const merged = teamSnap.docs
+            .map(doc => {
+              const teamData = doc.data();
+              if (teamData.sport === 'NBA') return null;
+              
+              const pName = teamData.playerName || teamData.player || "Unknown NFL Player";
+              const ids = idLookup.get(normalize(pName)) || {};
+              
+              return {
+                id: doc.id,
+                playerName: pName,
+                teamAbbreviation: teamData.teamAbbreviation || teamData.team || "---",
+                // Check both casing variations for pfrId
+                pfrid: ids.pfrid || ids.pfrId || teamData.pfrid || "",
+                bdlId: ids.bdlId || ids.bdl_id || teamData.bdlId || "",
+                ...teamData,
+                ...ids 
+              };
+            })
+            .filter(Boolean);
+
+          setPlayers(merged);
+          setLoading(false);
+        });
+      });
     }
-  }, [sport, searchTerm]);
+  }, [sport]);
 
-  return { players, loading, searchTerm, setSearchTerm };
+  const filteredPlayers = players.filter(p => {
+    const s = searchTerm.toLowerCase();
+    return !s || 
+      p.playerName?.toLowerCase().includes(s) || 
+      p.teamAbbreviation?.toLowerCase().includes(s) ||
+      p.bdlId?.toString().includes(s);
+  });
+
+  return { players: filteredPlayers, loading, searchTerm, setSearchTerm };
 }

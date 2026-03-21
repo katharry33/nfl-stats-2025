@@ -20,7 +20,10 @@ const ODDS_BASE    = 'https://api.the-odds-api.com/v4';
 const REGION       = 'us';
 const ODDS_FORMAT  = 'american';
 
-const MARKETS = [
+// Split into two batches — Odds API 422s when any market in the list
+// isn't available on the plan. Batch 1 = core single-stat props (always available).
+// Batch 2 = combo props (may 422 on lower plans — failures are caught and skipped).
+const MARKETS_BATCH_1 = [
   'player_points',
   'player_rebounds',
   'player_assists',
@@ -28,6 +31,9 @@ const MARKETS = [
   'player_steals',
   'player_blocks',
   'player_turnovers',
+].join(',');
+
+const MARKETS_BATCH_2 = [
   'player_points_rebounds_assists',
   'player_points_rebounds',
   'player_points_assists',
@@ -183,23 +189,43 @@ export async function GET(req: NextRequest) {
       const awayTeam = normalizeTeamName(event.away_team ?? '');
       const gameDate = (event.commence_time ?? '').split('T')[0];
 
-      const propsUrl = new URL(`${ODDS_BASE}/sports/basketball_nba/events/${event.id}/odds`);
-      propsUrl.searchParams.set('apiKey',     ODDS_API_KEY);
-      propsUrl.searchParams.set('regions',    REGION);
-      propsUrl.searchParams.set('markets',    MARKETS);
-      propsUrl.searchParams.set('oddsFormat', ODDS_FORMAT);
+      // Fetch both market batches and merge bookmakers into one list.
+      // If batch 2 422s (combo markets not on plan), we skip it gracefully —
+      // combo props are derived from base stats at enrichment time anyway.
+      const allBookmakers: any[] = [];
 
-      const propsRes = await fetch(propsUrl.toString());
-      apiRequests++;
+      for (const markets of [MARKETS_BATCH_1, MARKETS_BATCH_2]) {
+        const propsUrl = new URL(`${ODDS_BASE}/sports/basketball_nba/events/${event.id}/odds`);
+        propsUrl.searchParams.set('apiKey',     ODDS_API_KEY);
+        propsUrl.searchParams.set('regions',    REGION);
+        propsUrl.searchParams.set('markets',    markets);
+        propsUrl.searchParams.set('oddsFormat', ODDS_FORMAT);
 
-      if (!propsRes.ok) {
-        console.warn(`⚠️  Event ${event.id} props: HTTP ${propsRes.status}`);
-        continue;
+        const propsRes = await fetch(propsUrl.toString());
+        apiRequests++;
+
+        if (!propsRes.ok) {
+          console.warn(`⚠️  Event ${event.id} batch (${markets.split(',')[0]}…): HTTP ${propsRes.status} — skipping`);
+          await new Promise(r => setTimeout(r, 300));
+          continue;
+        }
+
+        const propsData: any = await propsRes.json();
+
+        // Merge into allBookmakers — combine markets from same bookmaker
+        for (const book of propsData.bookmakers ?? []) {
+          const existing = allBookmakers.find(b => b.title === book.title);
+          if (existing) {
+            existing.markets.push(...(book.markets ?? []));
+          } else {
+            allBookmakers.push({ ...book, markets: [...(book.markets ?? [])] });
+          }
+        }
+
+        await new Promise(r => setTimeout(r, 300));
       }
 
-      const propsData: any = await propsRes.json();
-
-      for (const book of propsData.bookmakers ?? []) {
+      for (const book of allBookmakers) {
         const bookName: string = book.title ?? '';
 
         for (const market of book.markets ?? []) {
@@ -233,7 +259,6 @@ export async function GET(req: NextRequest) {
               }
             }
 
-            // Always capture the first FD/DK line we see for each key
             const acc = accumulator.get(key)!;
             const bl  = bookName.toLowerCase();
             if (bl.includes('fanduel')    && acc.fdOdds === null) acc.fdOdds = odds;
