@@ -23,13 +23,13 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 
 // Using your provided key directly to avoid 401 environment issues
-const BDL_KEY = "69d21e57-4a04-47ea-bf29-dd63fe1e2a39";
+const BDL_API_KEY = "4fb66b96-1044-4635-9bcc-55b6b4668e07";
 
 async function syncSchedule(sport, season) {
   console.log(`🚀 Starting ${sport} sync for the ${season} season...`);
   
   const sportLower = sport.toLowerCase();
-  const colName = sportLower === 'nfl' ? 'static_nfl_schedule' : 'static_nba_schedule';
+  const colName = sportLower === 'nfl' ? 'static_nfl_schedule_24' : 'static_nba_schedule';
   const baseUrl = `https://api.balldontlie.io/v1/games`;
 
   let cursor = 0;
@@ -45,7 +45,7 @@ async function syncSchedule(sport, season) {
           per_page: 100,
           cursor: cursor || undefined
         },
-        headers: { Authorization: BDL_KEY }
+        headers: { Authorization: BDL_API_KEY }
       });
 
       const { data, meta } = response.data;

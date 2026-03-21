@@ -1,10 +1,15 @@
 // src/app/api/nba/grade/route.ts
 //
-// Fetches actual box scores from BallDontLie and grades all pending NBA props
-// for a given date. Called by the Data Hub "Sync NBA Stats" button.
+// POST /api/nba/grade  { date: "YYYY-MM-DD", season: 2025 }
+// GET  /api/nba/grade?date=YYYY-MM-DD&season=2025
 //
-// POST /api/nba/grade        { date: "YYYY-MM-DD", season: 2025 }
-// GET  /api/nba/grade?date=YYYY-MM-DD&season=2025   (for manual testing)
+// What this does in order:
+//   1. Check nbaPropsDaily_{season} for docs matching this date
+//   2. Grade them using BDL box scores
+//   3. Merge/write graded docs into nbaProps_{season} (permanent store)
+//   4. Delete graded docs from nbaPropsDaily_{season}
+//   5. Also grade any pending docs already in nbaProps_{season} for this date
+//   6. Update bettingLog leg statuses
 
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
@@ -17,9 +22,9 @@ export const dynamic     = 'force-dynamic';
 export const maxDuration = 120;
 
 const BDL_BASE = 'https://api.balldontlie.io/v1';
-const BDL_KEY  = process.env.BDL_API_KEY ?? process.env.BALLDONTLIE_API_KEY ?? '';
+const BDL_API_KEY  = process.env.BDL_API_KEY ?? process.env.BALLDONTLIE_API_KEY ?? '';
 
-// ─── BDL stat fetch ───────────────────────────────────────────────────────────
+// ─── BDL box score fetch ──────────────────────────────────────────────────────
 
 async function fetchBDLStatsForDate(date: string): Promise<Map<number, BRGame>> {
   const gameMap = new Map<number, BRGame>();
@@ -30,11 +35,11 @@ async function fetchBDLStatsForDate(date: string): Promise<Map<number, BRGame>> 
     if (cursor != null) params.set('cursor', String(cursor));
 
     const res = await fetch(`${BDL_BASE}/stats?${params}`, {
-      headers: { Authorization: BDL_KEY },
+      headers: { Authorization: BDL_API_KEY },
     });
 
     if (!res.ok) {
-      console.error(`❌ BDL stats: HTTP ${res.status}`);
+      console.error(`❌ BDL stats HTTP ${res.status}`);
       break;
     }
 
@@ -65,86 +70,189 @@ async function fetchBDLStatsForDate(date: string): Promise<Map<number, BRGame>> 
   return gameMap;
 }
 
-// ─── Core grading logic (shared by GET + POST) ────────────────────────────────
+// ─── Grade a single prop doc ──────────────────────────────────────────────────
 
-async function gradeForDate(date: string, season: number, force: boolean) {
-  const colName  = `nbaProps_${season}`;
+function gradeProp(
+  data:    Record<string, any>,
+  gameMap: Map<number, BRGame>,
+): Record<string, any> | null {
+  const bdlId    = data.bdlId ?? null;
+  const propNorm = normalizeNBAProp(data.prop ?? '');
+  const line     = Number(data.line ?? 0);
+  const overUnder = data.overUnder ?? 'Over';
 
-  // Load props for this date
-  let query = adminDb.collection(colName).where('gameDate', '==', date);
-  if (!force) query = query.where('actualResult', '==', null) as any;
+  if (!bdlId) return null;
 
-  const snap = await query.get();
-  if (snap.empty) return { graded: 0, noId: 0, noStat: 0, total: 0 };
+  const game = gameMap.get(Number(bdlId));
+  if (!game) return null;
 
-  // Fetch BDL box scores
+  const stat = getNBAStatFromGame(game, propNorm);
+  if (stat === null) return null;
+
+  const result = determineResult(stat, line, overUnder);
+
+  const update: Record<string, any> = {
+    gameStat:     stat,
+    actualResult: result,
+    gradedAt:     new Date().toISOString(),
+    ...(data.playerAvg != null
+      ? { scoreDiff: Math.round((Number(data.playerAvg) - line) * 10) / 10 }
+      : {}),
+  };
+
+  if (data.betAmount && data.bestOdds) {
+    update.profitLoss = calculateProfitLoss(data.betAmount, data.bestOdds, result);
+  }
+
+  return update;
+}
+
+// ─── Core grading + migration logic ──────────────────────────────────────────
+
+async function gradeAndMigrate(date: string, season: number, force: boolean) {
+  const dailyCol = `nbaPropsDaily_${season}`;
+  const permCol  = `nbaProps_${season}`;
+  const now      = new Date().toISOString();
+
+  // Fetch BDL box scores once
   const gameMap = await fetchBDLStatsForDate(date);
   console.log(`📡 BDL: ${gameMap.size} player rows for ${date}`);
 
-  const updates: Array<{ id: string; data: Record<string, any> }> = [];
-  let graded = 0, noId = 0, noStat = 0;
+  let migrated = 0;
+  let gradedDaily = 0;
+  let gradedPerm  = 0;
+  let noId = 0;
 
-  for (const doc of snap.docs) {
-    const r        = doc.data();
-    const bdlId    = r.bdlId ?? null;
-    const propNorm = normalizeNBAProp(r.prop ?? '');
-    const line     = Number(r.line ?? 0);
-    const overUnder = r.overUnder ?? 'Over';
+  // ── Step 1: Process nbaPropsDaily_{season} ────────────────────────────────
+  // Grade docs, write to nbaProps_{season}, delete from daily collection
+  const dailySnap = await adminDb.collection(dailyCol)
+    .where('gameDate', '==', date)
+    .get();
 
-    if (!bdlId) { noId++; continue; }
+  console.log(`📋 Daily collection: ${dailySnap.size} docs for ${date}`);
 
-    const game = gameMap.get(Number(bdlId));
-    if (!game) { noStat++; continue; }
+  if (!dailySnap.empty) {
+    const writeBatch  = adminDb.batch();
+    const deleteBatch = adminDb.batch();
+    let writeCount  = 0;
+    let deleteCount = 0;
 
-    const stat = getNBAStatFromGame(game, propNorm);
-    if (stat === null) { noStat++; continue; }
+    for (const doc of dailySnap.docs) {
+      const data   = doc.data();
+      const grades = gradeProp(data, gameMap);
+      if (!data.bdlId) noId++;
 
-    const result = determineResult(stat, line, overUnder);
+      // Build the merged doc for nbaProps_{season}
+      // Use same deterministic doc ID format as ingest route
+      const playerKey = (data.player ?? '').toLowerCase().trim();
+      const propNorm  = normalizeNBAProp(data.prop ?? '');
+      const line      = data.line ?? 0;
+      const ou        = (data.overUnder ?? data.type ?? '').toLowerCase();
+      const slug      = playerKey.replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+      const permDocId = `nba-${slug}-${propNorm}-${line}-${ou}-${date}`;
 
-    const update: Record<string, any> = {
-      gameStat:     stat,
-      actualResult: result,   // 'won' | 'lost' | 'push'
-      gradedAt:     new Date().toISOString(),
-      ...(r.playerAvg != null
-        ? { scoreDiff: Math.round((Number(r.playerAvg) - line) * 10) / 10 }
-        : {}),
-    };
+      const permDoc: Record<string, any> = {
+        // Migrate all fields from daily doc
+        ...data,
+        // Normalize field names that may differ between old/new ingest
+        league:    data.league    ?? 'nba',
+        season,
+        prop:      propNorm,       // canonical prop name
+        overUnder: data.overUnder ?? data.type ?? null,
+        odds:      data.odds      ?? data.price ?? null,
+        bestOdds:  data.bestOdds  ?? data.odds  ?? data.price ?? null,
+        // Apply grades if available
+        ...(grades ?? {}),
+        migratedFrom: dailyCol,
+        migratedAt:   now,
+        updatedAt:    now,
+      };
 
-    if (r.betAmount && r.bestOdds) {
-      update.profitLoss = calculateProfitLoss(r.betAmount, r.bestOdds, result);
+      // Remove old field names that don't belong in nbaProps
+      delete permDoc.type;
+      delete permDoc.price;
+      delete permDoc.gameId;
+      delete permDoc.lastUpdated;
+
+      writeBatch.set(
+        adminDb.collection(permCol).doc(permDocId),
+        permDoc,
+        { merge: true },
+      );
+      writeCount++;
+
+      // Mark for deletion from daily
+      deleteBatch.delete(doc.ref);
+      deleteCount++;
+
+      if (grades) gradedDaily++;
+      migrated++;
+
+      // Commit in chunks of 400
+      if (writeCount >= 400) {
+        await writeBatch.commit();
+        writeCount = 0;
+      }
+      if (deleteCount >= 400) {
+        await deleteBatch.commit();
+        deleteCount = 0;
+      }
     }
 
-    updates.push({ id: doc.id, data: update });
-    graded++;
+    if (writeCount  > 0) await writeBatch.commit();
+    if (deleteCount > 0) await deleteBatch.commit();
+
+    console.log(`✅ Migrated ${migrated} docs from ${dailyCol} → ${permCol}`);
   }
 
-  // Batch write
-  for (let i = 0; i < updates.length; i += 400) {
+  // ── Step 2: Grade any remaining pending docs already in nbaProps_{season} ──
+  let permQuery = adminDb.collection(permCol).where('gameDate', '==', date);
+  if (!force) permQuery = permQuery.where('actualResult', '==', null) as any;
+
+  const permSnap = await permQuery.get();
+  console.log(`📋 Perm collection: ${permSnap.size} docs to grade for ${date}`);
+
+  if (!permSnap.empty) {
     const batch = adminDb.batch();
-    for (const { id, data } of updates.slice(i, i + 400)) {
-      batch.update(adminDb.collection(colName).doc(id), data);
+    let count   = 0;
+
+    for (const doc of permSnap.docs) {
+      const data   = doc.data();
+      const grades = gradeProp(data, gameMap);
+      if (!grades) {
+        if (!data.bdlId) noId++;
+        continue;
+      }
+      batch.update(doc.ref, grades);
+      count++;
+      gradedPerm++;
+
+      if (count >= 400) {
+        await batch.commit();
+        count = 0;
+      }
     }
-    await batch.commit();
+    if (count > 0) await batch.commit();
   }
 
-  // Also update bettingLog legs that reference these props
-  await gradeBettingLog(date, season, gameMap);
+  // ── Step 3: Sync bettingLog leg statuses ─────────────────────────────────
+  await gradeBettingLog(date, gameMap);
 
-  return { graded, noId, noStat, total: snap.size };
+  return {
+    migrated,
+    gradedFromDaily: gradedDaily,
+    gradedFromPerm:  gradedPerm,
+    noId,
+    bdlRows:         gameMap.size,
+  };
 }
 
-// ─── Sync bettingLog legs ─────────────────────────────────────────────────────
-// Walks pending bettingLog docs for this date and updates individual leg statuses
-// + the overall bet status (parlay logic: any lost leg = lost bet).
+// ─── bettingLog sync ──────────────────────────────────────────────────────────
 
-async function gradeBettingLog(
-  date:    string,
-  season:  number,
-  gameMap: Map<number, BRGame>,
-) {
+async function gradeBettingLog(date: string, gameMap: Map<number, BRGame>) {
   const betSnap = await adminDb.collection('bettingLog')
-    .where('league',  '==',     'nba')
-    .where('status',  '==',     'pending')
+    .where('league',  '==', 'nba')
+    .where('status',  '==', 'pending')
     .get();
 
   if (betSnap.empty) return;
@@ -157,21 +265,16 @@ async function gradeBettingLog(
     const legs = (bet.legs ?? bet.selections ?? []) as any[];
     if (!legs.length) continue;
 
-    // Only grade legs for this date
-    const legsForDate = legs.filter((l: any) => {
-      const ld = (l.gameDate ?? '').toString().split('T')[0];
-      return ld === date;
-    });
+    const legsForDate = legs.filter((l: any) =>
+      (l.gameDate ?? '').toString().split('T')[0] === date
+    );
     if (!legsForDate.length) continue;
 
-    let anyPending = false;
-    let anyLost    = false;
-    let allWon     = true;
+    let anyPending = false, anyLost = false, allWon = true;
 
     const updatedLegs = legs.map((leg: any) => {
       const ld = (leg.gameDate ?? '').toString().split('T')[0];
       if (ld !== date) {
-        // Leg from a different date — carry its existing status
         if (leg.status === 'pending') anyPending = true;
         if (leg.status === 'lost')    anyLost    = true;
         if (leg.status !== 'won')     allWon     = false;
@@ -183,15 +286,10 @@ async function gradeBettingLog(
       const propNorm = normalizeNBAProp(leg.prop ?? '');
       const stat     = game ? getNBAStatFromGame(game, propNorm) : null;
 
-      if (stat === null) {
-        anyPending = true; allWon = false;
-        return leg;
-      }
+      if (stat === null) { anyPending = true; allWon = false; return leg; }
 
       const result = determineResult(stat, Number(leg.line ?? 0), leg.selection ?? leg.overUnder ?? 'Over');
       if (result === 'lost') { anyLost = true; allWon = false; }
-      if (result === 'won'  && allWon) allWon = true;
-
       return { ...leg, status: result, gameStat: stat };
     });
 
@@ -201,11 +299,7 @@ async function gradeBettingLog(
                     : 'void';
 
     if (betStatus !== 'pending') {
-      batch.update(doc.ref, {
-        legs:      updatedLegs,
-        status:    betStatus,
-        updatedAt: new Date().toISOString(),
-      });
+      batch.update(doc.ref, { legs: updatedLegs, status: betStatus, updatedAt: new Date().toISOString() });
       updated++;
     }
   }
@@ -216,50 +310,43 @@ async function gradeBettingLog(
   }
 }
 
-// ─── Handlers ─────────────────────────────────────────────────────────────────
+// ─── Route handlers ───────────────────────────────────────────────────────────
 
-export async function POST(req: NextRequest) {
-  if (!BDL_KEY) {
-    return NextResponse.json({ error: 'BALLDONTLIE_API_KEY not configured' }, { status: 500 });
+async function handle(date: string, season: number, force: boolean) {
+  if (!BDL_API_KEY) {
+    return NextResponse.json({ error: 'BDL_API_KEY not configured' }, { status: 500 });
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return NextResponse.json({ error: 'Invalid date — use YYYY-MM-DD' }, { status: 400 });
   }
 
+  console.log(`\n🏀 NBA Grade+Migrate — ${date} (season ${season}) force=${force}`);
+  const result = await gradeAndMigrate(date, season, force);
+  return NextResponse.json({ success: true, date, season, ...result });
+}
+
+export async function POST(req: NextRequest) {
   try {
     const body   = await req.json();
     const date   = body.date   ?? new Date().toISOString().split('T')[0];
     const season = Number(body.season ?? 2025);
     const force  = body.force  ?? false;
-
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      return NextResponse.json({ error: 'Invalid date — use YYYY-MM-DD' }, { status: 400 });
-    }
-
-    console.log(`\n🏀 NBA Grade — ${date} (season ${season}) force=${force}`);
-    const result = await gradeForDate(date, season, force);
-
-    return NextResponse.json({ success: true, date, season, ...result });
+    return handle(date, season, force);
   } catch (err: any) {
-    console.error('❌ NBA grade error:', err);
+    console.error('❌ NBA grade POST error:', err);
     return NextResponse.json({ error: err.message ?? 'Grade failed' }, { status: 500 });
   }
 }
 
 export async function GET(req: NextRequest) {
-  if (!BDL_KEY) {
-    return NextResponse.json({ error: 'BALLDONTLIE_API_KEY not configured' }, { status: 500 });
-  }
-
   try {
     const { searchParams } = req.nextUrl;
     const date   = searchParams.get('date')   ?? new Date().toISOString().split('T')[0];
     const season = Number(searchParams.get('season') ?? 2025);
     const force  = searchParams.get('force')  === 'true';
-
-    console.log(`\n🏀 NBA Grade — ${date} (season ${season}) force=${force}`);
-    const result = await gradeForDate(date, season, force);
-
-    return NextResponse.json({ success: true, date, season, ...result });
+    return handle(date, season, force);
   } catch (err: any) {
-    console.error('❌ NBA grade error:', err);
+    console.error('❌ NBA grade GET error:', err);
     return NextResponse.json({ error: err.message ?? 'Grade failed' }, { status: 500 });
   }
 }

@@ -12,5 +12,5 @@
         "@/*": ["src/*"]
       }
     },
-    "include": ["./**/*.ts", "nba/seedNbaPlayers.js", "syncTeamMappings.js"]
+    "include": ["./**/*.ts", "nba/seedNbaPlayers.js", "syncTeamMappings.js", "migrate-collection-new-name.js"]
   }

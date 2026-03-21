@@ -42,7 +42,7 @@ const app = getApps().length
 const db = getFirestore(app);
 
 // ─── BallDontLie config ───────────────────────────────────────────────────────
-const BDL_KEY  = '4fb66b96-1044-4635-9bcc-55b6b4668e07';
+const BDL_API_KEY  = '4fb66b96-1044-4635-9bcc-55b6b4668e07';
 const BDL_BASE = 'https://api.balldontlie.io/v1';
 
 // ─── Player manifest ──────────────────────────────────────────────────────────
@@ -121,14 +121,14 @@ function bdlSearchTerm(fullName: string): string {
 }
 
 async function lookupBdlId(playerName: string): Promise<number | null> {
-  if (!BDL_KEY) return null;
+  if (!BDL_API_KEY) return null;
 
   const searchTerm = bdlSearchTerm(playerName);
 
   for (let attempt = 0; attempt < 2; attempt++) {
     const res = await fetch(
       `${BDL_BASE}/players?search=${encodeURIComponent(searchTerm)}&per_page=10`,
-      { headers: { Authorization: BDL_KEY } },
+      { headers: { Authorization: BDL_API_KEY } },
     );
 
     if (res.status === 429) {
@@ -263,7 +263,7 @@ async function main() {
   console.log('\n🏀 NBA ID Seed Script');
   console.log('='.repeat(55));
   console.log(`  Players:  ${PLAYERS.length}`);
-  console.log(`  --lookup: ${doLookup} ${doLookup && !BDL_KEY ? '(⚠️  BALLDONTLIE_API_KEY not set — will skip)' : ''}`);
+  console.log(`  --lookup: ${doLookup} ${doLookup && !BDL_API_KEY ? '(⚠️  BALLDONTLIE_API_KEY not set — will skip)' : ''}`);
   console.log(`  --verify: ${doVerify}`);
   console.log('');
 
@@ -295,7 +295,7 @@ async function main() {
 
   // ── Phase 2: BDL ID lookup ────────────────────────────────────────────────
   if (doLookup) {
-    if (!BDL_KEY) {
+    if (!BDL_API_KEY) {
       console.log('⚠️  BALLDONTLIE_API_KEY not set — skipping BDL lookup. Set it in .env and re-run.\n');
     } else {
       console.log('🔎 Looking up BDL IDs…\n');

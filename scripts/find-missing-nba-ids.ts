@@ -36,7 +36,7 @@ const app = getApps().length
 const db = getFirestore(app);
 
 // ─── BDL config ───────────────────────────────────────────────────────────────
-const BDL_KEY  = process.env.BDL_API_KEY ?? process.env.BALLDONTLIE_API_KEY ?? '';
+const BDL_API_KEY  = process.env.BDL_API_KEY ?? process.env.BALLDONTLIE_API_KEY ?? '';
 const BDL_BASE = 'https://api.balldontlie.io/v1';
 
 // ─── CLI args ─────────────────────────────────────────────────────────────────
@@ -80,7 +80,7 @@ async function fetchAllBdlPlayers(): Promise<Map<string, number>> {
     url.searchParams.set('per_page', '100');
     if (cursor) url.searchParams.set('cursor', String(cursor));
 
-    const res = await fetch(url.toString(), { headers: { Authorization: BDL_KEY } });
+    const res = await fetch(url.toString(), { headers: { Authorization: BDL_API_KEY } });
 
     if (res.status === 429) {
       process.stdout.write(' ⏳ rate limited, waiting 65s...');
@@ -208,7 +208,7 @@ async function main() {
   // 3. BDL bulk lookup for missing players
   const resolvedBdl = new Map<string, number>();
 
-  if (missingBdl.length > 0 && BDL_KEY) {
+  if (missingBdl.length > 0 && BDL_API_KEY) {
     console.log('\n🔎 Resolving BDL IDs via bulk fetch...\n');
     const nameToId = await fetchAllBdlPlayers();
 

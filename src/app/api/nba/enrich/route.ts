@@ -6,6 +6,7 @@
 // GET /api/nba/enrich?date=YYYY-MM-DD&force=true&season=2025 → re-enrich already-done props
 
 import { NextRequest, NextResponse } from 'next/server';
+import { adminDb } from '@/lib/firebase/admin';
 import {
   enrichNBAPropsForDate,
   enrichAllNBAPropsCollection,
@@ -25,6 +26,26 @@ export async function GET(req: NextRequest) {
   const skipEnriched = searchParams.get('force') !== 'true'; // force=true → re-enrich
 
   try {
+    // ── Stale daily check ─────────────────────────────────────────────────────
+    // If nbaPropsDaily_{season} has docs from any date other than today,
+    // warn the user to run post-game first before enriching.
+    const today = new Date().toISOString().split('T')[0];
+    const dailyCol = `nbaPropsDaily_${season}`;
+    try {
+      const dailySnap = await adminDb.collection(dailyCol).limit(1).get();
+      if (!dailySnap.empty) {
+        const sampleDate = dailySnap.docs[0].data().gameDate ?? '';
+        if (sampleDate && sampleDate !== today && sampleDate !== date) {
+          return NextResponse.json({
+            warning:    true,
+            staleDate:  sampleDate,
+            message:    `nbaPropsDaily_${season} has props from ${sampleDate} that haven't been graded yet. Run POST /api/nba/grade first to migrate yesterday's props before enriching today.`,
+            action:     `POST /api/nba/grade with { date: "${sampleDate}", season: ${season} }`,
+          }, { status: 409 });
+        }
+      }
+    } catch { /* daily collection might not exist yet — that's fine */ }
+
     let enriched: number;
 
     if (mode === 'all') {

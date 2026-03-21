@@ -17,8 +17,8 @@ import type { BRGame } from '@/lib/enrichment/types';
 
 // ─── BallDontLie config ───────────────────────────────────────────────────────
 const BDL_BASE = 'https://api.balldontlie.io/v1';
-const BDL_KEY  = process.env.BDL_API_KEY ?? process.env.BALLDONTLIE_API_KEY ?? '';
-if (!BDL_KEY) console.warn('⚠️  BALLDONTLIE_API_KEY not set — BDL requests will likely 401');
+const BDL_API_KEY  = process.env.BDL_API_KEY ?? process.env.BDL_API_KEY ?? '';
+if (!BDL_API_KEY) console.warn('⚠️  BALLDONTLIE_API_KEY not set — BDL requests will likely 401');
 
 // ─── CLI args ─────────────────────────────────────────────────────────────────
 const args   = process.argv.slice(2);
@@ -60,7 +60,7 @@ async function fetchBDLStatsForDate(date: string): Promise<Map<number, BDLStatRo
     if (cursor != null) params.set('cursor', String(cursor));
 
     const res = await fetch(`${BDL_BASE}/stats?${params}`, {
-      headers: { Authorization: BDL_KEY },
+      headers: { Authorization: BDL_API_KEY },
     });
 
     if (!res.ok) {
