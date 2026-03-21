@@ -17,7 +17,7 @@ import type { BRGame } from '@/lib/enrichment/types';
 
 // ─── BallDontLie config ───────────────────────────────────────────────────────
 const BDL_BASE = 'https://api.balldontlie.io/v1';
-const BDL_KEY  = process.env.BALLDONTLIE_API_KEY ?? '';
+const BDL_KEY  = process.env.BDL_API_KEY ?? process.env.BALLDONTLIE_API_KEY ?? '';
 if (!BDL_KEY) console.warn('⚠️  BALLDONTLIE_API_KEY not set — BDL requests will likely 401');
 
 // ─── CLI args ─────────────────────────────────────────────────────────────────

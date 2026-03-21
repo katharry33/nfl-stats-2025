@@ -34,24 +34,25 @@ export async function GET(req: NextRequest) {
     }
 
     // ── Ordering ──────────────────────────────────────────────────────────────
-    // Order by confidenceScore desc — nulls sort last in Firestore ascending,
-    // so we use a fallback field when confidenceScore is missing.
-    // For NBA: many docs will have confidenceScore after enrichment.
-    // Use updatedAt as the tiebreaker / fallback for unenriched docs.
+    // For NBA: gameDate filter + confidenceScore orderBy requires a composite
+    // index. Skip ordering entirely and sort in-memory after fetch to avoid
+    // index errors. Firestore returns docs in insertion order without orderBy.
+    // For NFL: allProps collection has no gameDate filter so single-field
+    // confidenceScore orderBy works fine.
     let snapshot: FirebaseFirestore.QuerySnapshot;
-    try {
-      snapshot = await query
-        .orderBy('confidenceScore', 'desc')
-        .offset(offset)
-        .limit(limit)
-        .get();
-    } catch {
-      // Fallback if index isn't built yet — order by updatedAt
-      snapshot = await query
-        .orderBy('updatedAt', 'desc')
-        .offset(offset)
-        .limit(limit)
-        .get();
+    if (league === 'nba') {
+      // No orderBy — sort in memory after fetch
+      snapshot = await query.limit(limit + offset).get();
+    } else {
+      try {
+        snapshot = await query
+          .orderBy('confidenceScore', 'desc')
+          .offset(offset)
+          .limit(limit)
+          .get();
+      } catch {
+        snapshot = await query.limit(limit).get();
+      }
     }
 
     if (snapshot.empty) {
@@ -104,8 +105,18 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    console.log(`✅ Returning ${props.length} props`);
-    return NextResponse.json(props);
+    // Sort NBA results in memory by confidenceScore desc (nulls last)
+    if (league === 'nba') {
+      props.sort((a, b) => {
+        const ac = (a as any).confidenceScore ?? -1;
+        const bc = (b as any).confidenceScore ?? -1;
+        return bc - ac;
+      });
+    }
+
+    const page = league === 'nba' ? props.slice(offset, offset + limit) : props;
+    console.log(`✅ Returning ${page.length} props`);
+    return NextResponse.json(page);
 
   } catch (err: any) {
     console.error('❌ /api/props error:', err);

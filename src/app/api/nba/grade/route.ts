@@ -17,7 +17,7 @@ export const dynamic     = 'force-dynamic';
 export const maxDuration = 120;
 
 const BDL_BASE = 'https://api.balldontlie.io/v1';
-const BDL_KEY  = process.env.BALLDONTLIE_API_KEY ?? '';
+const BDL_KEY  = process.env.BDL_API_KEY ?? process.env.BALLDONTLIE_API_KEY ?? '';
 
 // ─── BDL stat fetch ───────────────────────────────────────────────────────────
 

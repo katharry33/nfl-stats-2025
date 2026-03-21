@@ -1,54 +1,78 @@
+'use client';
+
 import { useState } from 'react';
 import { toast } from 'sonner';
 
 interface EnrichModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onComplete: () => any;
-  league: "nba" | "nfl";
-  defaultSeason: number;
+  isOpen:            boolean;
+  onClose:           () => void;
+  onComplete:        () => any;
+  league:            'nba' | 'nfl';
+  defaultSeason:     number;
   defaultCollection: string;
-  defaultWeek?: number; // Add this line
+  defaultDate?:      string;
+  defaultWeek?:      number;
 }
 
 export function EnrichModal({
   isOpen,
   onClose,
   onComplete,
+  league,
   defaultDate,
   defaultSeason,
   defaultCollection = 'all',
+  defaultWeek,
 }: EnrichModalProps) {
   const [loading, setLoading] = useState(false);
-  const [force, setForce] = useState(false);
+  const [force,   setForce]   = useState(false);
 
   const handleEnrich = async () => {
     setLoading(true);
     const toastId = toast.loading('Enriching props... this may take a moment.');
 
     try {
-      const res = await fetch('/api/enrich', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          collection: defaultCollection,
-          season: defaultSeason,
-          date: defaultDate, // Pass date to API
-          skipEnriched: !force,
-        }),
-      });
+      let res: Response;
+
+      if (league === 'nba') {
+        // NBA enrichment route
+        const params = new URLSearchParams({
+          season: String(defaultSeason),
+          force:  String(force),
+        });
+        if (defaultDate) {
+          params.set('date', defaultDate);
+        } else {
+          params.set('mode', 'all');
+        }
+        res = await fetch(`/api/nba/enrich?${params}`);
+      } else {
+        // NFL enrichment route
+        res = await fetch('/api/enrich', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            collection:   defaultCollection,
+            season:       defaultSeason,
+            week:         defaultWeek,
+            date:         defaultDate,
+            skipEnriched: !force,
+          }),
+        });
+      }
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
 
       const data = await res.json();
 
-      if (data.success) {
-        toast.success(data.message, { id: toastId });
-        onComplete();
-        onClose();
-      } else {
-        throw new Error(data.error);
-      }
+      const count = data.enriched ?? data.propsEnriched ?? data.updated ?? 0;
+      toast.success(`Enriched ${count} props`, { id: toastId });
+      onComplete();
+      onClose();
     } catch (err: any) {
-      toast.error(`Failed to enrich: ${err.message}`, { id: toastId });
+      toast.error(`Enrichment failed: ${err.message}`, { id: toastId });
     } finally {
       setLoading(false);
     }
@@ -56,29 +80,36 @@ export function EnrichModal({
 
   if (!isOpen) return null;
 
-  const displayTarget = defaultDate 
-    ? `Date ${defaultDate}` 
-    : `the ${defaultSeason} season`;
+  const displayTarget = defaultDate
+    ? `Date ${defaultDate}`
+    : defaultWeek
+    ? `Week ${defaultWeek} · ${defaultSeason}`
+    : `full ${defaultSeason} season`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="bg-card border border-border w-full max-w-md p-6 rounded-2xl shadow-2xl">
-        <h2 className="text-xl font-black uppercase italic text-primary">Prop Enrichment</h2>
+        <h2 className="text-xl font-black uppercase italic text-primary">
+          {league.toUpperCase()} Prop Enrichment
+        </h2>
         <p className="text-muted-foreground text-sm mt-2">
-          This will fetch player averages, defensive stats, and calculate win probabilities for 
-          <span className="text-foreground font-bold"> {displayTarget}</span>.
+          Fetches player averages, defensive stats, and win probabilities for{' '}
+          <span className="text-foreground font-bold">{displayTarget}</span>.
+        </p>
+        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/50 mt-1">
+          Game results (actual stats) are filled by the post-game script, not enrichment.
         </p>
 
         <div className="mt-6 space-y-4">
           <label className="flex items-center gap-3 cursor-pointer group">
-            <input 
-              type="checkbox" 
-              checked={force} 
-              onChange={(e) => setForce(e.target.checked)}
+            <input
+              type="checkbox"
+              checked={force}
+              onChange={e => setForce(e.target.checked)}
               className="w-4 h-4 rounded border-border bg-background text-primary focus:ring-primary/20"
             />
             <span className="text-sm font-medium text-muted-foreground group-hover:text-foreground transition-colors">
-              Force re-enrich (Overwrite existing stats)
+              Force re-enrich (overwrite existing stats)
             </span>
           </label>
 

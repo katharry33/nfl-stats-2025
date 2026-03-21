@@ -42,7 +42,7 @@ const app = getApps().length
 const db = getFirestore(app);
 
 // ─── BallDontLie config ───────────────────────────────────────────────────────
-const BDL_KEY  = '0c0c5389-4aa3-4bae-ad6d-373c95591339';
+const BDL_KEY  = '4fb66b96-1044-4635-9bcc-55b6b4668e07';
 const BDL_BASE = 'https://api.balldontlie.io/v1';
 
 // ─── Player manifest ──────────────────────────────────────────────────────────

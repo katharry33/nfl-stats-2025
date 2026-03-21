@@ -36,7 +36,7 @@ const app = getApps().length
 const db = getFirestore(app);
 
 // ─── BDL config ───────────────────────────────────────────────────────────────
-const BDL_KEY  = process.env.BALLDONTLIE_API_KEY ?? '';
+const BDL_KEY  = process.env.BDL_API_KEY ?? process.env.BALLDONTLIE_API_KEY ?? '';
 const BDL_BASE = 'https://api.balldontlie.io/v1';
 
 // ─── CLI args ─────────────────────────────────────────────────────────────────

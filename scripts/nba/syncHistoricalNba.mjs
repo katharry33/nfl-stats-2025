@@ -4,7 +4,7 @@ import fs from 'fs';
 import axios from 'axios';
 
 // --- CONFIG & AUTH ---
-const BDL_API_KEY = '0c0c5389-4aa3-4bae-ad6d-373c95591339'; // Your Key
+const BDL_API_KEY = '4fb66b96-1044-4635-9bcc-55b6b4668e07'; // Your Key
 const SEASONS = [2024, 2025];
 const BASE_URL = 'https://api.balldontlie.io/nba/v1';
 
