@@ -7,74 +7,27 @@
 // ---------------------------------------------------------------------------
 
 const NBA_PROP_ALIASES: Record<string, string> = {
-    // Points
-    'point':                    'points',
-    'pts':                      'points',
-  
-    // Assists
-    'assist':                   'assists',
-    'ast':                      'assists',
-  
-    // Rebounds
-    'rebound':                  'rebounds',
-    'reb':                      'rebounds',
-    'trb':                      'rebounds',
-    'total rebounds':           'rebounds',
-    'total rebound':            'rebounds',
-  
-    // Steals
-    'steal':                    'steals',
-    'stl':                      'steals',
-  
-    // Blocks
-    'block':                    'blocks',
-    'blk':                      'blocks',
-  
-    // 3-pointers made
-    '3pm':                      'threes',
-    '3s':                       'threes',
-    'fg3':                      'threes',
-    'three':                    'threes',
-    'three pointers made':      'threes',
-    '3 pointers made':          'threes',
-    '3-pointers made':          'threes',
-    'threes made':              'threes',
-  
-    // Turnovers
-    'turnover':                 'turnovers',
-    'tov':                      'turnovers',
-    'to':                       'turnovers',
-  
-    // ── Common combo prop labels used by sportsbooks ─────────────────────────
-    'pts+ast':                  'pts_ast',
-    'points+assists':           'pts_ast',
-    'points + assists':         'pts_ast',
-  
-    'pts+reb':                  'pts_reb',
-    'points+rebounds':          'pts_reb',
-    'points + rebounds':        'pts_reb',
-  
-    'ast+reb':                  'ast_reb',
-    'assists+rebounds':         'ast_reb',
-    'assists + rebounds':       'ast_reb',
-  
-    'pts+ast+reb':              'pts_ast_reb',
-    'points+assists+rebounds':  'pts_ast_reb',
-    'points + assists + rebounds': 'pts_ast_reb',
-    'pra':                      'pts_ast_reb',
-  
-    'stl+blk':                  'stl_blk',
-    'steals+blocks':            'stl_blk',
-    'steals + blocks':          'stl_blk',
-  
-    'pts+ast+reb+stl+blk':      'pts_ast_reb_stl_blk',
-  };
-  
-  export function normalizeNBAProp(raw: string): string {
-    const lower = raw.toLowerCase().trim();
-    return NBA_PROP_ALIASES[lower] ?? lower;
-  }
-  
+  'point': 'points', 'pts': 'points',
+  'assist': 'assists', 'ast': 'assists',
+  'rebound': 'rebounds', 'reb': 'rebounds', 'trb': 'rebounds',
+  'steal': 'steals', 'stl': 'steals',
+  'block': 'blocks', 'blk': 'blocks',
+  '3pm': 'threes', '3s': 'threes', 'fg3': 'threes', 'three': 'threes',
+  'turnover': 'turnovers', 'tov': 'turnovers',
+  'pra': 'pts_ast_reb',
+  'pts+ast': 'pts_ast', 'pts+reb': 'pts_reb', 'ast+reb': 'ast_reb',
+  'pts+ast+reb': 'pts_ast_reb', 'stl+blk': 'stl_blk'
+};
+
+export function normalizeNBAProp(raw: string): string {
+  const lower = raw.toLowerCase().trim();
+  // Check direct alias
+  if (NBA_PROP_ALIASES[lower]) return NBA_PROP_ALIASES[lower];
+  // Handle space/plus variations (e.g., "Points + Assists")
+  const normalized = lower.replace(/\s*\+\s*/g, '_').replace(/\s+/g, '_');
+  return NBA_PROP_ALIASES[normalized] ?? normalized;
+}
+
   // ---------------------------------------------------------------------------
   // Combo splitting
   // ---------------------------------------------------------------------------

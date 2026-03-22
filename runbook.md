@@ -1,14 +1,12 @@
 NBA
-permanent for player IDS - seed-nba-ids.ts s
-fill gaps - npx tsx scripts/find-missing-nba-ids.ts
-daily workflow
-# Every morning
-curl "http://localhost:3000/api/nba/ingest"
-curl "http://localhost:3000/api/nba/enrich?date=YYYY-MM-DD&season=2025"
+Bet builder flow for daily game props
 
-# After games finish
-# For a specific day
-npx tsx scripts/postGameNBA_BBR.ts --date=2025-03-20 --season=2025
+User clicks "Sync Slate" on the Dashboard.
 
-# To overwrite existing results
-npx tsx scripts/postGameNBA_BBR.ts --date=2025-03-20 --force
+api/nba/ingest runs, pulls lines from The Odds API, and saves them to nbaProps_2025.
+
+User clicks "Enrich."
+
+api/nba/enrich runs, pulls BBRef logs/TeamRankings, runs the scoring.ts math, and updates the docs.
+
+useAllProps hook detects the refresh, calls api/props, and populates your table with EV-ready bets.

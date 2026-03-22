@@ -1,8 +1,8 @@
-import { adminDb } from "@/lib/firebase/admin";
-import { NextResponse } from "next/server";
-import { FieldValue } from "firebase-admin/firestore"; 
+import { NextRequest, NextResponse } from 'next/server';
+import { adminDb as db } from '@/lib/firebase/admin';
+import { FieldPath } from 'firebase-admin/firestore';
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     const { date, league } = await request.json();
 
@@ -10,7 +10,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing date or league" }, { status: 400 });
     }
 
-    const propsRef = adminDb.collection("props");
+    const propsRef = db.collection("props");
     const snapshot = await propsRef
       .where("gameDate", "==", date)
       .where("league", "==", league)
@@ -20,8 +20,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: "No props found for this date" });
     }
 
-    const batch = adminDb.batch();
-    // Added explicit type for 'doc' to fix the (doc: any) error
+    const batch = db.batch();
     snapshot.docs.forEach((doc: FirebaseFirestore.QueryDocumentSnapshot) => {
       batch.delete(doc.ref);
     });

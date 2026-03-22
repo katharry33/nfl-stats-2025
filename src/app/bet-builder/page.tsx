@@ -1,20 +1,16 @@
-import BetBuilderClient from '@/features/bet-builder-client';
+// src/app/bet-builder/page.tsx
+import BetBuilderClient from '@/features/bet-builder-client'; // Adjust this path if your file is named differently
 
-interface Props {
-  searchParams: { date?: string, league?: 'nfl' | 'nba' };
-}
+export default function BetBuilderPage({ searchParams }: { searchParams: { date?: string } }) {
+  // Use the CA locale to get YYYY-MM-DD reliably
+  const today = new Date().toLocaleDateString('en-CA');
+  const activeDate = searchParams.date || today;
 
-export default function BetBuilderPage({ searchParams }: Props) {
-  const league = searchParams?.league || 'nba'; // Default to NBA now
-  const today = new Date().toISOString().split('T')[0];
-  
   return (
-    <div className="min-h-screen bg-background">
-      <BetBuilderClient 
-        initialDate={searchParams?.date || today} 
-        league={league}
-        season={2025} 
-      />
-    </div>
+    <BetBuilderClient 
+      initialDate={activeDate} 
+      league="nba" 
+      season={2025} 
+    />
   );
 }

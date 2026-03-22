@@ -1,99 +1,103 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminDb } from '@/lib/firebase/admin';
-import { NormalizedProp } from '@/hooks/useAllProps';
+import { adminDb as db } from '@/lib/firebase/admin';
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * GET /api/props
+ * Query params: league, season, date, enriched, limit, offset
+ */
 export async function GET(req: NextRequest) {
+  const { searchParams } = req.nextUrl;
+
+  // 1. Parameter Extraction & Sanitization
+  const league   = (searchParams.get('league') || 'nba').toLowerCase();
+  const season   = searchParams.get('season') || '2025';
+  const date     = searchParams.get('date'); 
+  const enriched = searchParams.get('enriched') === 'true';
+  const limit    = Math.min(parseInt(searchParams.get('limit') || '50', 10), 200); // Cap at 200
+  const offset   = parseInt(searchParams.get('offset') || '0', 10);
+
   try {
-    const { searchParams } = req.nextUrl;
-    const league = searchParams.get('league') || 'nba';
-    const season = searchParams.get('season') || '2025';
-    const week   = searchParams.get('week');
-    const date   = searchParams.get('date');
-    const offset = parseInt(searchParams.get('offset') ?? '0');
-    const limit  = parseInt(searchParams.get('limit')  ?? '100');
-    const playersParam = searchParams.get('players');
+    const colName = `${league}Props_${season}`;
+    const propsCol = db.collection(colName);
 
-    const collectionName = league === 'nba'
-      ? `nbaProps_${season}`
-      : `allProps_${season}`;
-
-    console.log(`📡 Fetching ${league.toUpperCase()}: ${collectionName} | Week: ${week} | Date: ${date}`);
-
-    let query: FirebaseFirestore.Query = adminDb.collection(collectionName);
-
-    // ── Optimized Filtering ──────────────────────────────────────────────────
-    if (league === 'nba') {
-      // For NBA, default to today if no date provided
-      const targetDate = date || new Date().toISOString().split('T')[0];
-      query = query.where('gameDate', '==', targetDate);
-    } else {
-      // For NFL, only filter by week if a specific week is requested
-      // If week is null/all, we just fetch the collection ordered by confidence
-      if (week && week !== 'all') {
-        query = query.where('week', '==', parseInt(week));
-      }
+    // 2. Initial Existence Check
+    // Prevents crashing if the season collection hasn't been created yet
+    const collectionSnap = await propsCol.limit(1).get();
+    if (collectionSnap.empty && !date) {
+      return NextResponse.json([]);
     }
 
-    if (playersParam) {
-      const playerList = playersParam.split(',').slice(0, 30);
-      query = query.where('player', 'in', playerList);
+    // 3. Build Firestore Query
+    let query: FirebaseFirestore.Query = propsCol;
+
+    // Filter by Date (The most common use case)
+    if (date) {
+      query = query.where('gameDate', '==', date);
     }
 
-    // ── Fetching Logic ───────────────────────────────────────────────────────
-    let snapshot: FirebaseFirestore.QuerySnapshot;
+    // Filter by Enrichment status (Only show props with math/scores)
+    if (enriched) {
+      // We check for confidenceScore existence
+      query = query.where('confidenceScore', '!=', null);
+    }
 
+    // 4. Sorting Logic
+    // Default sort: Highest Edge first. 
+    // Note: This requires a composite index in Firebase.
+    // If index isn't ready, fallback to 'player' to avoid query failure.
     try {
-      // Primary attempt: Ranked by confidence
-      snapshot = await query
-        .orderBy('confidenceScore', 'desc')
-        .limit(limit + offset)
-        .get();
+      if (enriched) {
+        query = query.orderBy('confidenceScore', 'desc');
+      } else {
+        query = query.orderBy('player', 'asc');
+      }
     } catch (e) {
-      // Fallback: If index is missing for orderBy, just get the raw docs
-      console.warn("⚠️ Index missing for confidenceScore sort, falling back to basic fetch");
-      snapshot = await query.limit(limit + offset).get();
+      console.warn("Index not ready for sorting, falling back to basic order.");
     }
 
-    if (snapshot.empty) return NextResponse.json([]);
+    // 5. Execution with Pagination
+    // For large slates, we use offset. For 1000+ props, consider startAfter().
+    const snapshot = await query.offset(offset).limit(limit).get();
 
-    const props: NormalizedProp[] = snapshot.docs
-      .map(doc => {
-        const d = doc.data();
-        return {
-          id: doc.id,
-          league: d.league || league,
-          player: d.player || d.Player || null,
-          team: d.team || d.Team || null,
-          prop: d.prop || d.Prop || null,
-          line: d.line || d.Line || null,
-          overUnder: d.overUnder || d.overunder || d.over_under || null,
-          odds: d.odds || d.bestOdds || -110,
-          matchup: d.matchup || d.Matchup || null,
-          gameDate: d.gameDate || d.GameDate || null,
-          week: d.week || d.Week || null,
-          season: d.season || d.Season || null,
-          confidenceScore: d.confidenceScore || null,
-          actualResult: d.actualResult || d.result || null,
-          // ... all other fields remain the same
-          playerAvg: d.playerAvg || null,
-          seasonHitPct: d.seasonHitPct || null,
-          opponentRank: d.opponentRank || null,
-          opponentAvgVsStat: d.opponentAvgVsStat || null,
-        } as NormalizedProp;
-      })
-      .filter(p => p.player && p.prop);
+    const props = snapshot.docs.map(doc => {
+      const data = doc.data();
+      
+      return {
+        id: doc.id,
+        ...data,
+        // Ensure critical UI fields have defaults
+        bestEdgePct: data.bestEdgePct ?? 0,
+        expectedValue: data.expectedValue ?? 0,
+        confidenceScore: data.confidenceScore ?? null,
+        playerAvg: data.playerAvg ?? null,
+        // Calculate a 'value status' on the fly if needed
+        isHighValue: (data.bestEdgePct || 0) > 0.05, 
+      };
+    });
 
-    // ── Manual Pagination ────────────────────────────────────────────────────
-    const paginated = props.slice(offset, offset + limit);
-
-    return NextResponse.json(paginated, {
-      headers: { 'X-Total-Count': String(props.length) },
+    // 6. Return Data + Metadata for the Hook
+    return NextResponse.json(props, {
+      headers: {
+        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=30',
+      }
     });
 
   } catch (err: any) {
-    console.error('❌ API Error:', err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    console.error(`❌ Props API Error [${league}]:`, err);
+    
+    // Handle specific Firebase index errors gracefully
+    if (err.message?.includes('index')) {
+      return NextResponse.json(
+        { error: 'Database index building. Please try again in 2 minutes.', url: err.details },
+        { status: 503 }
+      );
+    }
+
+    return NextResponse.json(
+      { error: 'Failed to fetch props', message: err.message },
+      { status: 500 }
+    );
   }
 }

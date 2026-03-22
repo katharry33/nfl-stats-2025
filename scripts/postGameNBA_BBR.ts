@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 import 'dotenv/config';
-import { db } from '@/lib/firebase/admin';
+import { adminDb } from '@/lib/firebase/admin';
 import * as cheerio from 'cheerio';
 import { normalizeNBAProp } from '@/lib/enrichment/nba/normalize-nba';
 import { getNBAStatFromGame } from '@/lib/enrichment/nba/bball';
@@ -59,7 +59,7 @@ async function main() {
   console.log(`\n🏀 BBR Scraper: Grading ${DATE} for Season ${SEASON}`);
   
   // 1. Load Player ID Map
-  const mapSnap = await db.collection('static_nbaIdMap').get();
+  const mapSnap = await adminDb.collection('static_nbaIdMap').get();
   const idMap: Record<string, string> = {}; // bdlId -> brid
   mapSnap.docs.forEach(d => {
     const data = d.data();
@@ -68,7 +68,7 @@ async function main() {
 
   // 2. Load Props for the Date
   const colName = `nbaProps_${SEASON}`;
-  const propsSnap = await db.collection(colName).where('gameDate', '==', DATE).get();
+  const propsSnap = await adminDb.collection(colName).where('gameDate', '==', DATE).get();
   
   if (propsSnap.empty) {
     console.log("No props found for this date.");

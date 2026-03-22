@@ -1,400 +1,178 @@
-// src/app/api/nba/ingest/route.ts
-//
-// Fetches today's NBA player prop odds from The Odds API and writes them
-// to nbaProps_{season} in Firestore.
-//
-// GET /api/nba/ingest                         → ingest today's slate
-// GET /api/nba/ingest?date=YYYY-MM-DD         → ingest a specific date's events
-// GET /api/nba/ingest?force=true              → overwrite already-ingested props
-
 import { NextRequest, NextResponse } from 'next/server';
-import { adminDb } from '@/lib/firebase/admin';
+import { adminDb as db } from '@/lib/firebase/admin';
+import { FieldPath } from 'firebase-admin/firestore';
 
 export const dynamic     = 'force-dynamic';
 export const maxDuration = 120;
 
-// ─── Config ───────────────────────────────────────────────────────────────────
-
+// ─── 1. CONFIG & CONSTANTS ──────────────────────────────────────────────────
 const ODDS_API_KEY = process.env.THE_ODDS_API_KEY ?? '';
 const ODDS_BASE    = 'https://api.the-odds-api.com/v4';
 const REGION       = 'us';
 const ODDS_FORMAT  = 'american';
 
-// Split into two batches — Odds API 422s when any market in the list
-// isn't available on the plan. Batch 1 = core single-stat props (always available).
-// Batch 2 = combo props (may 422 on lower plans — failures are caught and skipped).
-const MARKETS_BATCH_1 = [
-  'player_points',
-  'player_rebounds',
-  'player_assists',
-  'player_threes',
-  'player_steals',
-  'player_blocks',
-  'player_turnovers',
-].join(',');
+const MARKETS_BATCH_1 = ['player_points','player_rebounds','player_assists','player_threes','player_steals','player_blocks','player_turnovers'].join(',');
+const MARKETS_BATCH_2 = ['player_points_rebounds_assists','player_points_rebounds', 'player_points_assists','player_assists_rebounds','player_blocks_steals'].join(',');
 
-const MARKETS_BATCH_2 = [
-  'player_points_rebounds_assists',
-  'player_points_rebounds',
-  'player_points_assists',
-  'player_assists_rebounds',
-  'player_blocks_steals',
-].join(',');
-
-// ─── Prop key normalizer ──────────────────────────────────────────────────────
-// Must stay in sync with normalizeNBAProp() in normalize-nba.ts.
-
-const PROP_KEY_MAP: Record<string, string> = {
-  player_points:                  'points',
-  player_rebounds:                'rebounds',
-  player_assists:                 'assists',
-  player_threes:                  'threes',
-  player_steals:                  'steals',
-  player_blocks:                  'blocks',
-  player_turnovers:               'turnovers',
-  player_points_rebounds_assists: 'pts_ast_reb',
-  player_points_rebounds:         'pts_reb',
-  player_points_assists:          'pts_ast',
-  player_assists_rebounds:        'ast_reb',
-  player_blocks_steals:           'stl_blk',
-};
-
-function normalizePropKey(marketKey: string): string {
-  return PROP_KEY_MAP[marketKey] ?? marketKey.replace('player_', '');
+// ─── 2. INTERFACES ──────────────────────────────────────────────────────────
+interface Accumulator {
+    playerName: string; propNorm: string; line: number; overUnder: string;
+    homeTeam: string; awayTeam: string; gameDate: string; eventId: string;
+    bestOdds: number; bestBook: string;
+    fdOdds: number | null; dkOdds: number | null;
 }
 
-// ─── Team name normalizer ─────────────────────────────────────────────────────
-
-const TEAM_NAME_MAP: Record<string, string> = {
-  'atlanta hawks': 'ATL', 'boston celtics': 'BOS', 'brooklyn nets': 'BKN',
-  'charlotte hornets': 'CHA', 'chicago bulls': 'CHI', 'cleveland cavaliers': 'CLE',
-  'dallas mavericks': 'DAL', 'denver nuggets': 'DEN', 'detroit pistons': 'DET',
-  'golden state warriors': 'GSW', 'houston rockets': 'HOU', 'indiana pacers': 'IND',
-  'los angeles clippers': 'LAC', 'los angeles lakers': 'LAL', 'memphis grizzlies': 'MEM',
-  'miami heat': 'MIA', 'milwaukee bucks': 'MIL', 'minnesota timberwolves': 'MIN',
-  'new orleans pelicans': 'NOP', 'new york knicks': 'NYK', 'oklahoma city thunder': 'OKC',
-  'orlando magic': 'ORL', 'philadelphia 76ers': 'PHI', 'phoenix suns': 'PHX',
-  'portland trail blazers': 'POR', 'sacramento kings': 'SAC', 'san antonio spurs': 'SAS',
-  'toronto raptors': 'TOR', 'utah jazz': 'UTA', 'washington wizards': 'WAS',
-};
+// ─── 3. HELPER FUNCTIONS (Moved up for scope) ────────────────────────────────
+function impliedProbFrom(odds: number): number {
+  return odds > 0 ? 100 / (odds + 100) : Math.abs(odds) / (Math.abs(odds) + 100);
+}
 
 function normalizeTeamName(fullName: string): string {
+  const TEAM_NAME_MAP: Record<string, string> = { 'atlanta hawks': 'ATL', 'boston celtics': 'BOS', 'brooklyn nets': 'BKN', 'charlotte hornets': 'CHA', 'chicago bulls': 'CHI', 'cleveland cavaliers': 'CLE', 'dallas mavericks': 'DAL', 'denver nuggets': 'DEN', 'detroit pistons': 'DET', 'golden state warriors': 'GSW', 'houston rockets': 'HOU', 'indiana pacers': 'IND', 'los angeles clippers': 'LAC', 'los angeles lakers': 'LAL', 'memphis grizzlies': 'MEM', 'miami heat': 'MIA', 'milwaukee bucks': 'MIL', 'minnesota timberwolves': 'MIN', 'new orleans pelicans': 'NOP', 'new york knicks': 'NYK', 'oklahoma city thunder': 'OKC', 'orlando magic': 'ORL', 'philadelphia 76ers': 'PHI', 'phoenix suns': 'PHX', 'portland trail blazers': 'POR', 'sacramento kings': 'SAC', 'san antonio spurs': 'SAS', 'toronto raptors': 'TOR', 'utah jazz': 'UTA', 'washington wizards': 'WAS' };
   return TEAM_NAME_MAP[fullName.toLowerCase().trim()] ?? fullName.toUpperCase().trim();
 }
 
-// ─── Odds helpers ─────────────────────────────────────────────────────────────
-
-function isBetterOdds(challenger: number, current: number): boolean {
-  const payoutOf = (o: number) => o > 0 ? o / 100 : 100 / Math.abs(o);
-  return payoutOf(challenger) > payoutOf(current);
+function normalizePropKey(marketKey: string): string {
+  const PROP_KEY_MAP: Record<string, string> = { player_points: 'points', player_rebounds: 'rebounds', player_assists: 'assists', player_threes: 'threes', player_steals: 'steals', player_blocks: 'blocks', player_turnovers: 'turnovers', player_points_rebounds_assists: 'pts_ast_reb', player_points_rebounds: 'pts_reb', player_points_assists: 'pts_ast', player_assists_rebounds: 'ast_reb', player_blocks_steals: 'stl_blk' };
+  return PROP_KEY_MAP[marketKey] ?? marketKey.replace('player_', '');
 }
 
-function impliedProbFrom(odds: number): number {
-  return odds > 0
-    ? 100 / (odds + 100)
-    : Math.abs(odds) / (Math.abs(odds) + 100);
+function formatDoc(acc: any, bdlIdMap: any, brIdMap: any, playerTeamMap: any, season: number) {
+  const playerKey = acc.playerName.toLowerCase().trim();
+  return {
+    ...acc,
+    league: 'nba',
+    season,
+    team: playerTeamMap[playerKey] ?? null,
+    bdlId: bdlIdMap[playerKey] ?? null,
+    brid: brIdMap[playerKey] ?? null,
+    impliedProb: Math.round(impliedProbFrom(acc.bestOdds) * 10000) / 10000,
+    updatedAt: new Date().toISOString(),
+  };
 }
 
-// ─── ID map loaders ───────────────────────────────────────────────────────────
-
-async function loadIdMaps(): Promise<{
-  bdlIdMap:      Record<string, number>;
-  brIdMap:       Record<string, string>;
-  playerTeamMap: Record<string, string>;
-}> {
+async function loadIdMaps() {
   const [nbaIdSnap, brIdSnap] = await Promise.all([
-    adminDb.collection('static_nbaIdMap').get(),
-    adminDb.collection('static_brIdMap').get(),
+    db.collection('static_nbaIdMap').get(),
+    db.collection('static_brIdMap').get(),
   ]);
-
-  const bdlIdMap:      Record<string, number> = {};
+  const bdlIdMap: Record<string, number> = {};
   const playerTeamMap: Record<string, string> = {};
-
-  nbaIdSnap.docs.forEach(d => {
+  nbaIdSnap.docs.forEach((d) => {
     const r = d.data();
     const key = (r.player ?? '').toLowerCase().trim();
-    if (!key) return;
-    if (r.bdlId != null) bdlIdMap[key]      = Number(r.bdlId);
-    if (r.team)          playerTeamMap[key] = normalizeTeamName(r.team);
+    if (r.bdlId != null) bdlIdMap[key] = Number(r.bdlId);
+    if (r.team) playerTeamMap[key] = normalizeTeamName(r.team);
   });
-
   const brIdMap: Record<string, string> = {};
-  brIdSnap.docs.forEach(d => {
+  brIdSnap.docs.forEach((d) => {
     const r = d.data();
     const key = (r.player ?? '').toLowerCase().trim();
-    if (key && r.brid) brIdMap[key] = r.brid;
+    if (r.brid) brIdMap[key] = r.brid;
   });
-
   return { bdlIdMap, brIdMap, playerTeamMap };
 }
 
-// ─── Main ─────────────────────────────────────────────────────────────────────
+// ─── 4. MAIN HANDLER ────────────────────────────────────────────────────────
+// ... (Your imports and constants stay the same)
 
 export async function GET(req: NextRequest) {
-  if (!ODDS_API_KEY) {
-    return NextResponse.json({ error: 'THE_ODDS_API_KEY not configured' }, { status: 500 });
-  }
-
-  const { searchParams } = req.nextUrl;
-  const season    = parseInt(searchParams.get('season') ?? '2025', 10);
-  const dateParam = searchParams.get('date') ?? '';
-  const force     = searchParams.get('force') === 'true';
-  const colName   = `nbaProps_${season}`;
+  if (!ODDS_API_KEY) return NextResponse.json({ error: 'Missing API Key' }, { status: 500 });
 
   try {
-    // ── 1. Load ID maps ─────────────────────────────────────────────────────
+    const { searchParams } = req.nextUrl;
+    const season = parseInt(searchParams.get('season') ?? '2025', 10);
+    const dateParam = searchParams.get('date') || new Date().toLocaleDateString('en-CA');
+    const colName = `nbaProps_${season}`;
+
     const { bdlIdMap, brIdMap, playerTeamMap } = await loadIdMaps();
-    console.log(`🔑 BDL: ${Object.keys(bdlIdMap).length}  BR: ${Object.keys(brIdMap).length}  teams: ${Object.keys(playerTeamMap).length}`);
-
-    // ── 2. Fetch events ─────────────────────────────────────────────────────
-    const eventsUrl = new URL(`${ODDS_BASE}/sports/basketball_nba/events`);
-    eventsUrl.searchParams.set('apiKey', ODDS_API_KEY);
-    if (dateParam) {
-      eventsUrl.searchParams.set('commenceTimeFrom', `${dateParam}T00:00:00Z`);
-      eventsUrl.searchParams.set('commenceTimeTo',   `${dateParam}T23:59:59Z`);
-    }
-
-    const eventsRes = await fetch(eventsUrl.toString());
-    if (!eventsRes.ok) {
-      return NextResponse.json(
-        { error: `Odds API events failed: ${eventsRes.status}` },
-        { status: 502 },
-      );
-    }
-
-    const events: any[] = await eventsRes.json();
-    console.log(`📅 ${events.length} NBA events`);
-    if (events.length === 0) {
-      return NextResponse.json({ success: true, ingested: 0, message: 'No events found' });
-    }
-
-    // ── 3. Fetch + accumulate props across all bookmakers ───────────────────
-    // Key: "playerName||propNorm||line||overUnder"
-    // We keep ONE doc per player/prop/line/overUnder combination and store the
-    // best odds from any book, plus FD/DK specifically.
-
-    interface Accumulator {
-      playerName: string; propNorm: string; line: number; overUnder: string;
-      homeTeam: string; awayTeam: string; gameDate: string; eventId: string;
-      bestOdds: number; bestBook: string;
-      fdOdds: number | null; dkOdds: number | null;
-    }
-
     const accumulator = new Map<string, Accumulator>();
-    let apiRequests   = 0;
 
-    for (let i = 0; i < events.length; i++) {
-      const event    = events[i];
-      const homeTeam = normalizeTeamName(event.home_team ?? '');
-      const awayTeam = normalizeTeamName(event.away_team ?? '');
-      const gameDate = (event.commence_time ?? '').split('T')[0];
+    // We fetch two batches because The Odds API limits the number of markets per request
+    const batches = [MARKETS_BATCH_1, MARKETS_BATCH_2];
 
-      // Fetch both market batches and merge bookmakers into one list.
-      // If batch 2 422s (combo markets not on plan), we skip it gracefully —
-      // combo props are derived from base stats at enrichment time anyway.
-      const allBookmakers: any[] = [];
+    for (const markets of batches) {
+      const url = `${ODDS_BASE}/sports/basketball_nba/event-odds?apiKey=${ODDS_API_KEY}&regions=${REGION}&markets=${markets}&oddsFormat=${ODDS_FORMAT}`;
+      const res = await fetch(url);
+      if (!res.ok) continue;
 
-      for (const markets of [MARKETS_BATCH_1, MARKETS_BATCH_2]) {
-        const propsUrl = new URL(`${ODDS_BASE}/sports/basketball_nba/events/${event.id}/odds`);
-        propsUrl.searchParams.set('apiKey',     ODDS_API_KEY);
-        propsUrl.searchParams.set('regions',    REGION);
-        propsUrl.searchParams.set('markets',    markets);
-        propsUrl.searchParams.set('oddsFormat', ODDS_FORMAT);
+      const events = await res.json();
 
-        const propsRes = await fetch(propsUrl.toString());
-        apiRequests++;
+      for (const event of events) {
+        // Filter for games matching our target date
+        const eventDate = event.commence_time.split('T')[0];
+        if (eventDate !== dateParam) continue;
 
-        if (!propsRes.ok) {
-          console.warn(`⚠️  Event ${event.id} batch (${markets.split(',')[0]}…): HTTP ${propsRes.status} — skipping`);
-          await new Promise(r => setTimeout(r, 300));
-          continue;
-        }
+        const homeTeam = normalizeTeamName(event.home_team);
+        const awayTeam = normalizeTeamName(event.away_team);
 
-        const propsData: any = await propsRes.json();
+        for (const market of (event.bookmakers || [])) {
+          const bookKey = market.key; // e.g., 'fanduel', 'draftkings'
+          
+          for (const m of (market.markets || [])) {
+            const propNorm = normalizePropKey(m.key);
+            
+            for (const outcome of (m.outcomes || [])) {
+              const playerName = outcome.description;
+              const overUnder = outcome.name; // 'Over' or 'Under'
+              const line = outcome.point;
+              const odds = outcome.price;
 
-        // Merge into allBookmakers — combine markets from same bookmaker
-        for (const book of propsData.bookmakers ?? []) {
-          const existing = allBookmakers.find(b => b.title === book.title);
-          if (existing) {
-            existing.markets.push(...(book.markets ?? []));
-          } else {
-            allBookmakers.push({ ...book, markets: [...(book.markets ?? [])] });
-          }
-        }
-
-        await new Promise(r => setTimeout(r, 300));
-      }
-
-      for (const book of allBookmakers) {
-        const bookName: string = book.title ?? '';
-
-        for (const market of book.markets ?? []) {
-          const propNorm = normalizePropKey(market.key);
-
-          for (const outcome of market.outcomes ?? []) {
-            const playerName: string = (outcome.description ?? '').trim();
-            if (!playerName) continue;
-
-            const overUnder: string = outcome.name ?? ''; // "Over" | "Under"
-            const line:      number = Number(outcome.point ?? 0);
-            const odds:      number = Number(outcome.price ?? -110);
-
-            if (!['Over', 'Under'].includes(overUnder)) continue;
-            if (line <= 0) continue;
-
-            const key = `${playerName}||${propNorm}||${line}||${overUnder}`;
-
-            if (!accumulator.has(key)) {
-              accumulator.set(key, {
+              // Unique key for the prop: Player + Prop + Line + OU + Date
+              const key = `${playerName}-${propNorm}-${line}-${overUnder}-${eventDate}`.toLowerCase();
+              
+              const existing = accumulator.get(key) || {
                 playerName, propNorm, line, overUnder,
-                homeTeam, awayTeam, gameDate, eventId: event.id,
-                bestOdds: odds, bestBook: bookName,
-                fdOdds: null, dkOdds: null,
-              });
-            } else {
-              const acc = accumulator.get(key)!;
-              if (isBetterOdds(odds, acc.bestOdds)) {
-                acc.bestOdds = odds;
-                acc.bestBook = bookName;
-              }
-            }
+                homeTeam, awayTeam, gameDate: eventDate, eventId: event.id,
+                bestOdds: -999, bestBook: '',
+                fdOdds: null, dkOdds: null
+              };
 
-            const acc = accumulator.get(key)!;
-            const bl  = bookName.toLowerCase();
-            if (bl.includes('fanduel')    && acc.fdOdds === null) acc.fdOdds = odds;
-            if (bl.includes('draftkings') && acc.dkOdds === null) acc.dkOdds = odds;
+              // Update book-specific odds
+              if (bookKey === 'fanduel') existing.fdOdds = odds;
+              if (bookKey === 'draftkings') existing.dkOdds = odds;
+
+              // Update Best Odds (Highest American Value)
+              if (odds > existing.bestOdds) {
+                existing.bestOdds = odds;
+                existing.bestBook = bookKey;
+              }
+
+              accumulator.set(key, existing);
+            }
           }
         }
       }
-
-      if (i < events.length - 1) await new Promise(r => setTimeout(r, 250));
     }
 
-    console.log(`📊 ${accumulator.size} unique prop lines | ${apiRequests} API calls used`);
+    // --- Batch Write to Firestore ---
+    const updates = Array.from(accumulator.values());
+    let ingested = 0;
+    let batch = db.batch();
+    let count = 0;
 
-    // ── 4. Write to Firestore ───────────────────────────────────────────────
-
-    let batch      = adminDb.batch();
-    let batchCount = 0;
-    let ingested   = 0;
-    let skipped    = 0;
-    const committed: string[] = [];
-
-    for (const [, acc] of accumulator) {
-      const {
-        playerName, propNorm, line, overUnder,
-        homeTeam, awayTeam, gameDate, eventId,
-        bestOdds, bestBook, fdOdds, dkOdds,
-      } = acc;
-
-      const playerKey = playerName.toLowerCase().trim();
-      const bdlId     = bdlIdMap[playerKey]      ?? null;
-      const brid      = brIdMap[playerKey]       ?? null;
-      const team      = playerTeamMap[playerKey] ?? null;
-      const matchup   = `${awayTeam} @ ${homeTeam}`;
-
-      // Deterministic doc ID — stable across re-runs
-      const slug  = playerKey.replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
-      const docId = `nba-${slug}-${propNorm}-${line}-${overUnder.toLowerCase()}-${gameDate}`;
-      const ref   = adminDb.collection(colName).doc(docId);
-
-      if (!force) {
-        const existing = await ref.get();
-        if (existing.exists) { skipped++; continue; }
-      }
-
-      const doc: Record<string, any> = {
-        // Identity
-        league:   'nba',
-        season,
-        player:   playerName,
-        team,           // null if not in static_nbaIdMap; enrichment fills it from BBRef
-        prop:     propNorm,
-        line,
-        overUnder,      // always "Over" or "Under" — never null for Odds API props
-        matchup,
-        gameDate,
-
-        // IDs
-        bdlId,          // for postGameNBA.ts grading
-        brid,           // for enrichNBAProps.ts BBRef fetching
-
-        // Odds
-        odds:        bestOdds,
-        bestOdds,
-        bestBook:    bestBook || null,
-        fdOdds:      fdOdds  ?? null,
-        dkOdds:      dkOdds  ?? null,
-        impliedProb: Math.round(impliedProbFrom(bestOdds) * 10000) / 10000,
-
-        // Enrichment fields — populated by /api/nba/enrich
-        playerAvg:         null,
-        seasonHitPct:      null,
-        opponentRank:      null,
-        opponentAvgVsStat: null,
-        scoreDiff:         null,
-        confidenceScore:   null,
-        projWinPct:        null,
-        avgWinProb:        null,
-        bestEdgePct:       null,
-        expectedValue:     null,
-        kellyPct:          null,
-        valueIcon:         null,
-
-        // Post-game fields — populated by postGameNBA.ts
-        gameStat:     null,
-        actualResult: null,
-
-        // Meta
-        eventId,
-        updatedAt: new Date().toISOString(),
-      };
-
-      // merge: true preserves enrichment fields on re-ingest (without force)
-      // merge: false when force=true to fully reset the doc
-      batch.set(ref, doc, { merge: !force });
-      batchCount++;
+    for (const item of updates) {
+      const slug = item.playerName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+      const docId = `nba-${slug}-${item.propNorm}-${item.line}-${item.overUnder.toLowerCase()}-${item.gameDate}`;
+      const ref = db.collection(colName).doc(docId);
+      
+      const finalDoc = formatDoc(item, bdlIdMap, brIdMap, playerTeamMap, season);
+      batch.set(ref, finalDoc, { merge: true });
+      
+      count++;
       ingested++;
-      committed.push(docId);
-
-      if (batchCount >= 490) {
+      if (count >= 450) {
         await batch.commit();
-        console.log(`  💾 Committed ${ingested} so far…`);
-        batch      = adminDb.batch();
-        batchCount = 0;
+        batch = db.batch();
+        count = 0;
       }
     }
 
-    if (batchCount > 0) await batch.commit();
-
-    // Log any players with no IDs for easy follow-up
-    const noId = [...new Set(
-      committed
-        .map(id => {
-          const name = id.replace(/^nba-/, '').split('-').slice(0, -4).join(' ');
-          return (bdlIdMap[name] == null || brIdMap[name] == null) ? name : null;
-        })
-        .filter(Boolean),
-    )];
-    if (noId.length > 0) {
-      console.log(`⚠️  ${noId.length} players missing BDL or BR ID — check static_nbaIdMap / static_brIdMap`);
-    }
-
-    return NextResponse.json({
-      success:        true,
-      ingested,
-      skipped,
-      total:          accumulator.size,
-      events:         events.length,
-      apiRequests,
-      season,
-      date:           dateParam || 'today',
-      collectionName: colName,
-      ...(noId.length > 0 ? { missingIds: noId.slice(0, 20) } : {}),
-    });
+    if (count > 0) await batch.commit();
+    return NextResponse.json({ success: true, ingested, date: dateParam });
 
   } catch (err: any) {
-    console.error('❌ NBA ingest error:', err);
-    return NextResponse.json({ error: err.message ?? 'Ingest failed' }, { status: 500 });
+    console.error("Ingest Error:", err);
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

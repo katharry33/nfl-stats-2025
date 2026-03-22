@@ -2,7 +2,7 @@
 // scripts/postGameNBA.ts
 
 import 'dotenv/config';
-import { db } from '@/lib/firebase/admin';
+import { adminDb as db } from '@/lib/firebase/admin';
 import { getNBAStatFromGame } from '@/lib/enrichment/nba/bball';
 import { normalizeNBAProp } from '@/lib/enrichment/nba/normalize-nba';
 import { determineResult, calculateProfitLoss } from '@/lib/enrichment/shared/scoring';
@@ -127,7 +127,7 @@ async function main() {
   console.log('='.repeat(55));
 
   // 1. Load all props for this date
-  const snapshot = await db.collection(COLL).where('gameDate', '==', DATE).get();
+  const snapshot = await adminDb.collection(COLL).where(FieldPath.documentId(), 'in', ids).get();
   console.log(`📋 Found ${snapshot.size} props for ${DATE}`);
   if (snapshot.empty) { console.log('Nothing to do.'); return; }
 

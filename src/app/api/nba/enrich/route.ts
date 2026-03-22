@@ -1,10 +1,3 @@
-// src/app/api/nba/enrich/route.ts
-// Triggers NBA prop enrichment (BBRef logs + TeamRankings defense + scoring).
-//
-// GET /api/nba/enrich?date=YYYY-MM-DD&season=2025          → enrich one date (live)
-// GET /api/nba/enrich?mode=all&season=2025                 → full collection backfill
-// GET /api/nba/enrich?date=YYYY-MM-DD&force=true&season=2025 → re-enrich already-done props
-
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 import {
@@ -13,76 +6,51 @@ import {
 } from '@/lib/enrichment/nba/enrichNBAProps';
 
 export const dynamic = 'force-dynamic';
-
-// Prevent the route from timing out on Vercel (max 60s on hobby, 300s on pro)
-export const maxDuration = 300;
+export const maxDuration = 300; 
 
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl;
-
-  const season       = parseInt(searchParams.get('season') ?? '2025', 10);
-  const date         = searchParams.get('date') ?? '';
-  const mode         = searchParams.get('mode') ?? '';       // "all" for full backfill
-  const skipEnriched = searchParams.get('force') !== 'true'; // force=true → re-enrich
+  const season = parseInt(searchParams.get('season') ?? '2025', 10);
+  const date = searchParams.get('date') || new Date().toLocaleDateString('en-CA');
+  const mode = searchParams.get('mode');
+  const skipEnriched = searchParams.get('force') !== 'true';
 
   try {
-    // ── Stale daily check ─────────────────────────────────────────────────────
-    // If nbaPropsDaily_{season} has docs from any date other than today,
-    // warn the user to run post-game first before enriching.
-    const today = new Date().toISOString().split('T')[0];
+    // 1. STALE DATA GUARD
+    // Checks if there are ungraded props from a previous day.
     const dailyCol = `nbaPropsDaily_${season}`;
-    try {
-      const dailySnap = await adminDb.collection(dailyCol).limit(1).get();
-      if (!dailySnap.empty) {
-        const sampleDate = dailySnap.docs[0].data().gameDate ?? '';
-        if (sampleDate && sampleDate !== today && sampleDate !== date) {
-          return NextResponse.json({
-            warning:    true,
-            staleDate:  sampleDate,
-            message:    `nbaPropsDaily_${season} has props from ${sampleDate} that haven't been graded yet. Run POST /api/nba/grade first to migrate yesterday's props before enriching today.`,
-            action:     `POST /api/nba/grade with { date: "${sampleDate}", season: ${season} }`,
-          }, { status: 409 });
-        }
+    const dailySnap = await adminDb.collection(dailyCol).limit(1).get();
+    
+    if (!dailySnap.empty) {
+      const sample = dailySnap.docs[0].data();
+      const sampleDate = sample.gameDate || sample.date;
+      
+      if (sampleDate && sampleDate !== date) {
+        return NextResponse.json({
+          warning: true,
+          staleDate: sampleDate,
+          message: `Clean up ${sampleDate} before enriching today.`
+        }, { status: 409 });
       }
-    } catch { /* daily collection might not exist yet — that's fine */ }
+    }
 
-    let enriched: number;
-
+    // 2. EXECUTION
+    let count = 0;
     if (mode === 'all') {
-      // Full collection scan — used for historical backfill from the Data Hub
-      enriched = await enrichAllNBAPropsCollection({
-        season,
-        gameDate:     date || undefined,
-        skipEnriched,
-      });
-    } else if (date) {
-      // Single-date enrichment — triggered after ingest for today's slate
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-        return NextResponse.json(
-          { error: 'Invalid date format — use YYYY-MM-DD' },
-          { status: 400 },
-        );
-      }
-      enriched = await enrichNBAPropsForDate({ gameDate: date, season, skipEnriched });
+      count = await enrichAllNBAPropsCollection({ season, skipEnriched });
     } else {
-      // Default: enrich today's date
-      const today = new Date().toISOString().split('T')[0];
-      enriched = await enrichNBAPropsForDate({ gameDate: today, season, skipEnriched });
+      count = await enrichNBAPropsForDate({ gameDate: date, season, skipEnriched });
     }
 
     return NextResponse.json({
-      success:  true,
-      enriched,
-      season,
-      date:     date || 'today',
-      mode:     mode || 'date',
-      force:    !skipEnriched,
+      success: true,
+      enriched: count,
+      date,
+      mode: mode || 'daily'
     });
+
   } catch (err: any) {
-    console.error('❌ NBA enrich route error:', err);
-    return NextResponse.json(
-      { error: err.message ?? 'Enrichment failed' },
-      { status: 500 },
-    );
+    console.error('❌ Enrichment Route Error:', err);
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
