@@ -96,7 +96,7 @@ echo "   outputs/calculate-parlay-status.ts → src/lib/utils/calculate-parlay-s
 echo "   outputs/betting-log-loader.tsx → src/components/bets/betting-log-loader.tsx"
 echo "   outputs/enrichment-types.ts   → src/lib/enrichment/types.ts"
 echo "   outputs/roi-chart.tsx         → src/features/tracker/roi-chart.tsx"
-echo "   outputs/enrichment-utils.ts   → src/lib/enrichment/utils.ts"
+echo "   outputs/enrichment-utils.tsx   → src/lib/enrichment/utils.tsx"
 echo "   outputs/scoring-additions.ts  → APPEND to src/lib/enrichment/scoring.ts"
 echo ""
 echo "📋 Then run: npx tsc --noEmit"

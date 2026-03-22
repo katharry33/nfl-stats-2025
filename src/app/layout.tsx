@@ -1,27 +1,37 @@
-// src/app/layout.tsx
 import "./globals.css";
-import { AuthProvider }    from '@/lib/firebase/provider';
-import { WalletProvider }  from '@/context/WalletContext';
-import { BetSlipProvider } from '@/context/betslip-context';  // ← was missing
-import { AppLayout }       from '@/components/layout/app-layout';
+// 1. Ensure the import matches your export name (FirebaseProvider)
+import { FirebaseProvider } from '@/lib/firebase/provider';
+import { WalletProvider }   from '@/context/WalletContext';
+import { BetSlipProvider }  from '@/context/betslip-context';
+import { AppLayout }        from '@/components/layout/app-layout';
+import { BetSlipPanel }     from '@/components/bets/BetSlipPanel';
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
-    // ↓ removed className="dark" — that was forcing dark mode regardless of globals.css
     <html lang="en" suppressHydrationWarning>
-      <body>
-        <AuthProvider>
-          {/* WalletProvider: needs auth (user.uid) */}
+      <body className="antialiased selection:bg-[#FFD700]/30 bg-black text-white">
+        {/* 2. Using FirebaseProvider to handle Auth + Firestore initialization */}
+        <FirebaseProvider>
           <WalletProvider>
-            {/* BetSlipProvider: needs wallet (bankroll for Kelly calc) */}
             <BetSlipProvider>
-              {/* AppLayout: needs betslip (nav badges, sidebar slip) */}
+              
               <AppLayout>
                 {children}
               </AppLayout>
+
+              {/* 3. IMPORTANT: BetSlipPanel should NOT take props here. 
+                It should use 'useBetSlip()' internally. 
+                If it still requires props, we need to refactor that component.
+              */}
+              <BetSlipPanel />
+
             </BetSlipProvider>
           </WalletProvider>
-        </AuthProvider>
+        </FirebaseProvider>
       </body>
     </html>
   );

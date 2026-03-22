@@ -1,41 +1,28 @@
-"use client";
+'use client';
 
 import React, { useState, useMemo, useEffect } from "react";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Settings2, ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
 
+// Helper to get nested values (e.g., "stats.h2h_average")
+const getNestedValue = (obj: any, path: string) => {
+  return path.split('.').reduce((acc, part) => acc && acc[part], obj);
+};
+
 export interface ColumnDef<T = any> {
-  id?: string;
   accessorKey: string;
   header: string;
   sortable?: boolean;
   filterable?: boolean;
   cell?: (value: any, row: T) => React.ReactNode;
 }
-
-export interface FlexibleDataTableProps<T = any> {
-  data: T[];
-  columns: ColumnDef<T>[];
-  isLoading?: boolean;
-  tableId: string;
-  defaultVisibleColumns?: string[];
-  searchPlaceholder?: string;
-  emptyMessage?: string;
-}
-
-type SortConfig = {
-  key: string;
-  direction: "asc" | "desc";
-} | null;
 
 export function FlexibleDataTable<T extends Record<string, any>>({
   data,
@@ -45,233 +32,157 @@ export function FlexibleDataTable<T extends Record<string, any>>({
   defaultVisibleColumns = [],
   searchPlaceholder = "Search...",
   emptyMessage = "No data available",
-}: FlexibleDataTableProps<T>) {
+}: any) {
   const [visibleColumns, setVisibleColumns] = useState<string[]>(() => {
-    const storageKey = `table-columns-${tableId}`;
     if (typeof window !== 'undefined') {
-        try {
-            const savedColumns = window.localStorage.getItem(storageKey);
-            if (savedColumns) {
-                return JSON.parse(savedColumns);
-            }
-        } catch (error) {
-            console.error("Failed to read from localStorage", error);
-        }
+      const saved = localStorage.getItem(`table-cols-${tableId}`);
+      if (saved) return JSON.parse(saved);
     }
-
-    if (defaultVisibleColumns.length > 0) {
+    // ADDED SAFETY CHECK
+    if (!columns || !Array.isArray(columns)) {
+      return [];
+    }
+    if (defaultVisibleColumns && defaultVisibleColumns.length > 0) {
       return defaultVisibleColumns;
     }
-    return columns.map((col) => col.accessorKey);
+    return columns.map((col: any) => col.accessorKey || col.id);
   });
   
   const [searchTerm, setSearchTerm] = useState("");
-  const [sortConfig, setSortConfig] = useState<SortConfig>(null);
+  const [sortConfig, setSortConfig] = useState<{key: string, direction: 'asc'|'desc'} | null>(null);
 
   useEffect(() => {
-    const storageKey = `table-columns-${tableId}`;
-    if (typeof window !== 'undefined') {
-        try {
-            window.localStorage.setItem(storageKey, JSON.stringify(visibleColumns));
-        } catch (error) {
-            console.error("Failed to write to localStorage", error);
-        }
+    if (tableId) {
+      localStorage.setItem(`table-cols-${tableId}`, JSON.stringify(visibleColumns));
     }
   }, [visibleColumns, tableId]);
 
-  const toggleColumn = (columnKey: string) => {
-    setVisibleColumns((prev) =>
-      prev.includes(columnKey)
-        ? prev.filter((key) => key !== columnKey)
-        : [...prev, columnKey]
-    );
-  };
-
-  const toggleAllColumns = () => {
-    if (visibleColumns.length === columns.length) {
-      setVisibleColumns([]);
-    } else {
-      setVisibleColumns(columns.map((col) => col.accessorKey));
-    }
-  };
-
   const handleSort = (columnKey: string) => {
-    const column = columns.find((col) => col.accessorKey === columnKey);
-    if (!column?.sortable) return;
+      const column = columns.find((col: any) => col.accessorKey === columnKey);
+      if (!column?.sortable) return;
 
-    setSortConfig((current) => {
-      if (current?.key === columnKey) {
-        if (current.direction === "asc") {
-          return { key: columnKey, direction: "desc" };
-        } else {
-          return null; // Clear sort
+      setSortConfig((prev) => {
+        if (prev && prev.key === columnKey) {
+          if (prev.direction === "asc") {
+            return { key: columnKey, direction: "desc" };
+          }
+          return null; // Clear sort on third click
         }
-      }
-      return { key: columnKey, direction: "asc" };
-    });
-  };
-
-  const getSortIcon = (columnKey: string) => {
-    const column = columns.find((col) => col.accessorKey === columnKey);
-    if (!column?.sortable) return null;
-
-    if (sortConfig?.key === columnKey) {
-      return sortConfig.direction === "asc" ? (
-        <ChevronUp className="w-4 h-4" />
-      ) : (
-        <ChevronDown className="w-4 h-4" />
-      );
-    }
-    return <ChevronsUpDown className="w-4 h-4 opacity-40" />;
+        return { key: columnKey, direction: "asc" };
+      });
   };
 
   const processedData = useMemo(() => {
+    if (!data) return [];
     let filtered = [...data];
 
     if (searchTerm) {
-      const searchLower = searchTerm.toLowerCase();
-      
-      const filterableColumns = columns.filter(col => col.filterable !== false);
-      
-      filtered = filtered.filter((row) => {
-        return filterableColumns.some((col) => {
-          const value = row[col.accessorKey];
-          if (value == null) return false;
-          return value.toString().toLowerCase().includes(searchLower);
-        });
-      });
+      const lowerSearch = searchTerm.toLowerCase();
+      filtered = filtered.filter((row) => 
+        columns.some((col: any) => {
+          const val = getNestedValue(row, col.accessorKey);
+          return val?.toString().toLowerCase().includes(lowerSearch);
+        })
+      );
     }
 
     if (sortConfig) {
       filtered.sort((a, b) => {
-        const aValue = a[sortConfig.key];
-        const bValue = b[sortConfig.key];
+        const aVal = getNestedValue(a, sortConfig.key);
+        const bVal = getNestedValue(b, sortConfig.key);
 
-        if (aValue == null && bValue == null) return 0;
-        if (aValue == null) return 1;
-        if (bValue == null) return -1;
+        if (aVal === null || aVal === undefined) return 1;
+        if (bVal === null || bVal === undefined) return -1;
+        if (aVal === bVal) return 0;
 
-        if (typeof aValue === "number" && typeof bValue === "number") {
-          return sortConfig.direction === "asc" 
-            ? aValue - bValue 
-            : bValue - aValue;
-        }
-
-        const aString = aValue.toString();
-        const bString = bValue.toString();
-        const comparison = aString.localeCompare(bString);
-        return sortConfig.direction === "asc" ? comparison : -comparison;
+        const result = aVal > bVal ? 1 : -1;
+        return sortConfig.direction === 'asc' ? result : -result;
       });
     }
 
     return filtered;
   }, [data, searchTerm, sortConfig, columns]);
 
-  const visibleColumnObjects = columns.filter((col) =>
-    visibleColumns.includes(col.accessorKey)
-  );
+  const getSortIcon = (columnKey: string) => {
+    if (sortConfig?.key !== columnKey) {
+      return <ChevronsUpDown className="w-3 h-3 ml-2 opacity-30" />;
+    }
+    if (sortConfig.direction === 'asc') {
+      return <ChevronUp className="w-3 h-3 ml-2 text-yellow-400" />;
+    }
+    return <ChevronDown className="w-3 h-3 ml-2 text-yellow-400" />;
+  };
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
-      </div>
-    );
+  if (isLoading) return <div className="p-20 text-center animate-pulse text-slate-500">Loading Table...</div>;
+  if (!data || data.length === 0) {
+      return <div className="p-20 text-center text-slate-600 font-bold uppercase text-[10px] tracking-widest">{emptyMessage}</div>;
+  }
+  if (!columns || columns.length === 0) {
+    return <div className="p-20 text-center text-red-500">Error: Table columns not defined.</div>
   }
 
   return (
-    <div className="w-full">
-      <div className="flex items-center justify-between gap-4 p-4 bg-white border-b">
-        <Input
-          placeholder={searchPlaceholder}
-          value={searchTerm}
+    <div className="w-full space-y-4">
+      <div className="flex items-center justify-between bg-[#0d0d0d] p-4 rounded-t-xl border border-white/5">
+        <Input 
+          placeholder={searchPlaceholder} 
+          value={searchTerm} 
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="max-w-sm"
+          className="max-w-xs bg-black border-white/10 text-white"
         />
-        
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-black">
-            Showing {processedData.length} of {data.length} rows
-          </span>
-          
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Settings2 className="w-4 h-4 mr-2" />
-                Columns
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56 max-h-[400px] overflow-y-auto">
-              <DropdownMenuItem onClick={toggleAllColumns} className="font-medium">
-                {visibleColumns.length === columns.length
-                  ? "Deselect All"
-                  : "Select All"}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              {columns.map((column) => (
-                <DropdownMenuCheckboxItem
-                  key={column.accessorKey}
-                  checked={visibleColumns.includes(column.accessorKey)}
-                  onCheckedChange={() => toggleColumn(column.accessorKey)}
-                >
-                  {column.header}
-                </DropdownMenuCheckboxItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" className="border-white/10 text-white">
+              <Settings2 className="w-4 h-4 mr-2" /> Columns
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="bg-[#111] border-white/10 text-white">
+            {columns.map((col: any) => (
+              <DropdownMenuCheckboxItem
+                key={col.accessorKey}
+                checked={visibleColumns.includes(col.accessorKey)}
+                onCheckedChange={(checked) => {
+                  setVisibleColumns(prev => checked 
+                    ? [...prev, col.accessorKey] 
+                    : prev.filter(k => k !== col.accessorKey)
+                  );
+                }}
+              >
+                {col.header}
+              </DropdownMenuCheckboxItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead className="bg-slate-50 border-b">
-            <tr>
-              {visibleColumnObjects.map((column) => (
-                <th
-                  key={column.accessorKey}
-                  className={`px-4 py-3 text-left text-xs font-medium text-black uppercase tracking-wider ${
-                    column.sortable ? "cursor-pointer hover:bg-slate-100 select-none" : ""
-                  }`}
-                  onClick={() => column.sortable && handleSort(column.accessorKey)}
+      <div className="overflow-x-auto rounded-b-xl border border-white/5 bg-[#0d0d0d]">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="border-b border-white/5 bg-opacity-2 bg-white">
+              {columns.filter((c: any) => visibleColumns.includes(c.accessorKey)).map((col: any) => (
+                <th 
+                  key={col.accessorKey}
+                  className="px-6 py-4 text-[10px] font-black tracking-widest text-slate-500 uppercase cursor-pointer select-none"
+                  onClick={() => handleSort(col.accessorKey)}
                 >
-                  <div className="flex items-center gap-2">
-                    <span>{column.header}</span>
-                    {getSortIcon(column.accessorKey)}
+                  <div className="flex items-center">
+                    {col.header}
+                    {col.sortable && getSortIcon(col.accessorKey)}
                   </div>
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-slate-200">
-            {processedData.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={visibleColumnObjects.length}
-                  className="px-4 py-8 text-center text-black"
-                >
-                  {searchTerm ? `No results found for "${searchTerm}"` : emptyMessage}
-                </td>
+          <tbody className="divide-y divide-white/5">
+            {processedData.map((row, i) => (
+              <tr key={row.id || i} className="hover:bg-opacity-1 hover:bg-white">
+                {columns.filter((c: any) => visibleColumns.includes(c.accessorKey)).map((col: any) => (
+                  <td key={col.accessorKey} className="px-6 py-4 text-sm text-slate-300">
+                    {col.cell ? col.cell(getNestedValue(row, col.accessorKey), row) : getNestedValue(row, col.accessorKey) ?? '—'}
+                  </td>
+                ))}
               </tr>
-            ) : (
-              processedData.map((row, rowIndex) => (
-                <tr
-                  key={row.id || rowIndex}
-                  className="hover:bg-slate-50 transition-colors"
-                >
-                  {visibleColumnObjects.map((column) => {
-                    const value = row[column.accessorKey];
-                    return (
-                      <td
-                        key={column.accessorKey}
-                        className="px-4 py-3 text-sm text-black"
-                      >
-                        {column.cell ? column.cell(value, row) : value ?? "—"}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))
-            )}
+            ))}
           </tbody>
         </table>
       </div>

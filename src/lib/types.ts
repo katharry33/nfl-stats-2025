@@ -46,6 +46,7 @@ export interface NFLProp {
   season?:      number;
   week?:        number;
   expertStars?: number;
+  expertPick?: string; // It is optional
 
   // Enrichment — player stats
   playerAvg?:         number | null;

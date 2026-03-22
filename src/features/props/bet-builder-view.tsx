@@ -1,5 +1,6 @@
 'use client';
 
+import React, { useState, useEffect } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +15,15 @@ interface PropsTableProps {
 }
 
 export default function PropsTable({ props, isInBetSlip, onAddToBetSlip, onRemoveFromBetSlip }: PropsTableProps) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return <div className="h-96 animate-pulse bg-white/5 rounded-3xl" />;
+  }
+
   return (
     <div className="rounded-xl border border-white/5 bg-zinc-900/50 overflow-hidden">
       <Table>
@@ -30,16 +40,16 @@ export default function PropsTable({ props, isInBetSlip, onAddToBetSlip, onRemov
           {props.map((p, i) => {
             const isSelected = p.id ? isInBetSlip(p.id) : false;
             return (
-              <TableRow key={p.id ?? i} className="border-white/5 hover:bg-white/[0.02] transition-colors">
+              <TableRow key={p.id ?? i} className="border-white/5 hover:bg-white/2 transition-colors">
                 <TableCell>
-                  <div className="font-bold text-white">{p.Player}</div>
+                  <div className="font-bold text-white">{p.player}</div>
                   <div className="text-[10px] text-zinc-500 uppercase font-black">{p.matchup}</div>
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm text-zinc-300">{p.Prop}</span>
+                    <span className="text-sm text-zinc-300">{p.prop}</span>
                     <Badge variant="secondary" className="bg-[#FFD700] text-black font-black text-[10px]">
-                      {p.Line}
+                      {p.line}
                     </Badge>
                   </div>
                 </TableCell>
@@ -49,7 +59,6 @@ export default function PropsTable({ props, isInBetSlip, onAddToBetSlip, onRemov
                       <div className="flex text-[#FFD700]">
                         {[...Array(p.expertStars)].map((_, i) => <Star key={i} size={10} fill="currentColor" />)}
                       </div>
-                      <div className="text-[10px] text-zinc-400 italic">"{p.expertPick}"</div>
                     </div>
                   ) : <span className="text-zinc-600">—</span>}
                 </TableCell>

@@ -23,7 +23,7 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 
 // Using your provided key directly to avoid 401 environment issues
-const BDL_API_KEY = "4fb66b96-1044-4635-9bcc-55b6b4668e07";
+const BDL_API_KEY = "8a3d412e-32f3-4528-90ae-60927fcb3116";
 
 async function syncSchedule(sport, season) {
   console.log(`🚀 Starting ${sport} sync for the ${season} season...`);

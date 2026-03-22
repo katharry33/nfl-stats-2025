@@ -1,5 +1,4 @@
-// src/lib/firebase/client.ts
-import { initializeApp, getApps } from 'firebase/app';
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
@@ -12,10 +11,12 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-// Initialize Firebase
-const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+// 1. Singleton initialization with a safety check
+const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
+// 2. Initialize services
 const db = getFirestore(app);
 const auth = getAuth(app);
 
+// 3. Export everything clearly for the Provider
 export { app, db, auth };

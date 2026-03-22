@@ -16,7 +16,7 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 
 // CONFIG - Ensure these match your actual tier limits
-const BDL_API_KEY = "4fb66b96-1044-4635-9bcc-55b6b4668e07";
+const BDL_API_KEY = "8a3d412e-32f3-4528-90ae-60927fcb3116";
 const BASE_URL = "https://api.balldontlie.io/v1/nfl/players";
 const SLEEP_MS = 12000; // 5 req/min for Free Tier. Change to 1000 for All-Star.
 const COLLECTION_NAME = 'static_pfrIdMap';

@@ -90,7 +90,7 @@ export function ScheduleTab({ sport, season, theme }: any) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between bg-white/[0.02] p-4 rounded-2xl border border-white/5">
+      <div className="flex items-center justify-between bg-white/2 p-4 rounded-2xl border border-white/5">
         <div className="flex items-center gap-2">
           <Table size={16} className="text-slate-500" />
           <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">

@@ -170,7 +170,7 @@ export function ManualEntryModal({ isOpen, onClose, onAddLeg }: ManualEntryModal
                 <div>
                   <label className={LABEL}>Game Date</label>
                   <input type="date" value={leg.gameDate} onChange={e => updateLeg(i, { gameDate: e.target.value })}
-                    className={`${INPUT} [color-scheme:light]`} />
+                    className={`${INPUT} 'scheme-light`} />
                 </div>
               </div>
             </div>

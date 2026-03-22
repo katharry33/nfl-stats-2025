@@ -10,7 +10,7 @@ if (!getApps().length) {
 const db = getFirestore();
 
 // --- CONFIG ---
-const BDL_API_KEY = '4fb66b96-1044-4635-9bcc-55b6b4668e07'; 
+const BDL_API_KEY = '8a3d412e-32f3-4528-90ae-60927fcb3116'; 
 const SEASON = 2024; 
 const TARGET_COLLECTION = `nbaAverages_${SEASON}`; // Separate from game logs
 
@@ -30,7 +30,7 @@ async function syncAverages() {
     // 2. Fetch Season Averages in one go (BDL supports multiple IDs here)
     console.log(`📡 Fetching averages for ${playerIds.length} nodes...`);
     const avgRes = await axios.get('https://api.balldontlie.io/v1/season_averages', {
-      headers: { 'Authorization': '4fb66b96-1044-4635-9bcc-55b6b4668e07' },
+      headers: { 'Authorization': '8a3d412e-32f3-4528-90ae-60927fcb3116' },
       params: { 
         season: SEASON,
         'player_ids[]': playerIds

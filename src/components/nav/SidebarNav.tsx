@@ -25,7 +25,7 @@ const CORE_ITEMS = [
 
 const ADMIN_ITEMS = [
   { title: "Data Hub", href: "/admin/hub", icon: Database },
-  { title: "Historical Props", href: "/HistoricalProps", icon: Clock }
+  { title: "Historical Props", href: "/props", icon: Clock }
 ];
 
 export function SidebarNav() {

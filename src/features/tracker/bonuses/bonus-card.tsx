@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Clock, ExternalLink, Ticket, TrendingUp } from 'lucide-react';
-import { cn } from '@/lib/utils'; // Ensure this is fixed in your src/lib/utils.ts
+import { cn } from '@/lib/utils'; // Ensure this is fixed in your src/lib/utils.tsx
 
 interface Bonus {
   id: string;

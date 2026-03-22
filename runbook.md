@@ -7,6 +7,8 @@ curl "http://localhost:3000/api/nba/ingest"
 curl "http://localhost:3000/api/nba/enrich?date=YYYY-MM-DD&season=2025"
 
 # After games finish
-curl -X POST http://localhost:3000/api/nba/grade \
-  -H "Content-Type: application/json" \
-  -d '{"date":"YYYY-MM-DD","season":2025}'
+# For a specific day
+npx tsx scripts/postGameNBA_BBR.ts --date=2025-03-20 --season=2025
+
+# To overwrite existing results
+npx tsx scripts/postGameNBA_BBR.ts --date=2025-03-20 --force

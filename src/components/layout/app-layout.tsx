@@ -15,7 +15,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="flex h-screen w-full overflow-hidden bg-background">
         
         {/* Fixed Desktop Sidebar */}
-        <aside className="hidden md:flex w-64 flex-shrink-0 border-r border-white/5 h-full bg-card/50">
+        <aside className="hidden md:flex w-64 'shrink-0' border-r border-white/5 h-full bg-card/50">
           <SidebarNav />
         </aside>
 
