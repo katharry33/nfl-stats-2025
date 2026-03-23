@@ -96,6 +96,7 @@ export interface BetLeg {
   gameDate?: string;
   week?:     number;
   season?:   number;
+  overUnder?: string | null;
   status?:   'pending' | 'won' | 'lost' | 'push';
   book?: string;
   bestBook?: string;

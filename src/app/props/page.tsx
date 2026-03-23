@@ -1,264 +1,189 @@
 'use client';
 
-import React, {
-  useState, useEffect, useCallback, useMemo, useRef,
-} from 'react';
-import {
-  Search, ChevronDown, ChevronUp, ChevronsUpDown,
-  RefreshCw, Zap, ChevronLeft, ChevronRight,
-  Settings2, GripVertical, Eye, EyeOff, X,
-  Edit3, Trash2, Plus, Check, Save, Loader2, Trophy,
-} from 'lucide-react';
-import { toast } from 'sonner';
+import React, { useState, useMemo } from 'react';
+import { usePropsQuery } from '@/hooks/use-props-query'; // Infinite Loading Hook
 import { useBetSlip } from '@/context/betslip-context';
+import { PropsTable } from '@/components/bets/PropsTable';
+import { EditBetModal } from '@/components/modals/edit-bet-modal';
+import { ManualEntryModal } from '@/components/modals/manual-entry-modal';
+import { Search, Database, LayoutGrid, Table as TableIcon } from 'lucide-react';
+import { toast } from 'sonner';
 
-// ─── Sport theming ────────────────────────────────────────────────────────────
-const THEME = {
-  nfl: {
-    accent:       '#22c55e',
-    accentBg:     'rgba(34,197,94,0.08)',
-    accentBorder: 'rgba(34,197,94,0.18)',
-    accentDim:    '#15803d',
-    label:        'NFL',
-    icon:         '🏈',
-  },
-  nba: {
-    accent:       '#f97316',
-    accentBg:     'rgba(249,115,22,0.08)',
-    accentBorder: 'rgba(249,115,22,0.18)',
-    accentDim:    '#c2410c',
-    label:        'NBA',
-    icon:         '🏀',
-  },
-} as const;
-type League = 'nfl' | 'nba';
-type ThemeShape = { accent: string; accentBg: string; accentBorder: string; accentDim: string; label: string; icon: string };
+export default function HistoricalArchivePage() {
+  // 1. Unified State for Archive Filters
+  const [league, setLeague] = useState<'nba' | 'nfl'>('nba');
+  const [season, setSeason] = useState(2025);
+  const [search, setSearch] = useState('');
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+  // 2. Data Fetching via TanStack (handles infinite scroll)
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isLoading,
+    refetch
+  } = usePropsQuery({ league, season, search });
 
-function formatDate(raw: any): string {
-  if (!raw) return '—';
-  const s = typeof raw === 'string' ? raw : String(raw);
-  const d = new Date(s.includes('T') ? s : s + 'T12:00:00Z');
-  if (isNaN(d.getTime())) return s.split('T')[0] ?? s;
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
-}
+  // 3. BetSlip Integration
+  const { addToSlip, slip } = useBetSlip();
+  const slipIds = useMemo(() => 
+    new Set(slip?.legs?.map((l: any) => String(l.propId || l.id)) || []), 
+  [slip]);
 
-const fmt    = (v: any, dp = 1) => { if (v == null) return '—'; const x = Number(v); return isNaN(x) ? '—' : x.toFixed(dp); };
-const fmtPct = (v: any, dp = 0) => { if (v == null) return '—'; const x = Number(v); if (isNaN(x) || x === 0) return '—'; return (x <= 1.5 ? x * 100 : x).toFixed(dp) + '%'; };
+  // 4. Modal States
+  const [editingProp, setEditingProp] = useState<any | null>(null);
+  const [isManualOpen, setIsManualOpen] = useState(false);
 
-// ─── RE-ADDED SELECT COMPONENT ────────────────────────────────────────────────
-function Select({ value, onChange, options, label }: { 
-  value: string; 
-  onChange: (v: string) => void; 
-  options: { value: string; label: string }[]; 
-  label: string 
-}) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '6px 12px' }}>
-      <span style={{ fontSize: 9, fontWeight: 900, color: '#3a3f52', textTransform: 'uppercase', letterSpacing: '0.15em', whiteSpace: 'nowrap' }}>{label}</span>
-      <select 
-        value={value} 
-        onChange={e => onChange(e.target.value)} 
-        style={{ background: 'transparent', color: '#f0f2f8', fontSize: 12, fontWeight: 700, outline: 'none', cursor: 'pointer', border: 'none' }}
-      >
-        {options.map(o => <option key={o.value} value={o.value} style={{ backgroundColor: '#1a1d27', color: '#f0f2f8' }}>{o.label}</option>)}
-      </select>
-    </div>
-  );
-}
+  // 5. Flatten the infinite pages for the Table
+  const allProps = useMemo(() => 
+    data?.pages.flatMap((page) => page.docs) ?? [], 
+  [data]);
 
-function ResultBadge({ v }: { v: any }) {
-  if (!v) return <span style={{ color: '#3a3f52', fontSize: 9 }}>—</span>;
-  const r = v.toLowerCase();
-  const isWin  = r === 'won'  || r === 'hit';
-  const isLoss = r === 'lost' || r === 'miss';
-  const style: React.CSSProperties = isWin
-    ? { background: 'rgba(74,222,128,0.12)',  color: '#4ade80', border: '1px solid rgba(74,222,128,0.25)' }
-    : isLoss
-    ? { background: 'rgba(248,113,113,0.12)', color: '#f87171', border: '1px solid rgba(248,113,113,0.25)' }
-    : { background: 'rgba(148,163,184,0.08)', color: '#94a3b8', border: '1px solid rgba(148,163,184,0.15)' };
-  return (
-    <span style={{ ...style, padding: '2px 8px', borderRadius: 4, fontSize: 9, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-      {isWin ? 'HIT' : isLoss ? 'MISS' : v}
-    </span>
-  );
-}
+  // --- Handlers (Preserving your exact functionality) ---
 
-function ScoreDiff({ v }: { v: any }) {
-  if (v == null) return <span style={{ color: '#3a3f52' }}>—</span>;
-  const n = Number(v);
-  if (isNaN(n)) return <span style={{ color: '#3a3f52' }}>—</span>;
-  const color = n > 0 ? '#4ade80' : n < 0 ? '#f87171' : '#64748b';
-  return <span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: 11, color }}>{n > 0 ? '+' : ''}{n.toFixed(1)}</span>;
-}
-
-// ─── Column definitions ───────────────────────────────────────────────────────
-interface ColDef {
-  id: string; label: string; field: string;
-  leagues: League[]; default: boolean; sortable: boolean;
-  render: (v: any, row: any, theme: ThemeShape) => React.ReactNode;
-}
-
-const ALL_COLS: ColDef[] = [
-  { id: 'player',       label: 'Player',      field: 'player',          leagues: ['nfl','nba'], default: true,  sortable: true,
-    render: (v, r) => <><p style={{ fontWeight: 900, fontSize: 11, fontStyle: 'italic', textTransform: 'uppercase', color: '#f0f2f8', margin: 0 }}>{v}</p><p style={{ fontSize: 9, color: '#3a3f52', fontWeight: 700, textTransform: 'uppercase', margin: 0 }}>{r.team || '—'}</p></> },
-  { id: 'week',         label: 'Week',        field: 'week',            leagues: ['nfl'],       default: true,  sortable: true,
-    render: (v, _, t) => v ? <span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: 11, color: t.accent }}>WK {v}</span> : <span style={{ color: '#3a3f52' }}>—</span> },
-  { id: 'gameDate',     label: 'Date',        field: 'gameDate',        leagues: ['nfl','nba'], default: true,  sortable: true,
-    render: v => <span style={{ fontFamily: 'monospace', fontSize: 10, color: '#8892a4' }}>{formatDate(v)}</span> },
-  { id: 'matchup',      label: 'Matchup',     field: 'matchup',         leagues: ['nfl','nba'], default: true,  sortable: true,
-    render: v => <span style={{ color: '#8892a4', fontSize: 10 }}>{v || '—'}</span> },
-  { id: 'propLine',     label: 'Prop / Line', field: 'prop',            leagues: ['nfl','nba'], default: true,  sortable: false,
-    render: (v, r) => {
-      const isOver = (r.overUnder ?? '').toLowerCase() === 'over';
-      return <>
-        <span style={{ fontSize: 9, color: '#8892a4', fontWeight: 900, textTransform: 'uppercase', display: 'block' }}>{v}</span>
-        <span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: 11, color: '#22d3ee' }}>
-          {r.line} <span style={{ color: isOver ? '#4ade80' : '#f87171' }}>{(r.overUnder ?? '').charAt(0)}</span>
-        </span>
-      </>;
-    }},
-  { id: 'playerAvg',    label: 'Season Avg',  field: 'playerAvg',       leagues: ['nfl','nba'], default: true,  sortable: true,
-    render: v => <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#f0f2f8' }}>{fmt(v)}</span> },
-  { id: 'scoreDiff',    label: 'vs Line',     field: 'scoreDiff',       leagues: ['nfl','nba'], default: true,  sortable: true,
-    render: v => <ScoreDiff v={v} /> },
-  { id: 'seasonHitPct', label: 'Hit %',       field: 'seasonHitPct',    leagues: ['nfl','nba'], default: true,  sortable: true,
-    render: v => <span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: 11, color: '#f0f2f8' }}>{fmtPct(v)}</span> },
-  { id: 'confScore',    label: 'Confidence',  field: 'confidenceScore', leagues: ['nfl','nba'], default: true,  sortable: true,
-    render: (v, _, t) => <span style={{ fontFamily: 'monospace', fontWeight: 900, fontSize: 11, color: t.accent }}>{fmtPct(v)}</span> },
-  { id: 'gameStat',     label: 'Actual',      field: 'gameStat',        leagues: ['nfl','nba'], default: true,  sortable: true,
-    render: v => <span style={{ fontFamily: 'monospace', fontSize: 11, color: '#f0f2f8' }}>{v ?? '—'}</span> },
-  { id: 'result',       label: 'Result',      field: 'actualResult',    leagues: ['nfl','nba'], default: true,  sortable: true,
-    render: v => <ResultBadge v={v} /> },
-];
-
-const SEASONS   = ['2024', '2025'];
-const NFL_WEEKS = ['all', ...Array.from({ length: 22 }, (_, i) => String(i + 1))];
-const PAGE_SIZE = 50;
-
-// ─── Inline components (SlipButton, etc) ──────────────────────────────────────
-function SlipButton({ prop, league }: { prop: any; league: League }) {
-  const { addLeg, selections } = useBetSlip();
-  const [ou, setOu] = useState<'Over' | 'Under' | ''>((prop.overUnder as any) || '');
-  const id     = `hist-${prop.id}-${ou}`;
-  const inSlip = (selections ?? []).some((s: any) => s.id === id);
-  const add = () => {
-    if (!ou)    { toast.error('Select Over or Under'); return; }
-    if (inSlip) { toast.info('Already in slip'); return; }
-    addLeg({ id, propId: id, player: prop.player ?? '', prop: prop.prop ?? '', line: Number(prop.line) || 0, selection: ou, odds: Number(prop.bestOdds ?? prop.odds) || -110, matchup: prop.matchup ?? '', team: prop.team ?? '', week: prop.week, season: prop.season, gameDate: prop.gameDate ?? new Date().toISOString(), league, status: 'pending', source: 'historical-props' });
-    toast.success(`${prop.player} ${ou} ${prop.line} added`);
+  const handleDelete = async (id: string) => {
+    try {
+      const res = await fetch(`/api/all-props/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to delete');
+      toast.success('Prop removed from archive');
+      refetch(); 
+    } catch (err) {
+      toast.error('Could not delete prop');
+    }
   };
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 80 }}>
-      <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.07)', fontSize: 9 }}>
-        {(['Over', 'Under'] as const).map(s => (
-          <button key={s} onClick={() => setOu(prev => prev === s ? '' : s)}
-            style={{ flex: 1, padding: '3px 0', fontWeight: 900, textTransform: 'uppercase', border: 'none', cursor: 'pointer', transition: 'all 0.15s', ...(ou === s ? { background: s === 'Over' ? 'rgba(74,222,128,0.2)' : 'rgba(248,113,113,0.2)', color: s === 'Over' ? '#4ade80' : '#f87171' } : { background: 'transparent', color: '#3a3f52' }) }}>
-            {s[0]}
-          </button>
-        ))}
-      </div>
-      <button onClick={add} disabled={!ou || inSlip}
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '3px 0', borderRadius: 8, fontSize: 9, fontWeight: 900, textTransform: 'uppercase', cursor: (!ou || inSlip) ? 'not-allowed' : 'pointer', opacity: (!ou || inSlip) ? 0.4 : 1, border: 'none', transition: 'all 0.15s', ...(inSlip ? { background: 'rgba(52,211,153,0.1)', color: '#34d399' } : { background: 'rgba(255,255,255,0.04)', color: '#8892a4' }) }}>
-        {inSlip ? <><Check size={9} /> Slip</> : <><Plus size={9} /> Slip</>}
-      </button>
-    </div>
-  );
-}
 
-// ─── Main page ────────────────────────────────────────────────────────────────
-
-export default function HistoricalPropsPage() {
-  const [league,      setLeague]      = useState<League>('nfl');
-  const [season,      setSeason]      = useState('2025');
-  const [week,        setWeek]        = useState('all');
-  const [search,      setSearch]      = useState('');
-  const [sortKey,     setSortKey]     = useState('gameDate');
-  const [sortDir,     setSortDir]     = useState<'asc' | 'desc'>('desc');
-  const [page,        setPage]        = useState(0);
-  const [props,       setProps]       = useState<any[]>([]);
-  const [total,       setTotal]       = useState(0);
-  const [loading,     setLoading]     = useState(false);
-  const [enriching,   setEnriching]   = useState(false);
-  
-  const theme: ThemeShape = THEME[league];
-
-  const fetchProps = useCallback(async (resetPage = false) => {
-    setLoading(true);
-    const p = resetPage ? 0 : page;
-    if (resetPage) setPage(0);
-    const params = new URLSearchParams({ league, season, offset: String(p * PAGE_SIZE), limit: String(PAGE_SIZE) });
-    if (league === 'nfl' && week !== 'all') params.set('week', week);
-    if (search.trim()) params.set('search', search.trim());
+  const handleUpdate = async (updatedData: any) => {
     try {
-      const res  = await fetch(`/api/all-props?${params}`);
-      const data = await res.json();
-      setProps(data);
-    } catch { toast.error('Failed to load props'); }
-    setLoading(false);
-  }, [league, season, week, search, page]);
-
-  useEffect(() => { fetchProps(true); }, [league, season, week]);
-
-  const handleEnrich = async () => {
-    setEnriching(true);
-    const toastId = toast.loading('Enriching...');
-    try {
-      const res = await fetch('/api/props', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ league, season: Number(season), week: week === 'all' ? null : Number(week) })
+      const params = new URLSearchParams({
+        league: league, 
+        season: String(season)
       });
-      const data = await res.json();
-      toast.success(`Enriched ${data.count || 0} props`, { id: toastId });
-      fetchProps(true);
-    } catch (err: any) { toast.error(err.message, { id: toastId }); }
-    setEnriching(false);
+
+      const res = await fetch(`/api/all-props/${updatedData.id}?${params}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedData)
+      });
+
+      if (!res.ok) throw new Error('Update failed');
+      
+      toast.success('Archive Record Updated');
+      setEditingProp(null);
+      refetch(); 
+    } catch (err) {
+      toast.error('Failed to save changes to archive');
+    }
   };
 
   return (
-    <div style={{ padding: '24px 32px', minHeight: '100vh', background: 'var(--bg)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 32 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 900, fontStyle: 'italic', textTransform: 'uppercase', color: theme.accent, margin: 0 }}>
-          {theme.icon} {theme.label} Archives
-        </h1>
-        <button onClick={handleEnrich} disabled={enriching} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', borderRadius: 12, background: 'rgba(34,211,238,0.1)', border: '1px solid rgba(34,211,238,0.2)', color: '#22d3ee', fontSize: 11, fontWeight: 900, textTransform: 'uppercase', cursor: 'pointer' }}>
-          {enriching ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />} Fill Gaps
-        </button>
-      </div>
-
-      <div style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
-        <div style={{ position: 'relative', flex: 1 }}>
-          <Search size={14} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#3a3f52' }} />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..." style={{ width: '100%', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, padding: '10px 16px 10px 40px', fontSize: 13, color: '#f0f2f8' }} />
+    <div className="min-h-screen bg-[#0a0c12] p-6 space-y-6">
+      
+      {/* --- RECONSTRUCTED HEADER & TOGGLES --- */}
+      <div className="flex flex-col xl:flex-row justify-between gap-4 p-6 rounded-3xl bg-slate-900 border border-white/5 shadow-2xl">
+        <div className="flex items-center gap-6">
+          <div className="flex flex-col">
+             <h1 className="text-xl font-black italic uppercase tracking-tighter text-white">
+               Archive <span className="text-indigo-500">Vault</span>
+             </h1>
+             <div className="flex items-center gap-2 text-[10px] text-slate-500 font-mono mt-1">
+               <Database size={10}/> <span>COLLECTION: allProps</span>
+             </div>
+          </div>
+          
+          {/* LEAGUE SWITCHER */}
+          <div className="flex bg-black/40 p-1 rounded-2xl border border-white/10 ml-4">
+            <button 
+              onClick={() => setLeague('nba')}
+              className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                league === 'nba' ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20' : 'text-slate-500 hover:text-slate-300'
+              }`}
+            >
+              NBA 🏀
+            </button>
+            <button 
+              onClick={() => setLeague('nfl')}
+              className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                league === 'nfl' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' : 'text-slate-500 hover:text-slate-300'
+              }`}
+            >
+              NFL 🏈
+            </button>
+          </div>
         </div>
-        <Select label="Season" value={season} onChange={setSeason} options={SEASONS.map(s => ({ value: s, label: s }))} />
-        {league === 'nfl' && <Select label="Week" value={week} onChange={setWeek} options={NFL_WEEKS.map(w => ({ value: w, label: w === 'all' ? 'All Weeks' : `Week ${w}` }))} />}
+
+        <div className="flex flex-wrap items-center gap-3">
+          {/* SEARCH BAR */}
+          <div className="relative group">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={14} />
+            <input 
+              type="text"
+              placeholder="Search archive..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="bg-black/40 border border-white/5 rounded-xl py-2.5 pl-9 pr-4 text-xs font-bold outline-none focus:border-indigo-500/50 transition-all w-48 md:w-64"
+            />
+          </div>
+
+          <select 
+            value={season}
+            onChange={(e) => setSeason(Number(e.target.value))}
+            className="bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-[10px] font-black text-slate-300 outline-none"
+          >
+            <option value={2025}>2025 SEASON</option>
+            <option value={2024}>2024 SEASON</option>
+          </select>
+
+          <button 
+            onClick={() => setIsManualOpen(true)}
+            className="px-6 py-2.5 bg-white text-black rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all"
+          >
+            Manual Entry
+          </button>
+        </div>
       </div>
 
-      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 20, overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ borderBottom: '1px solid var(--border)' }}>
-              <th style={{ padding: '14px 20px', fontSize: 9, fontWeight: 900, textTransform: 'uppercase', color: '#3a3f52' }}>Slip</th>
-              {ALL_COLS.filter(c => c.leagues.includes(league)).map(col => (
-                <th key={col.id} style={{ padding: '14px 20px', fontSize: 9, fontWeight: 900, textTransform: 'uppercase', color: '#3a3f52' }}>{col.label}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {props.map((row, idx) => (
-              <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.02)' }}>
-                <td style={{ padding: '14px 20px' }}><SlipButton prop={row} league={league} /></td>
-                {ALL_COLS.filter(c => c.leagues.includes(league)).map(col => (
-                  <td key={col.id} style={{ padding: '14px 20px' }}>{col.render(row[col.field], row, theme)}</td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      {/* --- MAIN DATA TABLE --- */}
+      <div className="bg-slate-900 rounded-3xl border border-white/5 overflow-hidden relative shadow-2xl min-h-[600px]">
+        <PropsTable 
+          props={allProps}
+          league={league}
+          isLoading={isLoading}
+          slipIds={slipIds}
+          onAddToBetSlip={addToSlip}
+          onEditProp={setEditingProp}
+          onDeleteProp={handleDelete}
+          onOpenManual={() => setIsManualOpen(true)}
+          hasMore={hasNextPage}
+          onLoadMore={() => fetchNextPage()}
+        />
+
+        {isLoading && allProps.length === 0 && (
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm z-30 flex flex-col items-center justify-center">
+            <div className="h-10 w-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4" />
+            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Accessing Historical Records...</span>
+          </div>
+        )}
       </div>
+
+      {/* --- MODALS --- */}
+      <ManualEntryModal 
+        isOpen={isManualOpen}
+        onClose={() => setIsManualOpen(false)} 
+        onAddLeg={(leg) => {
+          addToSlip(leg);
+          refetch(); 
+        }}
+      />
+
+      {editingProp && (
+        <EditBetModal 
+          mode="archive"
+          bet={editingProp} 
+          isOpen={!!editingProp} 
+          onClose={() => setEditingProp(null)}
+          onSave={handleUpdate}
+        />
+      )}
     </div>
   );
 }

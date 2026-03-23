@@ -1,24 +1,16 @@
 'use client';
-// src/context/betslip-context.tsx
-//
-// SINGLE SOURCE OF TRUTH for bet slip state.
-// Delete src/hooks/useBetSlip.ts — everything imports from here.
-//
-// Usage:
-//   import { useBetSlip } from '@/context/betslip-context';
 
 import React, {
   createContext, useContext, useState,
   useCallback, useEffect, useMemo,
 } from 'react';
-import type { Bet, BetLeg } from '@/lib/types';
+import type { Bet } from '@/lib/types';
 import { useWallet } from '@/context/WalletContext';
 import { calculateRecommendation } from '@/lib/math/kelly';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface BetSlipContextType {
-  // ── Bet log (betting-log page) ──
   bets:         Bet[];
   setBets:      React.Dispatch<React.SetStateAction<Bet[]>>;
   totalCount:   number;
@@ -31,27 +23,24 @@ export interface BetSlipContextType {
   updateBet:    (id: string, updates: Partial<Bet>) => Promise<void>;
   deleteBet:    (id: string) => void;
 
-  // ── Active slip ──
   selections:       any[];
   setSelections:    React.Dispatch<React.SetStateAction<any[]>>;
   addLeg:           (leg: any) => void;
+  addToSlip:        (leg: any) => void; // Alias
+  slip:             { legs: any[] };    // Alias
+  legs:             any[];              // Alias
   removeLeg:        (legId: string) => void;
   clearSlip:        () => void;
   totalParlayOdds:  number;
   isInitialized:    boolean;
   kelly: { recommendedStake: number; expectedValue: number };
 
-  // ── Convenience aliases (matches standalone hook API) ──
-  clear:       () => void;       // alias for clearSlip
+  clear:       () => void;
   isInSlip:    (id: string) => boolean;
   totalProps:  number;
 }
 
-// ─── Context ──────────────────────────────────────────────────────────────────
-
 const BetSlipContext = createContext<BetSlipContextType | undefined>(undefined);
-
-// ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useBetSlip(): BetSlipContextType {
   const ctx = useContext(BetSlipContext);
@@ -76,9 +65,7 @@ function calcOdds(sels: any[]): number {
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function BetSlipProvider({ children }: { children: React.ReactNode }) {
-  // ── Slip state ──
-  const [selections,      setSelections]      = useState<any[]>(() => {
-    // Synchronous initializer — avoids empty slip flash on navigation
+  const [selections, setSelections] = useState<any[]>(() => {
     if (typeof window === 'undefined') return [];
     try {
       const saved = localStorage.getItem('active_betslip');
@@ -86,11 +73,10 @@ export function BetSlipProvider({ children }: { children: React.ReactNode }) {
     } catch { return []; }
   });
   const [totalParlayOdds, setTotalParlayOdds] = useState(0);
-  const [isInitialized,   setIsInitialized]   = useState(true); // sync init = always ready
+  const [isInitialized] = useState(true);
 
   const { bankroll } = useWallet();
 
-  // Persist slip to localStorage
   useEffect(() => {
     try { localStorage.setItem('active_betslip', JSON.stringify(selections)); }
     catch {}
@@ -105,11 +91,9 @@ export function BetSlipProvider({ children }: { children: React.ReactNode }) {
     );
     return {
       recommendedStake: recommendedWager > 0 ? recommendedWager / 4 : 0,
-      expectedValue:    expectedValue * 100,
+      expectedValue: expectedValue * 100,
     };
   }, [totalParlayOdds, bankroll, selections.length]);
-
-  // ── Slip actions ──
 
   const addLeg = useCallback((leg: any) => {
     setSelections(prev => {
@@ -135,15 +119,13 @@ export function BetSlipProvider({ children }: { children: React.ReactNode }) {
     [selections],
   );
 
-  // ── Bet log state ──
-
-  const [bets,        setBets]        = useState<Bet[]>([]);
-  const [totalCount,  setTotalCount]  = useState(0);
-  const [loading,     setLoading]     = useState(false);
+  const [bets, setBets] = useState<Bet[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore,     setHasMore]     = useState(true);
-  const [error,       setError]       = useState<string | null>(null);
-  const [nextCursor,  setNextCursor]  = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
 
   const fetchBets = useCallback(async (search: string, season: string) => {
     setLoading(true); setError(null);
@@ -153,16 +135,15 @@ export function BetSlipProvider({ children }: { children: React.ReactNode }) {
         season: season === 'all' ? '' : season,
         player: search,
       });
-      const res  = await fetch(`/api/betting-log?${params}`);
+      const res = await fetch(`/api/betting-log?${params}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       setBets(data.bets ?? []);
       setTotalCount(data.totalCount ?? 0);
       setHasMore(data.hasMore ?? false);
       setNextCursor(data.nextCursor ?? null);
-    } catch (err: any) {
-      setError(err.message);
-    } finally { setLoading(false); }
+    } catch (err: any) { setError(err.message); }
+    finally { setLoading(false); }
   }, []);
 
   const loadMoreBets = useCallback(async (search: string, season: string) => {
@@ -175,19 +156,26 @@ export function BetSlipProvider({ children }: { children: React.ReactNode }) {
         cursor: nextCursor,
         player: search,
       });
-      const res  = await fetch(`/api/betting-log?${params}`);
+      const res = await fetch(`/api/betting-log?${params}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       setBets(prev => [...prev, ...(data.bets ?? [])]);
       setHasMore(data.hasMore ?? false);
       setNextCursor(data.nextCursor ?? null);
-    } catch (err: any) { console.error('loadMoreBets:', err); }
+    } catch (err: any) { console.error(err); }
     finally { setLoadingMore(false); }
   }, [loadingMore, hasMore, nextCursor]);
 
   const updateBet = useCallback(async (id: string, updates: Partial<Bet>) => {
     setBets(prev => prev.map(b => b.id === id ? { ...b, ...updates } : b));
-  }, []);
+    try {
+      await fetch(`/api/betting-log`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, ...updates }),
+      });
+    } catch (err) { fetchBets('', 'all'); }
+  }, [fetchBets]);
 
   const deleteBet = useCallback((id: string) => {
     setBets(prev => prev.filter(b => b.id !== id));
@@ -199,8 +187,10 @@ export function BetSlipProvider({ children }: { children: React.ReactNode }) {
       fetchBets, loadMoreBets, updateBet, deleteBet,
       selections, setSelections, addLeg, removeLeg, clearSlip,
       totalParlayOdds, isInitialized, kelly,
-      // convenience aliases
-      clear:      clearSlip,
+      addToSlip: addLeg,
+      slip: { legs: selections },
+      legs: selections,
+      clear: clearSlip,
       isInSlip,
       totalProps: selections.length,
     }}>

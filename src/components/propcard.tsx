@@ -1,10 +1,10 @@
 'use client';
 
 import { useBetSlip } from '@/context/betslip-context';
-import { BetLeg, PropData } from '@/lib/types';
+import { NormalizedProp } from '@/lib/types';
 
-export function PropCard({ prop }: { prop: PropData }) {
-  const { addLeg, selections } = useBetSlip();
+export function PropCard({ prop }: { prop: NormalizedProp }) { ... } 
+ const { addLeg, selections } = useBetSlip();
 
   const SelectionButton = ({ type }: { type: 'Over' | 'Under' }) => {
     const existingSelection = selections.find(s => s.id?.startsWith(prop.id));

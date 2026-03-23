@@ -28,7 +28,6 @@ export async function GET(request: NextRequest) {
     // Fetch only the fields we need for filter options — avoids reading full docs
     const snapshot = await adminDb
       .collection(collection)
-      .select('week', 'prop')
       .get();
 
     const weekSet    = new Set<number>();
@@ -48,10 +47,14 @@ export async function GET(request: NextRequest) {
       'All Props',
       ...Array.from(propSet).sort(),
     ];
+    
+    const sampleDoc = snapshot.docs[0]?.data() || {};
+    const availableFields = Object.keys(sampleDoc).sort();
 
     const result = {
       weeks,
       propTypes,
+      availableFields,
       totalVolume: snapshot.size,
       season,
       collection,

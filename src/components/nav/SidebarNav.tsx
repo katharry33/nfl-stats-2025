@@ -17,9 +17,9 @@ import { cn } from '@/lib/utils';
 
 const CORE_ITEMS = [
   { title: "Command Center", href: "/", icon: LayoutDashboard },
-  { title: "Betting Log", href: "/betting-log", icon: History },
   { title: "Bet Builder", href: "/bet-builder", icon: Zap },
-  { title: "Insights", href: "/insights", icon: Target },
+  { title: "Betting Log", href: "/betting-log", icon: History },
+  { title: "Insights", href: "/market-insights", icon: Target },
   { title: "Sweet Spots", href: "/sweet-spots", icon: Target }
 ];
 

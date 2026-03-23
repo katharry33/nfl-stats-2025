@@ -4,7 +4,7 @@ import { useAuth } from '@/lib/firebase/provider';
 import { useFirebaseBets } from '@/hooks/useBets';
 import { BetsTable } from '@/components/bets/bets-table';
 import { BettingStats } from '@/components/bets/betting-stats';
-import { EditBetModal } from '@/components/bets/edit-bet-modal';
+import { EditBetModal } from '@/components/modals/edit-bet-modal';
 import { Input } from '@/components/ui/input';
 import { useDebounce } from '@/hooks/use-debounce';
 import type { Bet } from '@/lib/types';

@@ -15,14 +15,11 @@ export async function POST(request: NextRequest) {
     for (const leg of legs) {
       if (!leg.player || !leg.prop) continue;
 
-      // 1. Identify the League and Season
+      // 1. Identify the League
       const league = (leg.league || 'nfl').toLowerCase();
-      const season = leg.season || 2025;
-
-      // 2. Determine target collection
-      // Matches your GET route logic: nbaProps_2025 or allProps_2025
-      const colPrefix = league === 'nba' ? 'nbaProps' : 'allProps';
-      const colName = `${colPrefix}_${season}`;
+      
+      // 2. Determine target collection - all manual props go to a master collection
+      const colName = 'allProps';
 
       // 3. Deterministic doc ID (slugified)
       // Including league in slug prevents collisions (e.g., same name in different sports)
@@ -33,30 +30,16 @@ export async function POST(request: NextRequest) {
         .slice(0, 200);
 
       const ref = adminDb.collection(colName).doc(slug);
+      
+      const batchData = {
+        ...leg,
+        league: league, // Force lowercase for consistency
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+        isManual: true,
+      };
 
-      batch.set(ref, {
-        // Core Identification
-        league:       league,
-        player:       String(leg.player).trim(),
-        prop:         String(leg.prop).trim(),
-        line:         Number(leg.line)  || 0,
-        week:         Number(leg.week)  || null,
-        season:       Number(season),
-        
-        // Normalized field names (supporting your legacy 'pick' logic)
-        'over under': String(leg.selection ?? 'Over'),
-        team:         String(leg.team     ?? '').toUpperCase(),
-        matchup:      String(leg.matchup  ?? ''),
-        'game date':  leg.gameDate ?? '',
-        gameDate:     leg.gameDate ?? '', // duplicate for NBA sorting
-        odds:         Number(leg.odds)   || -110,
-        
-        // Metadata
-        isManual:     true,
-        migratedFrom: colName, 
-        createdAt:    FieldValue.serverTimestamp(),
-        updatedAt:    FieldValue.serverTimestamp(),
-      }, { merge: true }); 
+      batch.set(ref, batchData, { merge: true }); 
     }
 
     await batch.commit();
