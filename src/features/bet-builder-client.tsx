@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { usePropsQuery } from '@/hooks/use-props-query';
 import { useBetSlip } from '@/context/betslip-context';
 // Updated import to match your standard path
-import { PropsTable } from '@/components/bets/PropsTable';
+import PropsTable from "@/components/bets/PropsTable";
 import { EnrichModal } from '@/components/bets/EnrichModal';
 import { SyncPropsButton } from '@/components/bets/SyncPropsButton';
 import { BetBuilderUpload } from '@/components/bet-builder/bet-builder-upload';

@@ -1,59 +1,60 @@
-// src/lib/props-service.ts
 import { 
-  collection, query, where, orderBy, limit, startAfter, getDocs 
-} from "firebase/firestore";
-import { db } from "@/lib/firebase";
-import { PropData } from "@/lib/types";
+  collection, query, where, getDocs, limit, 
+  startAfter, orderBy, QueryConstraint 
+} from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
-export const fetchPaginatedProps = async (filters: any, lastDoc: any = null) => {
-  // FIX 1: Match the collection name in your Security Rules
-  const propsRef = collection(db, "allProps"); 
-  let constraints = [];
+export async function fetchPaginatedProps(filters: any, lastDoc: any = null) {
+  const { league, season, week, date, collection: colName, limit: pageSize = 50 } = filters;
+  const constraints: QueryConstraint[] = [];
 
-  if (filters.week !== 'all') {
-    constraints.push(where("week", "==", Number(filters.week)));
+  // 1. Determine Collection
+  const targetCollection = colName || (league === 'nba' ? 'nbaProps_2025' : 'allProps');
+
+  // 2. Season Filter
+  if (season) constraints.push(where('season', '==', season));
+  
+  // 3. NFL Week Filter (Handles both String and Number just in case)
+  if (league === 'nfl' && week) {
+    // If your DB has strings, remove the Number() wrapper
+    constraints.push(where('week', '==', week.toString())); 
   }
 
-  if (filters.propType !== 'all') {
-    constraints.push(where("prop", "==", filters.propType));
+  // 4. NBA Date Filter (CRITICAL: Ensure field name matches your Firestore)
+  if (league === 'nba' && date) {
+    // Check your Firestore: is the field 'gameDate' or just 'date'?
+    constraints.push(where('date', '==', date)); 
   }
 
-  if (filters.search) {
-    // FIX 2: Prefix search requires an orderBy("player") before other orders
-    constraints.push(where("player", ">=", filters.search));
-    constraints.push(where("player", "<=", filters.search + "\uf8ff"));
-    constraints.push(orderBy("player", "asc")); 
-  }
-
-  // 4. Ordering and Pagination
-  constraints.push(orderBy("createdAt", "desc")); 
-  constraints.push(limit(25));
+  // 5. Ordering & Pagination
+  // NOTE: If you get a "Requires Index" error in the console, 
+  // you MUST click the link provided in the error to create the composite index.
+  constraints.push(orderBy('createdAt', 'desc'));
 
   if (lastDoc) {
     constraints.push(startAfter(lastDoc));
   }
+  
+  constraints.push(limit(pageSize));
+
+  console.log(`[Firestore] Querying ${targetCollection}`, { filters });
 
   try {
-    const q = query(propsRef, ...constraints);
+    const q = query(collection(db, targetCollection), ...constraints);
     const snapshot = await getDocs(q);
     
-    const docs = snapshot.docs.map(d => {
-      const data = d.data();
-      return {
-        id: d.id,
-        ...data,
-        // Force numbers to prevent NaN in UI
-        week: Number(data.week || 0),
-        line: Number(data.line || 0)
-      };
-    }) as PropData[];
+    const docs = snapshot.docs.map(doc => ({ 
+      id: doc.id, 
+      ...doc.data() 
+    }));
 
     return {
       docs,
-      lastVisible: snapshot.docs[snapshot.docs.length - 1]
+      lastVisible: snapshot.docs[snapshot.docs.length - 1] || null
     };
-  } catch (error) {
-    console.error("Firestore Query Error:", error);
+  } catch (error: any) {
+    console.error("Firestore Query Failed:", error.message);
+    // If it's an index error, the link will be in error.message
     return { docs: [], lastVisible: null };
   }
-};
+}

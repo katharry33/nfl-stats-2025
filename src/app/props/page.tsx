@@ -1,189 +1,242 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
-import { usePropsQuery } from '@/hooks/use-props-query'; // Infinite Loading Hook
-import { useBetSlip } from '@/context/betslip-context';
-import { PropsTable } from '@/components/bets/PropsTable';
-import { EditBetModal } from '@/components/modals/edit-bet-modal';
-import { ManualEntryModal } from '@/components/modals/manual-entry-modal';
-import { Search, Database, LayoutGrid, Table as TableIcon } from 'lucide-react';
-import { toast } from 'sonner';
+import React, { useState, useMemo, useEffect } from 'react';
+import { 
+  Table as TableIcon, LayoutGrid, Plus, Edit3, Trash2, ArrowUpDown, Loader2, 
+  Search, RefreshCw, AlertCircle 
+} from 'lucide-react'; 
+import { FlexibleDataTable } from '@/components/data-table/flexible-data-table';
+import { ColumnToggle } from '@/components/bet-builder/ColumnToggle'; 
+import { usePropsQuery } from '@/hooks/use-props-query';
+import NBAArchiveGrader from '@/components/historical-props/NBAArchiveGrader';
 
-export default function HistoricalArchivePage() {
-  // 1. Unified State for Archive Filters
-  const [league, setLeague] = useState<'nba' | 'nfl'>('nba');
-  const [season, setSeason] = useState(2025);
-  const [search, setSearch] = useState('');
+/**
+ * PROPS TABLE COMPONENT
+ * Handles the display logic for both Builder and Archive modes
+ */
+export function PropsTable({
+  props, league, isLoading, onAddToBetSlip, onEditProp, onDeleteProp, slipIds = new Set(), 
+  onOpenManual, hasMore, onLoadMore, currentSeason, onSeasonChange, mode = 'archive'
+}: any) {
+  const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
+  const [tableInstance, setTableInstance] = useState<any>(null);
 
-  // 2. Data Fetching via TanStack (handles infinite scroll)
-  const {
-    data,
-    fetchNextPage,
-    hasNextPage,
-    isLoading,
-    refetch
-  } = usePropsQuery({ league, season, search });
+  const VIS_KEY = `${mode}-vis-${league}`;
+  const ORD_KEY = `${mode}-ord-${league}`;
+  const [columnVisibility, setColumnVisibility] = useState({});
+  const [columnOrder, setColumnOrder] = useState<string[]>([]);
 
-  // 3. BetSlip Integration
-  const { addToSlip, slip } = useBetSlip();
-  const slipIds = useMemo(() => 
-    new Set(slip?.legs?.map((l: any) => String(l.propId || l.id)) || []), 
-  [slip]);
-
-  // 4. Modal States
-  const [editingProp, setEditingProp] = useState<any | null>(null);
-  const [isManualOpen, setIsManualOpen] = useState(false);
-
-  // 5. Flatten the infinite pages for the Table
-  const allProps = useMemo(() => 
-    data?.pages.flatMap((page) => page.docs) ?? [], 
-  [data]);
-
-  // --- Handlers (Preserving your exact functionality) ---
-
-  const handleDelete = async (id: string) => {
-    try {
-      const res = await fetch(`/api/all-props/${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Failed to delete');
-      toast.success('Prop removed from archive');
-      refetch(); 
-    } catch (err) {
-      toast.error('Could not delete prop');
+  // Persistence logic for column layouts
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const v = localStorage.getItem(VIS_KEY);
+      const o = localStorage.getItem(ORD_KEY);
+      if (v) setColumnVisibility(JSON.parse(v));
+      if (o) setColumnOrder(JSON.parse(o));
     }
-  };
+  }, [league, VIS_KEY, ORD_KEY]);
 
-  const handleUpdate = async (updatedData: any) => {
-    try {
-      const params = new URLSearchParams({
-        league: league, 
-        season: String(season)
-      });
+  const columns = useMemo(() => {
+    const fields = [
+      'player', 'prop', 'line', 'overUnder', 'odds', 'matchup', 'gameDate',
+      'bestEdgePct', 'confidenceScore', 'expectedValue', 'impliedOdds', 'modelProb',
+      'playerAvg', 'seasonHitPct', 'opponentRank', 'opponentAvgVsStat',
+      'totalScore', 'scoreDiff', 'winProbability', 'projWinPct', 'avgWinProb', 
+      'impliedProb', 'kellyPct', 'gameStat', 'actualResult'
+    ];
+    
+    return [
+      ...fields.map(f => ({
+        id: f,
+        accessorKey: f,
+        header: ({ column }: any) => (
+          <button 
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")} 
+            className="flex items-center gap-2 hover:text-indigo-400 transition-colors group py-1"
+          >
+            <span className="text-[10px] font-black tracking-widest whitespace-nowrap">
+              {f.replace(/([A-Z])/g, ' $1').toUpperCase().trim()}
+            </span>
+            <ArrowUpDown size={10} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+          </button>
+        ),
+        cell: (info: any) => {
+          const row = info.row.original;
+          const val = row[f] ?? row[f + ' '] ?? row[f.toLowerCase()] ?? row[f.charAt(0).toUpperCase() + f.slice(1)];
+          
+          if (val === null || val === undefined) return <span className="text-zinc-800">-</span>;
 
-      const res = await fetch(`/api/all-props/${updatedData.id}?${params}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedData)
-      });
+          if (f.toLowerCase().includes('pct') || f.toLowerCase().includes('prob')) {
+            const num = parseFloat(val);
+            const displayVal = num <= 1 && num >= -1 && !f.includes('Edge') ? num * 100 : num;
+            const color = displayVal > 50 ? 'text-emerald-400' : displayVal < 45 ? 'text-rose-400' : 'text-zinc-300';
+            return <span className={`font-mono font-bold ${color}`}>{displayVal.toFixed(1)}%</span>;
+          }
 
-      if (!res.ok) throw new Error('Update failed');
-      
-      toast.success('Archive Record Updated');
-      setEditingProp(null);
-      refetch(); 
-    } catch (err) {
-      toast.error('Failed to save changes to archive');
-    }
-  };
+          if (f === 'odds' || f === 'impliedOdds') {
+            const num = parseInt(val);
+            return <span className="font-mono text-indigo-300">{num > 0 ? `+${num}` : num}</span>;
+          }
+
+          if (f === 'gameDate' || f === 'date') {
+            const d = val?.seconds ? new Date(val.seconds * 1000) : new Date(val);
+            return <span className="text-zinc-500 font-mono text-[10px]">{d.toLocaleDateString()}</span>;
+          }
+
+          if (f === 'actualResult') {
+            const isWin = val?.toLowerCase() === 'won' || val?.toLowerCase() === 'hit';
+            return (
+              <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${isWin ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'}`}>
+                {val}
+              </span>
+            );
+          }
+
+          return <span className="text-zinc-200 font-medium">{String(val)}</span>;
+        }
+      })),
+      {
+        id: 'actions',
+        header: () => <span className="text-[10px] font-black tracking-widest text-zinc-600">MANAGE</span>,
+        enableHiding: false,
+        cell: (info: any) => {
+          const row = info.row.original;
+          const isAdded = slipIds.has(String(row.id));
+          return (
+            <div className="flex items-center justify-end gap-2 pr-4 min-w-[150px]">
+              {mode === 'builder' && (
+                <button 
+                  onClick={() => onAddToBetSlip(row)}
+                  disabled={isAdded}
+                  className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all shadow-md active:scale-95 ${
+                    isAdded ? 'bg-zinc-800 text-zinc-600 cursor-default' : 'bg-white text-black hover:bg-indigo-500 hover:text-white'
+                  }`}
+                >
+                  {isAdded ? 'In Slip' : '+ Slip'}
+                </button>
+              )}
+              <button onClick={() => onEditProp?.(row)} className="p-2 text-zinc-600 hover:text-white transition-colors"><Edit3 size={14} /></button>
+              <button onClick={() => onDeleteProp?.(row)} className="p-2 text-zinc-600 hover:text-rose-500 transition-colors"><Trash2 size={14} /></button>
+            </div>
+          );
+        }
+      }
+    ];
+  }, [league, slipIds, onAddToBetSlip, onEditProp, onDeleteProp, mode]);
 
   return (
-    <div className="min-h-screen bg-[#0a0c12] p-6 space-y-6">
-      
-      {/* --- RECONSTRUCTED HEADER & TOGGLES --- */}
-      <div className="flex flex-col xl:flex-row justify-between gap-4 p-6 rounded-3xl bg-slate-900 border border-white/5 shadow-2xl">
-        <div className="flex items-center gap-6">
-          <div className="flex flex-col">
-             <h1 className="text-xl font-black italic uppercase tracking-tighter text-white">
-               Archive <span className="text-indigo-500">Vault</span>
-             </h1>
-             <div className="flex items-center gap-2 text-[10px] text-slate-500 font-mono mt-1">
-               <Database size={10}/> <span>COLLECTION: allProps</span>
-             </div>
-          </div>
-          
-          {/* LEAGUE SWITCHER */}
-          <div className="flex bg-black/40 p-1 rounded-2xl border border-white/10 ml-4">
-            <button 
-              onClick={() => setLeague('nba')}
-              className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                league === 'nba' ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20' : 'text-slate-500 hover:text-slate-300'
-              }`}
-            >
-              NBA 🏀
-            </button>
-            <button 
-              onClick={() => setLeague('nfl')}
-              className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                league === 'nfl' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' : 'text-slate-500 hover:text-slate-300'
-              }`}
-            >
-              NFL 🏈
-            </button>
-          </div>
+    <div className="w-full flex flex-col">
+      <div className="flex items-center justify-between p-5 bg-zinc-900/40 border-b border-white/5 backdrop-blur-md">
+        <div className="flex bg-black/40 p-1 rounded-xl border border-white/5">
+          <button onClick={() => setViewMode('table')} className={`p-2.5 rounded-lg transition-all ${viewMode === 'table' ? 'bg-zinc-800 text-indigo-400 shadow-inner' : 'text-zinc-600'}`}><TableIcon size={16} /></button>
+          <button onClick={() => setViewMode('grid')} className={`p-2.5 rounded-lg transition-all ${viewMode === 'grid' ? 'bg-zinc-800 text-indigo-400 shadow-inner' : 'text-zinc-600'}`}><LayoutGrid size={16} /></button>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          {/* SEARCH BAR */}
-          <div className="relative group">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={14} />
-            <input 
-              type="text"
-              placeholder="Search archive..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="bg-black/40 border border-white/5 rounded-xl py-2.5 pl-9 pr-4 text-xs font-bold outline-none focus:border-indigo-500/50 transition-all w-48 md:w-64"
-            />
-          </div>
-
-          <select 
-            value={season}
-            onChange={(e) => setSeason(Number(e.target.value))}
-            className="bg-black/40 border border-white/10 rounded-xl px-4 py-2.5 text-[10px] font-black text-slate-300 outline-none"
-          >
-            <option value={2025}>2025 SEASON</option>
-            <option value={2024}>2024 SEASON</option>
+        <div className="flex items-center gap-4">
+          <select value={currentSeason} onChange={(e) => onSeasonChange(e.target.value)} className="bg-zinc-900 border border-white/10 text-[10px] font-black uppercase tracking-widest rounded-xl px-5 py-3 text-white outline-none cursor-pointer hover:border-white/20 transition-all appearance-none pr-10">
+            <option value="24-25">24-25 Season</option>
+            <option value="25-26">25-26 Season</option>
           </select>
 
-          <button 
-            onClick={() => setIsManualOpen(true)}
-            className="px-6 py-2.5 bg-white text-black rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all"
-          >
-            Manual Entry
+          {tableInstance && <ColumnToggle table={tableInstance} />}
+
+          <button onClick={onOpenManual} className="bg-zinc-100 text-black px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-white active:scale-95 transition-all shadow-2xl shadow-black/50">
+            <Plus size={16} /> Manual Entry
           </button>
         </div>
       </div>
 
-      {/* --- MAIN DATA TABLE --- */}
-      <div className="bg-slate-900 rounded-3xl border border-white/5 overflow-hidden relative shadow-2xl min-h-[600px]">
-        <PropsTable 
-          props={allProps}
-          league={league}
-          isLoading={isLoading}
-          slipIds={slipIds}
-          onAddToBetSlip={addToSlip}
-          onEditProp={setEditingProp}
-          onDeleteProp={handleDelete}
-          onOpenManual={() => setIsManualOpen(true)}
-          hasMore={hasNextPage}
-          onLoadMore={() => fetchNextPage()}
+      <div className="relative">
+        <FlexibleDataTable 
+          data={props} 
+          columns={columns} 
+          isLoading={isLoading} 
+          tableId={`${mode}-v10-${league}`} 
+          state={{ columnVisibility, columnOrder }}
+          onColumnVisibilityChange={(v: any) => {
+            const next = typeof v === 'function' ? v(columnVisibility) : v;
+            setColumnVisibility(next);
+            localStorage.setItem(VIS_KEY, JSON.stringify(next));
+          }}
+          onColumnOrderChange={(o: any) => {
+            const next = typeof o === 'function' ? o(columnOrder) : o;
+            setColumnOrder(next);
+            localStorage.setItem(ORD_KEY, JSON.stringify(next));
+          }}
+          onTableInstance={setTableInstance}
         />
 
-        {isLoading && allProps.length === 0 && (
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm z-30 flex flex-col items-center justify-center">
-            <div className="h-10 w-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4" />
-            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Accessing Historical Records...</span>
+        {hasMore && (
+          <div className="p-12 flex justify-center border-t border-white/5">
+            <button onClick={onLoadMore} disabled={isLoading} className="group flex items-center gap-5 text-[10px] font-black uppercase tracking-[0.4em] text-zinc-600 hover:text-white transition-all disabled:opacity-50">
+              <div className="h-px w-10 bg-zinc-800 group-hover:bg-indigo-500/50 transition-all" />
+              {isLoading ? <Loader2 className="animate-spin h-4 w-4 text-indigo-500" /> : 'Request More Vault Records'}
+              <div className="h-px w-10 bg-zinc-800 group-hover:bg-indigo-500/50 transition-all" />
+            </button>
           </div>
         )}
       </div>
+    </div>
+  );
+}
 
-      {/* --- MODALS --- */}
-      <ManualEntryModal 
-        isOpen={isManualOpen}
-        onClose={() => setIsManualOpen(false)} 
-        onAddLeg={(leg) => {
-          addToSlip(leg);
-          refetch(); 
-        }}
-      />
+/**
+ * MAIN PAGE COMPONENT
+ * The default export for /props
+ */
+export default function HistoricalArchivePage() {
+  const [league, setLeague] = useState<'nba' | 'nfl'>('nba');
+  const [search, setSearch] = useState('');
+  const [season, setSeason] = useState('25-26');
+  const [week, setWeek] = useState<string>(''); 
+  const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]); 
 
-      {editingProp && (
-        <EditBetModal 
-          mode="archive"
-          bet={editingProp} 
-          isOpen={!!editingProp} 
-          onClose={() => setEditingProp(null)}
-          onSave={handleUpdate}
-        />
-      )}
+  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading, refetch } = usePropsQuery({ 
+    league, season, search,
+    week: league === 'nfl' ? week : undefined,
+    date: league === 'nba' ? date : undefined,
+    collection: league === 'nba' ? 'nbaProps_2025' : 'allProps'
+  });
+
+  const allProps = useMemo(() => {
+    return data?.pages.flatMap((page) => page.docs) ?? [];
+  }, [data]);
+
+  return (
+    <div className="min-h-screen bg-[#080808] p-6 space-y-6 text-white">
+      <div className="flex justify-between items-center p-8 rounded-[32px] bg-[#141414] border border-white/5">
+        <div>
+          <h1 className="text-3xl font-black italic uppercase tracking-tighter">Historical <span className="text-indigo-500">Vault</span></h1>
+        </div>
+        <div className="flex items-center gap-4">
+          <div className="flex bg-black/60 p-1.5 rounded-2xl border border-white/5">
+            <button onClick={() => setLeague('nba')} className={`px-7 py-2.5 rounded-xl text-[10px] font-black uppercase ${league === 'nba' ? 'bg-[#f97316]' : 'text-zinc-500'}`}>NBA</button>
+            <button onClick={() => setLeague('nfl')} className={`px-7 py-2.5 rounded-xl text-[10px] font-black uppercase ${league === 'nfl' ? 'bg-[#22c55e]' : 'text-zinc-500'}`}>NFL</button>
+          </div>
+          <button onClick={() => refetch()} className="p-3.5 bg-zinc-900 border border-white/5 rounded-2xl">
+            <RefreshCw size={18} className={isLoading ? 'animate-spin' : ''} />
+          </button>
+        </div>
+      </div>
+
+      {league === 'nba' && <NBAArchiveGrader date={date} onComplete={() => refetch()} />}
+
+      <div className="bg-[#141414]/80 rounded-[28px] border border-white/5 min-h-[400px]">
+        {allProps.length > 0 ? (
+          <PropsTable 
+            props={allProps} league={league} isLoading={isLoading}
+            currentSeason={season} onSeasonChange={setSeason}
+            hasMore={hasNextPage} onLoadMore={fetchNextPage} mode="archive"
+          />
+        ) : !isLoading ? (
+          <div className="flex flex-col items-center justify-center py-40 space-y-4">
+            <AlertCircle className="text-zinc-700" size={48} />
+            <p className="text-[10px] font-black uppercase text-zinc-500 tracking-widest">No data for this filter</p>
+          </div>
+        ) : (
+          <div className="flex items-center justify-center py-40"><RefreshCw className="animate-spin text-zinc-700" /></div>
+        )}
+      </div>
     </div>
   );
 }

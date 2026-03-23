@@ -1,145 +1,151 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useEffect } from 'react';
 import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Settings2, ChevronUp, ChevronDown, ChevronsUpDown, Search } from "lucide-react";
+  ColumnDef,
+  flexRender,
+  getCoreRowModel,
+  getSortedRowModel,
+  useReactTable,
+  SortingState,
+  ColumnOrderState,
+  VisibilityState,
+} from '@tanstack/react-table';
+import { Loader2 } from 'lucide-react';
 
-const getNestedValue = (obj: any, path: string) => {
-  return path.split('.').reduce((acc, part) => acc && acc[part], obj);
-};
+interface FlexibleDataTableProps<TData, TValue> {
+  columns: ColumnDef<TData, TValue>[];
+  data: TData[];
+  isLoading?: boolean;
+  tableId: string;
+  onTableInstance?: (table: any) => void;
+}
 
-export function FlexibleDataTable({
-  data = [],
-  columns = [],
-  isLoading = false,
+export function FlexibleDataTable<TData, TValue>({
+  columns,
+  data,
+  isLoading,
   tableId,
-  defaultVisibleColumns = [],
-  searchPlaceholder = "Search...",
-  emptyMessage = "No props found for this date",
-}: any) {
-  
-  const [visibleColumns, setVisibleColumns] = useState<string[]>([]);
+  onTableInstance,
+}: FlexibleDataTableProps<TData, TValue>) {
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>([]);
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
 
+  // ── PERSISTENCE LOAD ──
   useEffect(() => {
-    // 1. Get saved state
-    const saved = tableId ? localStorage.getItem(`table-cols-${tableId}`) : null;
-    const initial = saved ? JSON.parse(saved) : columns.map((c: any) => c.accessorKey);
-
-    // 2. Only update if state is empty (prevents the loop)
-    if (visibleColumns.length === 0) {
-      setVisibleColumns(initial);
+    const saved = localStorage.getItem(`table-prefs-${tableId}`);
+    if (saved) {
+      try {
+        const { order, visibility } = JSON.parse(saved);
+        if (order) setColumnOrder(order);
+        if (visibility) setColumnVisibility(visibility);
+      } catch (e) {
+        console.error("Failed to load table prefs", e);
+      }
+    } else {
+      // Default order if none exists
+      setColumnOrder(columns.map(c => c.id as string));
     }
   }, [tableId, columns]);
 
-  const [searchTerm, setSearchTerm] = useState("");
-  const [sortConfig, setSortConfig] = useState<{key: string, direction: 'asc'|'desc'} | null>(null);
+  // ── PERSISTENCE SAVE HELPER ──
+  const savePrefs = (order: ColumnOrderState, visibility: VisibilityState) => {
+    localStorage.setItem(`table-prefs-${tableId}`, JSON.stringify({ order, visibility }));
+  };
 
-  const processedData = useMemo(() => {
-    if (!data || !Array.isArray(data)) return [];
-    let filtered = [...data];
+  const table = useReactTable({
+    data,
+    columns,
+    state: { sorting, columnOrder, columnVisibility },
+    onSortingChange: setSorting,
+    onColumnOrderChange: (updater) => {
+      const next = typeof updater === 'function' ? updater(columnOrder) : updater;
+      setColumnOrder(next);
+      savePrefs(next, columnVisibility);
+    },
+    onColumnVisibilityChange: (updater) => {
+      const next = typeof updater === 'function' ? updater(columnVisibility) : updater;
+      setColumnVisibility(next);
+      savePrefs(columnOrder, next);
+    },
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    enableColumnReorder: true,
+  });
 
-    if (searchTerm) {
-      const lowerSearch = searchTerm.toLowerCase();
-      filtered = filtered.filter((row) => 
-        columns.some((col: any) => {
-          const val = getNestedValue(row, col.accessorKey);
-          return val?.toString().toLowerCase().includes(lowerSearch);
-        })
-      );
-    }
-
-    if (sortConfig) {
-      filtered.sort((a, b) => {
-        const aVal = getNestedValue(a, sortConfig.key);
-        const bVal = getNestedValue(b, sortConfig.key);
-        if (aVal === bVal) return 0;
-        const result = aVal > bVal ? 1 : -1;
-        return sortConfig.direction === 'asc' ? result : -result;
-      });
-    }
-
-    return filtered;
-  }, [data, searchTerm, sortConfig, columns]);
-
-  if (isLoading) return <div className="p-20 text-center animate-pulse text-slate-500 uppercase text-[10px] font-black tracking-widest">Loading Market Data...</div>;
-  
-  if (!data || data.length === 0) {
-    return <div className="p-20 text-center text-slate-600 font-black uppercase text-[10px] tracking-widest bg-[#0d0d0d] rounded-xl border border-white/5">{emptyMessage}</div>;
-  }
+  // Provide instance to parent (for ColumnToggle)
+  useEffect(() => {
+    if (onTableInstance) onTableInstance(table);
+  }, [table.getState().columnVisibility, onTableInstance]); // Re-sync when visibility changes
 
   return (
-    <div className="w-full space-y-4">
-      <div className="flex items-center justify-between bg-[#0a0a0a] p-4 rounded-t-xl border border-white/5">
-        <div className="relative w-full max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600" size={14} />
-          <Input 
-            placeholder={searchPlaceholder} 
-            value={searchTerm} 
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-9 bg-black border-white/10 text-white text-xs h-9"
-          />
-        </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="border-white/10 text-white text-[10px] font-bold uppercase tracking-wider">
-              <Settings2 className="w-3.5 h-3.5 mr-2" /> Columns
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="bg-[#111] border-white/10 text-white text-xs">
-            {columns.map((col: any) => (
-              <DropdownMenuCheckboxItem
-                key={col.accessorKey}
-                checked={visibleColumns.includes(col.accessorKey)}
-                onCheckedChange={(checked) => {
-                  const next = checked 
-                    ? [...visibleColumns, col.accessorKey] 
-                    : visibleColumns.filter(k => k !== col.accessorKey);
-                  setVisibleColumns(next);
-                  if (tableId) localStorage.setItem(`table-cols-${tableId}`, JSON.stringify(next));
-                }}
-              >
-                {col.header}
-              </DropdownMenuCheckboxItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-
-      <div className="overflow-x-auto rounded-b-xl border border-white/5 bg-[#0d0d0d]">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="bg-white/2">
-              {columns.filter((c: any) => visibleColumns.includes(c.accessorKey)).map((col: any) => (
-                <th 
-                  key={col.accessorKey}
-                  className="px-6 py-4 text-[9px] font-black tracking-[0.2em] text-slate-500 uppercase cursor-pointer hover:text-slate-300"
-                  onClick={() => setSortConfig(prev => ({ key: col.accessorKey, direction: prev?.direction === 'asc' ? 'desc' : 'asc' }))}
+    <div className="w-full overflow-x-auto custom-scrollbar bg-[#121212] rounded-b-[24px]">
+      <table className="w-full text-left border-collapse border-spacing-0">
+        <thead>
+          {table.getHeaderGroups().map((headerGroup) => (
+            <tr key={headerGroup.id} className="bg-zinc-900/80 border-b border-white/5">
+              {headerGroup.headers.map((header) => (
+                <th
+                  key={header.id}
+                  className="px-4 py-4 text-[10px] font-black uppercase tracking-widest text-zinc-500 hover:text-indigo-400 transition-colors cursor-move select-none"
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData('colId', header.column.id);
+                    e.dataTransfer.effectAllowed = "move";
+                  }}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    const draggedId = e.dataTransfer.getData('colId');
+                    const targetId = header.column.id;
+                    if (draggedId !== targetId) {
+                      const currentOrder = table.getState().columnOrder;
+                      const newOrder = [...currentOrder];
+                      const oldIdx = newOrder.indexOf(draggedId);
+                      const newIdx = newOrder.indexOf(targetId);
+                      
+                      newOrder.splice(oldIdx, 1);
+                      newOrder.splice(newIdx, 0, draggedId);
+                      
+                      setColumnOrder(newOrder); // Update local state
+                      savePrefs(newOrder, columnVisibility); // Persist immediately
+                    }
+                  }}
                 >
-                  {col.header}
+                  {header.isPlaceholder
+                    ? null
+                    : flexRender(header.column.columnDef.header, header.getContext())}
                 </th>
               ))}
             </tr>
-          </thead>
-          <tbody className="divide-y divide-white/3">
-            {processedData.map((row, i) => (
-              <tr key={row.id || i} className="hover:bg-white/1 transition-colors">
-                {columns.filter((c: any) => visibleColumns.includes(c.accessorKey)).map((col: any) => (
-                  <td key={col.accessorKey} className="px-6 py-4 text-xs text-slate-300">
-                    {col.cell ? col.cell(getNestedValue(row, col.accessorKey), row) : (getNestedValue(row, col.accessorKey) ?? '—')}
+          ))}
+        </thead>
+        <tbody className="divide-y divide-white/5 bg-zinc-900/20">
+          {isLoading && data.length === 0 ? (
+            <tr>
+              <td colSpan={table.getVisibleFlatColumns().length} className="h-64 text-center">
+                <Loader2 className="animate-spin h-8 w-8 mx-auto text-indigo-500 opacity-50" />
+              </td>
+            </tr>
+          ) : data.length === 0 ? (
+            <tr>
+              <td colSpan={table.getVisibleFlatColumns().length} className="h-32 text-center text-zinc-600 text-[10px] font-black uppercase tracking-widest">
+                No matching historical data found
+              </td>
+            </tr>
+          ) : (
+            table.getRowModel().rows.map((row) => (
+              <tr key={row.id} className="hover:bg-white/[0.03] transition-colors group">
+                {row.getVisibleCells().map((cell) => (
+                  <td key={cell.id} className="px-4 py-3.5 text-xs text-zinc-300 font-medium whitespace-nowrap">
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
                 ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            ))
+          )}
+        </tbody>
+      </table>
     </div>
   );
 }

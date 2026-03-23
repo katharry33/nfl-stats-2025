@@ -17,9 +17,12 @@ const config: Config = {
         primary: "#22d3ee", // Example cyan-400
         loss: "#ef4444",
         profit: "#10b981",
+          nba: '#f97316', // Orange
+          nfl: '#22c55e', // Green
       },
     },
   },
   plugins: [],
+  
 };
 export default config;

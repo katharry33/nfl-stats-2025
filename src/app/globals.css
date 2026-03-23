@@ -1,118 +1,113 @@
 @import "tailwindcss";
 @plugin "tailwindcss-animate";
 
-/* 
-  Tailwind v4's @import "tailwindcss" includes base, components, and utilities.
-  The old @tailwind directives are no longer needed.
+/* Tailwind v4 @theme block. 
+  Note: Variables defined here are automatically available as utility classes.
 */
-
 @theme {
-  /* ── Base palette ──────────────────────────────────────────────────────── */
-  --background:    #13151c;   /* warm charcoal — not black, not grey */
-  --surface:       #1a1d27;   /* card / panel surface                */
-  --surface-raised:#1f2230;   /* elevated cards                      */
-  --foreground:    #f0f2f8;
-  --muted:         #8892a4;
-  --subtle:        #3a3f52;
+  /* ── Base palette (Neutral Charcoal & Mid-Grey) ────────────────────────── */
+  --color-background: #121212;      /* Deep Charcoal base */
+  --color-surface: #1e1e1e;         /* Mid-Grey panels */
+  --color-surface-raised: #242424;  /* Elevated Mid-Grey */
+  --color-foreground: #e2e8f0;      /* Slate-200 for text */
+  --color-muted: #71717a;           /* Zinc-400 */
+  --color-subtle: #3f3f46;          /* Zinc-700 */
 
   /* ── Semantic borders ─────────────────────────────────────────────────── */
-  --border:        rgba(255,255,255,0.07);
-  --border-strong: rgba(255,255,255,0.14);
+  --color-border: rgba(255, 255, 255, 0.06);
+  --color-border-strong: rgba(255, 255, 255, 0.12);
 
-  /* ── Primary / UI accent (teal) ───────────────────────────────────────── */
-  --primary:       #2dd4bf;   /* teal-400                            */
-  --primary-dim:   #0f766e;   /* teal-700 — used for hover/bg tints  */
-  --primary-bg:    rgba(45,212,191,0.08);
-  --primary-border:rgba(45,212,191,0.18);
+  /* ── Primary / UI accent (Indigo/Teal blend for neutral look) ─────────── */
+  --color-primary: #6366f1;         /* Indigo-500 */
+  --color-primary-dim: #4338ca;     /* Indigo-700 */
+  --color-primary-bg: rgba(99, 102, 241, 0.08);
+  --color-primary-border: rgba(99, 102, 241, 0.2);
 
   /* ── Sport accents ────────────────────────────────────────────────────── */
-  /* NFL: forest green — deep, not neon */
-  --nfl:           #22c55e;   /* green-500                           */
-  --nfl-dim:       #15803d;   /* green-700                           */
-  --nfl-bg:        rgba(34,197,94,0.08);
-  --nfl-border:    rgba(34,197,94,0.18);
+  /* NFL: Forest Green */
+  --color-nfl: #22c55e;
+  --color-nfl-dim: #15803d;
+  --color-nfl-bg: rgba(34, 197, 94, 0.08);
+  --color-nfl-border: rgba(34, 197, 94, 0.18);
 
-  /* NBA: basketball — warm amber-orange, not neon */
-  --nba:           #f97316;   /* orange-500                          */
-  --nba-dim:       #c2410c;   /* orange-700                          */
-  --nba-bg:        rgba(249,115,22,0.08);
-  --nba-border:    rgba(249,115,22,0.18);
+  /* NBA: Basketball Orange */
+  --color-nba: #f97316;
+  --color-nba-dim: #c2410c;
+  --color-nba-bg: rgba(249, 115, 22, 0.08);
+  --color-nba-border: rgba(249, 115, 22, 0.18);
 
   /* ── Profit / Loss ────────────────────────────────────────────────────── */
-  --profit:        #4ade80;
-  --loss:          #f87171;
-  --push:          #94a3b8;
+  --color-profit: #4ade80;
+  --color-loss: #f87171;
+  --color-push: #94a3b8;
 
-  /* ── Legacy aliases (to be phased out) ────────────────────────────────── */
-  --card:          var(--surface);
-  --color-edge:    #0ea5e9;
-  
-  /* Aliases from old @theme block */
-  --color-background:    var(--background);
-  --color-surface:       var(--surface);
-  --color-surface-raised:var(--surface-raised);
-  --color-foreground:    var(--foreground);
-  --color-muted:         var(--muted);
-  --color-subtle:        var(--subtle);
-  --color-card:          var(--surface);
-  --color-primary:       var(--primary);
-  --color-primary-dim:   var(--primary-dim);
-  --color-nfl:           var(--nfl);
-  --color-nfl-dim:       var(--nfl-dim);
-  --color-nba:           var(--nba);
-  --color-nba-dim:       var(--nba-dim);
-  --color-profit:        var(--profit);
-  --color-loss:          var(--loss);
-  --color-border:        var(--border);
-  
+  /* ── Animation ────────────────────────────────────────────────────────── */
   --animate-shimmer: shimmer 2s infinite;
+
   @keyframes shimmer {
-    100% { transform: translateX(100%); }
+    100% {
+      transform: translateX(100%);
+    }
   }
 }
 
-/* Base styles, previously in @layer base */
-* {
-  @apply border-border;
-}
-body {
-  background-color: var(--background);
-  color: var(--foreground);
-  @apply antialiased min-h-screen;
+/* ── Base Styles ────────────────────────────────────────────────────────── */
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    @apply antialiased min-h-screen selection:bg-primary/30;
+  }
 }
 
-/* Utility classes, previously in @layer utilities */
-.text-glow-primary {
-  text-shadow: 0 0 20px rgba(45,212,191,0.35);
-}
-.text-glow-nfl {
-  text-shadow: 0 0 20px rgba(34,197,94,0.35);
-}
-.text-glow-nba {
-  text-shadow: 0 0 20px rgba(249,115,22,0.35);
-}
-/* Legacy alias */
-.text-glow {
-  text-shadow: 0 0 15px rgba(45,212,191,0.3);
-}
-.bg-grid {
-  background-image: radial-gradient(circle at 2px 2px, rgba(255,255,255,0.025) 1px, transparent 0);
-  background-size: 28px 28px;
-}
-.surface {
-  background-color: var(--surface);
-  border: 1px solid var(--border);
-}
-.surface-raised {
-  background-color: var(--surface-raised);
-  border: 1px solid var(--border);
-}
-.custom-scrollbar {
-  &::-webkit-scrollbar { width: 4px; height: 4px; }
-  &::-webkit-scrollbar-track { background: transparent; }
-  &::-webkit-scrollbar-thumb {
-    background: rgba(255,255,255,0.08);
-    border-radius: 10px;
+/* ── Custom Utilities ───────────────────────────────────────────────────── */
+@layer utilities {
+  .text-glow-primary {
+    text-shadow: 0 0 20px rgba(99, 102, 241, 0.35);
   }
-  &::-webkit-scrollbar-thumb:hover { background: var(--primary); }
+  .text-glow-nfl {
+    text-shadow: 0 0 20px rgba(34, 197, 94, 0.35);
+  }
+  .text-glow-nba {
+    text-shadow: 0 0 20px rgba(249, 115, 22, 0.35);
+  }
+  
+  .bg-grid {
+    background-image: radial-gradient(
+      circle at 2px 2px,
+      rgba(255, 255, 255, 0.015) 1px,
+      transparent 0
+    );
+    background-size: 32px 32px;
+  }
+
+  .surface {
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border);
+  }
+
+  .surface-raised {
+    background-color: var(--color-surface-raised);
+    border: 1px solid var(--color-border-strong);
+  }
+
+  .custom-scrollbar {
+    &::-webkit-scrollbar {
+      width: 5px;
+      height: 5px;
+    }
+    &::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    &::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+    }
+    &::-webkit-scrollbar-thumb:hover {
+      background: var(--color-muted);
+    }
+  }
 }

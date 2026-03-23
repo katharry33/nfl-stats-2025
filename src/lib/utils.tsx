@@ -6,6 +6,10 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+export function normalizeMatchup(matchup: string): string {
+  if (!matchup) return "";
+  return matchup.toUpperCase().replace(/\s+/g, "");
+}
 export const fmt = (val: any) => {
   if (val == null || isNaN(val)) return '—';
   return Number(val).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });

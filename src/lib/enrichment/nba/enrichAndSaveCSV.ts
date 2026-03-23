@@ -6,10 +6,13 @@ import { normalizeNBAProp } from './normalize-nba';
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-export async function enrichAndSaveCSVProps(props: any[], season: number) {
+// ADDED: Pass 'date' as an optional 3rd argument
+export async function enrichAndSaveCSVProps(props: any[], season: number | string, passedDate?: string) {
   const colName = `nbaProps_${season}`;
   const results = { success: 0, skipped: 0, errors: [] as string[] };
-  const dateStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+  
+  // FIXED: Use the passedDate if available, otherwise fallback to NY time
+  const dateStr = passedDate || new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
 
   // 1. PRE-FETCH ID MAP
   const idMapSnap = await db.collection('static_brIdMap').get();
@@ -19,7 +22,7 @@ export async function enrichAndSaveCSVProps(props: any[], season: number) {
     if (data?.player) nameToIdMap.set(data.player.toLowerCase().trim(), doc.id);
   });
 
-  const defMap = await fetchAllNBADefenseStats(season);
+  const defMap = await fetchAllNBADefenseStats(Number(season));
 
   for (const raw of props) {
     try {
@@ -27,12 +30,11 @@ export async function enrichAndSaveCSVProps(props: any[], season: number) {
       const playerName = raw.player.trim();
       const propNorm = normalizeNBAProp(raw.prop);
       
-      // UNIQUE DOC ID
+      // UNIQUE DOC ID - Stays consistent with the date used for filtering
       const docId = `${playerName}_${propNorm}_${dateStr}`.replace(/\s+/g, '_');
       const docRef = db.collection(colName).doc(docId);
 
       // --- SMART RESUME CHECK ---
-      // Check if this specific prop for this player on this date is already done
       const existing = await docRef.get();
       if (existing.exists && existing.data()?.math) {
         console.log(`⏩ Skipping ${playerName} (${propNorm}): Already Enriched.`);
@@ -40,19 +42,18 @@ export async function enrichAndSaveCSVProps(props: any[], season: number) {
         continue; 
       }
 
-      // 2. ID LOOKUP / GUESS
+      // 2. ID LOOKUP
       let brid = nameToIdMap.get(playerName.toLowerCase()) || 
                  `${playerName.split(' ').pop()?.toLowerCase().substring(0, 5)}${playerName.toLowerCase().substring(0, 2)}01`;
 
-      // 3. RATE LIMIT PROTECTION (2 seconds)
-      // We only sleep if we actually need to hit the scraper!
+      // 3. RATE LIMIT PROTECTION (2 seconds per player)
       await sleep(2000); 
 
       // 4. FETCH LOGS
-      const gameLog = await fetchNBASeasonLog(playerName, brid, season);
+      const gameLog = await fetchNBASeasonLog(playerName, brid, Number(season));
       
       if (!gameLog || gameLog.length === 0) {
-        results.errors.push(`${playerName}: 403 or No Logs.`);
+        results.errors.push(`${playerName}: No Logs Found.`);
         results.skipped++;
         continue;
       }
@@ -67,19 +68,20 @@ export async function enrichAndSaveCSVProps(props: any[], season: number) {
 
       const defStats = lookupNBADefenseStats(defMap, propNorm, opponent);
       const seasonAvg = gameLog.reduce((acc, g) => acc + (getNBAStatFromGame(g, propNorm) || 0), 0) / gameLog.length;
-      const hitPct = calculateNBAHitPct(gameLog, propNorm, line, raw.overUnder || 'Over', 999)
+      const hitPct = calculateNBAHitPct(gameLog, propNorm, line, raw.overUnder || 'Over', 999);
       
       const math = computeScoring({
         playerAvg: seasonAvg,
         opponentRank: defStats?.rank ?? 15,
         opponentAvgVsStat: defStats?.avg ?? seasonAvg,
         line,
-        seasonHitPct: hitPct ? hitPct / 100: 0,
+        seasonHitPct: hitPct ? hitPct / 100 : 0,
         odds,
         propNorm
       }, 'nba');
 
       // 6. IMMEDIATE SAVE
+      // CRITICAL: Ensure 'date' field exists for your Firestore Index/Query
       await docRef.set({
         ...raw,
         brid,
@@ -87,7 +89,8 @@ export async function enrichAndSaveCSVProps(props: any[], season: number) {
         odds,
         line,
         ...math,
-        gameDate: dateStr,
+        date: dateStr,      // Matches the 'date' filter in your usePropsQuery
+        gameDate: dateStr,  // Keep for legacy compatibility
         updatedAt: new Date().toISOString()
       }, { merge: true });
 
@@ -98,7 +101,7 @@ export async function enrichAndSaveCSVProps(props: any[], season: number) {
       }
 
       results.success++;
-      console.log(`✅ Processed & Saved: ${playerName} (${propNorm})`);
+      console.log(`✅ Processed: ${playerName} (${propNorm}) for ${dateStr}`);
 
     } catch (e: any) {
       results.errors.push(`Error on ${raw.player}: ${e.message}`);
