@@ -74,7 +74,6 @@ async function loadIdMaps() {
 }
 
 // ─── 4. MAIN HANDLER ────────────────────────────────────────────────────────
-// ... (Your imports and constants stay the same)
 
 export async function GET(req: NextRequest) {
   if (!ODDS_API_KEY) return NextResponse.json({ error: 'Missing API Key' }, { status: 500 });
@@ -88,51 +87,60 @@ export async function GET(req: NextRequest) {
     const { bdlIdMap, brIdMap, playerTeamMap } = await loadIdMaps();
     const accumulator = new Map<string, Accumulator>();
 
-    // We fetch two batches because The Odds API limits the number of markets per request
     const batches = [MARKETS_BATCH_1, MARKETS_BATCH_2];
 
     for (const markets of batches) {
       const url = `${ODDS_BASE}/sports/basketball_nba/event-odds?apiKey=${ODDS_API_KEY}&regions=${REGION}&markets=${markets}&oddsFormat=${ODDS_FORMAT}`;
-      const res = await fetch(url);
-      if (!res.ok) continue;
+      const response = await fetch(url);
 
-      const events = await res.json();
+      if (response.status === 404) {
+        return NextResponse.json({ 
+          success: false, 
+          error: "The Odds API has no player props listed for this date yet. Try again closer to game time." 
+        }, { status: 404 });
+      }
+
+      if (!response.ok) continue;
+
+      const events = await response.json();
 
       for (const event of events) {
-        // Filter for games matching our target date
-        const eventDate = event.commence_time.split('T')[0];
-        if (eventDate !== dateParam) continue;
+        // ─── THE UTC-TO-EST FIX ──────────────────────────────────────────────────
+        const commenceTime = new Date(event.commence_time);
+        const gameDayEST = commenceTime.toLocaleDateString('en-CA', {
+          timeZone: 'America/New_York'
+        });
+        if (gameDayEST !== dateParam) continue; 
+        // ─────────────────────────────────────────────────────────────────────────
 
         const homeTeam = normalizeTeamName(event.home_team);
         const awayTeam = normalizeTeamName(event.away_team);
 
         for (const market of (event.bookmakers || [])) {
-          const bookKey = market.key; // e.g., 'fanduel', 'draftkings'
+          const bookKey = market.key;
           
           for (const m of (market.markets || [])) {
             const propNorm = normalizePropKey(m.key);
             
             for (const outcome of (m.outcomes || [])) {
               const playerName = outcome.description;
-              const overUnder = outcome.name; // 'Over' or 'Under'
-              const line = outcome.point;
-              const odds = outcome.price;
+              const overUnder = outcome.name;
+              
+              const line = Number(outcome.point) || 0;
+              const odds = Number(outcome.price) || -110;
 
-              // Unique key for the prop: Player + Prop + Line + OU + Date
-              const key = `${playerName}-${propNorm}-${line}-${overUnder}-${eventDate}`.toLowerCase();
+              const key = `${playerName}-${propNorm}-${line}-${overUnder}-${gameDayEST}`.toLowerCase();
               
               const existing = accumulator.get(key) || {
                 playerName, propNorm, line, overUnder,
-                homeTeam, awayTeam, gameDate: eventDate, eventId: event.id,
+                homeTeam, awayTeam, gameDate: gameDayEST, eventId: event.id,
                 bestOdds: -999, bestBook: '',
                 fdOdds: null, dkOdds: null
               };
 
-              // Update book-specific odds
               if (bookKey === 'fanduel') existing.fdOdds = odds;
               if (bookKey === 'draftkings') existing.dkOdds = odds;
 
-              // Update Best Odds (Highest American Value)
               if (odds > existing.bestOdds) {
                 existing.bestOdds = odds;
                 existing.bestBook = bookKey;
@@ -145,7 +153,6 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // --- Batch Write to Firestore ---
     const updates = Array.from(accumulator.values());
     let ingested = 0;
     let batch = db.batch();

@@ -10,7 +10,7 @@
 
 import 'dotenv/config';
 import { db } from '@/lib/firebase/admin';
-import { enrichPropsForWeek, enrichAllPropsCollection } from '@/lib/enrichment/enrichProps';
+import { enrichPropsForWeek, enrichAllPropsCollection } from '@/lib/enrichment/nfl/enrichProps';
 
 async function main() {
   if (!db) throw new Error('Firestore DB not initialized. Check your ENV variables.');

@@ -46,6 +46,9 @@ export interface NormalizedProp {
   type?:             string;
   price?:            number;
   lastUpdated?:      string;
+  // ADD THESE:
+  updatedAt?: string;
+  enrichedAt?: string;
 }
 
 interface UseAllPropsOptions {

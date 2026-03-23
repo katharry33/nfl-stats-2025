@@ -1,15 +1,15 @@
-// src/lib/firebase/admin.ts
-import * as admin from 'firebase-admin';
+import { initializeApp, getApps, cert, ServiceAccount } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
 
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\n/g, '\n'),
-    }),
+const serviceAccount = JSON.parse(
+  process.env.FIREBASE_SERVICE_ACCOUNT_KEY as string
+) as ServiceAccount;
+
+if (!getApps().length) {
+  initializeApp({
+    credential: cert(serviceAccount),
   });
 }
 
-// Ensure this export name matches what you are calling in your routes
-export const adminDb = admin.firestore();
+// This is the specific export the other files are looking for
+export const db = getFirestore();

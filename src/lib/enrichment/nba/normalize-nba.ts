@@ -19,6 +19,21 @@ const NBA_PROP_ALIASES: Record<string, string> = {
   'pts+ast+reb': 'pts_ast_reb', 'stl+blk': 'stl_blk'
 };
 
+const NBA_PROP_MAP: Record<string, string> = {
+  "Points": "Points",
+  "Pts + Re": "PointsRebounds",
+  "Pts + As": "PointsAssists",
+  "Pts + Re + As": "PointsReboundsAssists",
+  "Rebounds": "Rebounds",
+  "Assists": "Assists",
+  "Threes": "ThreePointers",
+  "Steals": "Steals",
+  "Blocks": "Blocks",
+  "Turnovers": "Turnovers",
+  "As + Reb": "AssistsRebounds",
+  "Stl + Blk": "StealsBlocks"
+};
+
 export function normalizeNBAProp(raw: string): string {
   const lower = raw.toLowerCase().trim();
   // Check direct alias

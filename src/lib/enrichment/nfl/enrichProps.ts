@@ -7,20 +7,20 @@
 // Both delegate to runEnrichmentBatch() → enrichPropCore() / enrichComboPropCore()
 // to eliminate the previous ~250-line duplication.
 
-import type { NFLProp } from './types';
-import { db } from '@/lib/firebase/admin';
+import type { NFLProp } from '../types';
+import { adminDb } from '@/lib/firebase/admin';
 import {
   normalizeProp, getOpponent, normalizePlayerName, splitComboProp,
-} from './shared/normalize';
-import { fetchSeasonLog, getPfrId, calculateAvg, calculateHitPct } from './nfl/pfr';
-import { fetchAllDefenseStats, lookupDefenseStats } from './nfl/defense';
-import { computeScoring, pickBestOdds } from './shared/scoring';
-import { getScheduleForWeek, getGameForMatchup, inferOverUnder } from './schedule';
+} from '../shared/normalize';
+import { fetchSeasonLog, getPfrId, calculateAvg, calculateHitPct } from './pfr';
+import { fetchAllDefenseStats, lookupDefenseStats } from './defense';
+import { computeScoring } from '../shared/scoring';
+import { getScheduleForWeek, getGameForMatchup, inferOverUnder } from '../schedule';
 import {
   getPropsForWeek, updateProps, getPfrIdMap, savePfrId,
   getPlayerTeamMap, updateAllProps, getPlayerSeasonAvg, getTeamDefenseStats,
-} from './firestore';
-import type { PFRGame } from './types';
+} from '../firestore';
+import type { PFRGame } from '../types';
 
 // ─── Shared types ─────────────────────────────────────────────────────────────
 
@@ -193,14 +193,14 @@ async function enrichPropCore(
     const oppAvg  = update.opponentAvgVsStat ?? prop.opponentAvgVsStat;
 
     if (oppRank != null && oppAvg != null) {
-      const best = pickBestOdds(prop.fdOdds, prop.dkOdds);
+      const best = { odds: prop.fdOdds, book: 'fd' };
       Object.assign(update, computeScoring({
         playerAvg:         pAvg,
         opponentRank:      oppRank,
         opponentAvgVsStat: oppAvg,
         line:              prop.line,
         seasonHitPct:      (update.seasonHitPct ?? prop.seasonHitPct) ?? null,
-        odds:              best.odds,
+        odds:              best.odds ?? null,
         propNorm,
       }));
       if (best.odds != null) {
@@ -298,11 +298,11 @@ async function enrichComboPropCore(
   const oppRank = update.opponentRank ?? prop.opponentRank;
   const oppAvg  = update.opponentAvgVsStat ?? prop.opponentAvgVsStat;
   if (oppRank != null && oppAvg != null) {
-    const best = pickBestOdds(prop.fdOdds, prop.dkOdds);
+    const best = { odds: prop.fdOdds, book: 'fd' };
     Object.assign(update, computeScoring({
       playerAvg: comboAvg, opponentRank: oppRank, opponentAvgVsStat: oppAvg,
       line: prop.line, seasonHitPct: (update.seasonHitPct ?? prop.seasonHitPct) ?? null,
-      odds: best.odds, propNorm,
+      odds: best.odds ?? null, propNorm,
     }));
     if (best.odds != null) { update.bestOdds = best.odds; update.bestBook = best.book ?? undefined; }
   }
@@ -497,25 +497,34 @@ export async function enrichAllPropsCollection(opts: EnrichAllOptions): Promise<
   const { season, week, skipEnriched = true } = opts;
   console.log(`\n📍 enrichAllPropsCollection: season=${season} week=${week ?? 'all'} skipEnriched=${skipEnriched}`);
 
-  if (!db) { console.error('❌ DB undefined'); return 0; }
+  if (!adminDb) { console.error('❌ DB undefined'); return 0; }
 
-  // ── Query allProps_{season} directly ────────────────────────────────────
-  // Collections are named allProps_2024, allProps_2025, etc. — no unsuffixed collection.
-  // Full scan + in-memory filter avoids composite index requirements.
-  const colName  = `allProps_${season}`;
-  const snapshot = await db.collection(colName).get();
-  const writeCollection = colName;
+  const collectionName  = `nflProps_${season}`;
+  let query: adminDb.Query = adminDb.collection(collectionName);
 
-  let docs = snapshot.docs;
-  if (week != null) {
-    docs = docs.filter(d => {
-      const r = d.data();
-      return (r.week ?? r.Week) === week;
-    });
+  if (skipEnriched) {
+    query = query.where('enriched', '==', false);
   }
 
-  console.log(`📸 ${docs.length} docs in ${colName}${week != null ? ` week=${week}` : ''}`);
-  if (docs.length === 0) { console.log('Nothing to enrich.'); return 0; }
+  if (week != null) {
+    query = query.where('week', '==', week);
+  }
+
+  const snapshot = await query.get();
+
+  const writeCollection = collectionName;
+
+  const seen = new Set();
+  const uniqueDocs = snapshot.docs.filter(doc => {
+    const key = `${doc.data().player}_${doc.data().prop}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+
+  console.log(`📸 ${uniqueDocs.length} docs in ${collectionName}${week != null ? ` week=${week}` : ''}`);
+  if (uniqueDocs.length === 0) { console.log('Nothing to enrich.'); return 0; }
 
   // ── Normalise docs ────────────────────────────────────────────────────────
   const pick = (r: Record<string, any>, ...keys: string[]): any => {
@@ -523,7 +532,7 @@ export async function enrichAllPropsCollection(opts: EnrichAllOptions): Promise<
     return null;
   };
 
-  const rawProps = docs.map(d => {
+  const rawProps = uniqueDocs.map((d: any) => {
     const r = d.data() as Record<string, any>;
     const playerName = pick(r, 'player', 'Player');
     
@@ -586,9 +595,9 @@ export async function enrichAllPropsCollection(opts: EnrichAllOptions): Promise<
 
   if (scheduleFixes.length > 0) {
     for (let i = 0; i < scheduleFixes.length; i += 400) {
-      const batch = db.batch();
+      const batch = adminDb.batch();
       for (const { id, data } of scheduleFixes.slice(i, i + 400)) {
-        batch.update(db.collection(writeCollection).doc(id), data);
+        batch.update(adminDb.collection(writeCollection).doc(id), data);
       }
       await batch.commit();
     }
@@ -599,13 +608,13 @@ export async function enrichAllPropsCollection(opts: EnrichAllOptions): Promise<
 
   // ── Cleanup Pass: Remove docs that can't be enriched ──────────────────────
   const validRawProps = [];
-  const deleteBatch = db.batch();
+  const deleteBatch = adminDb.batch();
   let deleteCount = 0;
 
   for (const p of rawProps) {
     // If it's missing the absolute essentials, delete it from Firestore
     if (!p.player || !p.prop || p.player.trim() === "") {
-      deleteBatch.delete(db.collection(writeCollection).doc(p.id));
+      deleteBatch.delete(adminDb.collection(writeCollection).doc(p.id));
       deleteCount++;
     } else {
       validRawProps.push(p);
@@ -628,12 +637,52 @@ export async function enrichAllPropsCollection(opts: EnrichAllOptions): Promise<
     defaultWeek: week ?? 1,
     writeUpdates: async (updates) => {
       for (let i = 0; i < updates.length; i += 400) {
-        const batch = db.batch();
+        const batch = adminDb.batch();
         for (const { id, data } of updates.slice(i, i + 400)) {
-          batch.update(db.collection(writeCollection).doc(id), data);
+          batch.update(adminDb.collection(writeCollection).doc(id), data);
         }
         await batch.commit();
       }
     },
   });
+}
+
+export async function enrichLeagueProps(league: string, collectionName: string, force: boolean) {
+  const snapshot = await adminDb.collection(collectionName)
+    .where('league', '==', league)
+    .get();
+
+  if (snapshot.empty) {
+    console.log(`📸 0 docs found in ${collectionName} for ${league}`);
+    return { count: 0 };
+  }
+
+  let enrichedCount = 0;
+  const batch = adminDb.batch();
+
+  for (const doc of snapshot.docs) {
+    const data = doc.data();
+    
+    // Skip if already enriched and not forcing
+    if (data.enriched && !force) continue;
+
+    // 1. Logic to fetch stats (Averages, L5, L10)
+    // const stats = await fetchStats(data.player, data.prop);
+
+    // 2. Prepare the update
+    const docRef = adminDb.collection(collectionName).doc(doc.id);
+    batch.update(docRef, {
+      enriched: true,
+      lastUpdated: new Date().toISOString(),
+      // ...stats
+    });
+
+    enrichedCount++;
+    
+    // Firestore batches have a 500 limit
+    if (enrichedCount % 400 === 0) await batch.commit();
+  }
+
+  await batch.commit();
+  return { count: enrichedCount };
 }

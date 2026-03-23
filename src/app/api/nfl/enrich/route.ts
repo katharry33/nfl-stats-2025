@@ -1,6 +1,6 @@
 // src/app/api/enrich/route.ts
 import { NextResponse } from 'next/server';
-import { enrichPropsForWeek, enrichAllPropsCollection } from '@/lib/enrichment/enrichProps';
+import { enrichPropsForWeek, enrichAllPropsCollection } from '@/lib/enrichment/nfl/enrichProps';
 
 export async function POST(req: Request) {
   try {

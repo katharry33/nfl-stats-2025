@@ -31,7 +31,7 @@ if (!getApps().length) {
 import { fetchBettingProsProps }   from '@/lib/enrichment/nfl/bettingpros';
 import { saveProps, getPlayerTeamMap, weeklyPropsRef, movePropsToAllProps } from '@/lib/enrichment/firestore';
 import { normalizePlayerName }     from '@/lib/enrichment/shared/normalize';
-import { enrichPropsForWeek }      from '@/lib/enrichment/enrichProps';
+import { enrichPropsForWeek }      from '@/lib/enrichment/nfl/enrichProps';
 import type { NFLProp }            from '@/lib/types';
 
 // ─── CLI args ─────────────────────────────────────────────────────────────────

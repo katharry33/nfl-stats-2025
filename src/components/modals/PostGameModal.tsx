@@ -27,7 +27,7 @@ export function PostGameModal({ isOpen, onClose, gameDate }: PostGameModalProps)
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm 'z-100' flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl">
         <h2 className="text-xl font-bold mb-2">Grade Slate: {gameDate}</h2>
         <p className="text-gray-500 text-sm mb-6">

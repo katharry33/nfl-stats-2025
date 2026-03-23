@@ -4,6 +4,7 @@
 import React, { useState, useMemo } from 'react';
 import { Plus, Minus, ChevronRight, ChevronDown, Settings2 } from 'lucide-react';
 import { NFLProp } from '@/lib/types';
+// import { AddToBetslipButton } from '@/components/bets/add-to-betslip-button';
 
 interface BetBuilderProp extends Omit<NFLProp, 'actualResult'> {
   id: string;
@@ -253,12 +254,10 @@ export default function BetBuilderTable({
                   </thead>
                   <tbody>
                     {playerProps.map((prop, i) => {
-                      const active = prop.id ? isInBetSlip(prop.id) : false;
                       return (
                         <tr
                           key={prop.id || i}
-                          className={`border-t border-white/3 transition-colors ${
-                            active ? 'bg-[#FFD700]/5' : 'hover:bg-white/2'
+                          className={`border-t border-white/3 transition-colors hover:bg-white/2'
                           }`}
                         >
                           {activeCols.map(col => {
@@ -272,19 +271,12 @@ export default function BetBuilderTable({
                             );
                           })}
                           <td className="px-2 py-2.5">
-                            <button
-                              onClick={() => {
-                                if (!prop.id) return;
-                                active ? onRemoveFromBetSlip(prop.id) : onAddToBetSlip(prop);
-                              }}
-                              className={`w-6 h-6 rounded-lg flex items-center justify-center transition-all ${
-                                active
-                                  ? 'bg-[#FFD700] text-black'
-                                  : 'bg-zinc-800 text-zinc-400 hover:bg-[#FFD700] hover:text-black border border-white/10'
-                              }`}
-                            >
-                              {active ? <Minus className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
-                            </button>
+                            <div className="flex items-center gap-2">
+                              {/* <AddToBetslipButton 
+                                prop={prop} 
+                                selection={prop.overUnder} 
+                              /> */}
+                            </div>
                           </td>
                         </tr>
                       );

@@ -16,7 +16,7 @@ async function main() {
   }
 
   console.log('Step 5: importing enrichAllPropsCollection...');
-  const { enrichAllPropsCollection } = await import('@/lib/enrichment/enrichProps');
+  const { enrichAllPropsCollection } = await import('@/lib/enrichment/nfl/enrichProps');
   console.log('Step 6: calling enrichAllPropsCollection...');
   const count = await enrichAllPropsCollection({ season: 2025, week: 2, skipEnriched: false });
   console.log(`Step 7: done — ${count} props updated`);
