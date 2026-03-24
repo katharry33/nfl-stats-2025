@@ -1,151 +1,82 @@
-'use client';
-'use client';
 
-import React from 'react';
 import { ColumnDef } from '@tanstack/react-table';
-import { NormalizedProp } from '@/lib/types';
+import { User, MapPin } from 'lucide-react';
 
-// ─── DIRECT IMPORTS (No index file) ───
-// Adjust these paths if your files are named differently (e.g., result-badge.tsx)
-import { AddToBetslipButton } from '@/components/bets/add-to-betslip-button'; 
-import { ScoreDiff } from '@/components/bets/ScoreDiff'; 
-import { ResultBadge } from '@/components/bets/ResultBadge';
-import { fmt, fmtPct } from '@/lib/utils/formatters'; // Or wherever your formatters live
+export const getVaultColumns = (league: 'nba' | 'nfl'): ColumnDef<any>[] => [
+  {
+    id: 'playerName',
+    accessorKey: 'playerName',
+    header: 'Player',
+    enableSorting: true,
+    enableHiding: false, // Player should always be visible
+    cell: ({ row }) => {
+      const p = row.original;
+      const name = p.playerName || p.player || 'Unknown';
+      
+      // Clean up Matchup (Remove leading hyphens)
+      let matchup = p.matchup || '';
+      if (matchup.startsWith('-')) matchup = matchup.substring(1).trim();
 
-// ⚠️ CRITICAL: If you get "Element type is invalid", check if these should be 
-// import ScoreDiff from ... (default) or import { ScoreDiff } from ... (named)
-
-export const getVaultColumns = (league: 'nba' | 'nfl'): ColumnDef<NormalizedProp>[] => {
-  const columns: ColumnDef<NormalizedProp>[] = [
-    { accessorKey: 'player', header: 'Player', id: 'player' },
-    { accessorKey: 'team', header: 'Team', id: 'team' },
-    { accessorKey: 'matchup', header: 'Matchup', id: 'matchup' },
-    { accessorKey: 'prop', header: 'Prop', id: 'prop' },
-    {
-      id: 'line',
-      header: 'Line',
-      accessorKey: 'line',
-      cell: ({ row }) => {
-        const isOver = row.original.overUnder?.toLowerCase() === 'over';
-        return (
-          <div className="flex flex-col items-start gap-0.5">
-            <span className="font-black text-white text-[11px] tabular-nums">
-              {row.original.line}
-            </span>
-            <div className="flex items-center gap-1.5">
-              <span className={`text-[9px] font-black uppercase tracking-tighter px-1.5 py-0.5 rounded-md border ${isOver 
-                  ? 'bg-emerald-500/5 border-emerald-500/10 text-emerald-400/80' 
-                  : 'bg-rose-400/5 border-rose-400/10 text-rose-300/60'
-              }`}>
-                {isOver ? 'Over' : 'Under'}
-              </span>
-              <span className="text-[9px] font-bold text-zinc-600">
-                @{row.original.odds}
-              </span>
-            </div>
+      return (
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-zinc-900 rounded-lg border border-white/5">
+            <User size={14} className="text-zinc-500" />
           </div>
-        );
-      }
-    },
-    { accessorKey: 'overUnder', header: 'O/U', id: 'overUnder' },
-    { accessorKey: 'odds', header: 'Odds', id: 'odds' },
-    
-    // Enrichment / Analytics
-    { 
-        accessorKey: 'playerAvg', 
-        header: 'Avg', 
-        id: 'playerAvg',
-        cell: ({ getValue }) => fmt(getValue() as number) 
-    },
-    { 
-        accessorKey: 'scoreDiff', 
-        header: 'vs Line', 
-        id: 'scoreDiff',
-        // Safety check: rendering a string if the component is missing
-        cell: ({ getValue }) => {
-            const val = getValue();
-            return ScoreDiff ? <ScoreDiff v={val} /> : <span>{String(val)}</span>;
-        }
-    },
-    { 
-        accessorKey: 'seasonHitPct', 
-        header: 'Hit %', 
-        id: 'hitPct', 
-        cell: ({ getValue }) => fmtPct(getValue() as number) 
-    },
-    { accessorKey: 'opponentRank', header: 'Opp Rank', id: 'oppRank' },
-    
-    // Post-Game
-    { 
-        accessorKey: 'gameStat', 
-        header: 'Actual', 
-        id: 'actual',
-        cell: ({ getValue }) => (
-            <span className="font-mono font-black text-white underline decoration-indigo-500/20 underline-offset-4 tabular-nums">
-                {String(getValue() ?? '—')}
+          <div className="flex flex-col">
+            <span className="text-[11px] font-black uppercase text-white">{name}</span>
+            <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-tight">
+              {matchup}
             </span>
-        )
-    },
-    { 
-        accessorKey: 'actualResult', 
-        header: 'Result', 
-        id: 'result',
-        cell: ({ getValue }) => {
-            const val = getValue();
-            return ResultBadge ? <ResultBadge v={val} /> : <span>{String(val)}</span>;
-        }
-    },
-
-    // Edge & Advanced
-    { accessorKey: 'confidenceScore', header: 'Conf', id: 'confidence' },
-    { 
-        accessorKey: 'expectedValue', 
-        header: 'EV', 
-        id: 'ev', 
-        cell: ({ getValue }) => fmt(getValue() as number) 
-    },
-    { 
-        accessorKey: 'bestEdgePct', 
-        header: 'Edge', 
-        id: 'edge', 
-        cell: ({ getValue }) => fmtPct(getValue() as number) 
-    },
-    { 
-        accessorKey: 'kellyPct', 
-        header: 'Kelly', 
-        id: 'kelly', 
-        cell: ({ getValue }) => fmtPct(getValue() as number) 
-    },
-  ];
-
-  if (league === 'nba') {
-    columns.push(
-      { accessorKey: 'pace', header: 'Pace', id: 'pace' },
-      { accessorKey: 'defRating', header: 'Def Rtg', id: 'defRating' }
-    );
+          </div>
+        </div>
+      );
+    }
+  },
+  {
+    id: 'team',
+    accessorKey: 'team',
+    header: 'Team',
+    enableSorting: true,
+    cell: ({ getValue }) => {
+      const val = getValue() as string;
+      if (!val) return '—';
+      // Fix NBA URL issue: Extract abbreviation from path if it's a URL
+      if (val.includes('http')) {
+        return val.split('/').pop()?.split('.')[0]?.toUpperCase() || val;
+      }
+      return val.toUpperCase();
+    }
+  },
+  {
+    id: 'prop',
+    accessorKey: 'prop',
+    header: 'Prop Type',
+    enableSorting: true,
+  },
+  {
+    id: 'line',
+    accessorKey: 'line',
+    header: 'Line',
+    enableSorting: true,
+    cell: ({ row }) => {
+      // Access safely using optional chaining
+      const lineValue = row?.original?.line;
+      
+      return (
+        <span className="font-mono font-bold text-indigo-400">
+          {lineValue !== undefined && lineValue !== null ? lineValue : '—'}
+        </span>
+      );
+    }
+  },
+  {
+    id: 'actualResult',
+    accessorKey: 'actualResult',
+    header: 'Actual',
+    enableSorting: true,
+    cell: ({ row }) => {
+      const resultValue = row?.original?.actualResult;
+      return resultValue !== undefined && resultValue !== null ? resultValue : '—';
+    }
   }
-
-  if (league === 'nfl') {
-    columns.push(
-      { accessorKey: 'week', header: 'Week', id: 'week' },
-      { accessorKey: 'opponentAvgVsStat', header: 'Opp Avg', id: 'oppAvg' }
-    );
-  }
-
-  columns.push({
-    id: 'actions',
-    header: '',
-    cell: ({ row }) => (
-      <div className="w-[120px] flex justify-end">
-        {AddToBetslipButton ? (
-            <AddToBetslipButton 
-                prop={row.original} 
-                selection={row.original.overUnder || 'Over'} 
-            />
-        ) : null}
-      </div>
-    ),
-  });
-
-  return columns;
-};
+];

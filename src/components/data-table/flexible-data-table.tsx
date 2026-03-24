@@ -49,6 +49,17 @@ export function FlexibleDataTable<TData, TValue>({
     }
   }, [tableId, columns]);
 
+  // Add this useEffect to sync visibility when columns change (like switching NFL -> NBA)
+  useEffect(() => {
+    const initialVisibility: VisibilityState = {};
+    columns.forEach((col: any) => {
+      const id = col.id || col.accessorKey;
+      if (id) initialVisibility[id] = true;
+    });
+    setColumnVisibility(initialVisibility);
+  }, [columns]);
+
+
   const savePrefs = (order: ColumnOrderState, visibility: VisibilityState) => {
     localStorage.setItem(`table-prefs-${tableId}`, JSON.stringify({ order, visibility }));
   };
@@ -86,9 +97,16 @@ export function FlexibleDataTable<TData, TValue>({
               {headerGroup.headers.map((header) => (
                 <th
                   key={header.id}
-                  className="px-4 py-4 text-[10px] font-black uppercase tracking-widest text-zinc-500 select-none"
+                  className="px-4 py-4 text-[10px] font-black uppercase tracking-widest text-zinc-500 select-none cursor-pointer hover:text-white transition-colors"
+                  onClick={header.column.getToggleSortingHandler()} // THIS ENABLES SORTING ON CLICK
                 >
-                  {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                  <div className="flex items-center gap-2">
+                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                    {{
+                      asc: ' ↑',
+                      desc: ' ↓',
+                    }[header.column.getIsSorted() as string] ?? null}
+                  </div>
                 </th>
               ))}
             </tr>
@@ -112,7 +130,8 @@ export function FlexibleDataTable<TData, TValue>({
               <tr key={row.id} className="hover:bg-white/5 transition-colors group">
                 {row.getVisibleCells().map((cell) => (
                   <td key={cell.id} className="px-4 py-3.5 text-xs text-zinc-300 font-medium">
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    {/* Ensure cell and column exist before rendering */}
+                    {cell ? flexRender(cell.column.columnDef.cell, cell.getContext()) : null}
                   </td>
                 ))}
               </tr>

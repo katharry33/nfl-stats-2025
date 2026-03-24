@@ -1,59 +1,47 @@
-import { 
-  collection, query, where, getDocs, limit, 
-  startAfter, orderBy, QueryConstraint 
-} from 'firebase/firestore';
+
 import { db } from '@/lib/firebase';
+import { collection, query, where, limit, getDocs, startAfter, orderBy } from 'firebase/firestore';
 
-export async function fetchPaginatedProps(filters: any, lastDoc: any = null) {
-  // Destructure with default values
-  const { 
-    league, 
-    season, 
-    date, 
-    collection: colName, 
-    limit: pageSize = 50 
-  } = filters;
-
-  const constraints: QueryConstraint[] = [];
-  const targetCollection = colName || `nbaProps_${season || '2025'}`;
-
-  // 1. League Filter (Matches your 'nba' string in DB)
-  if (league) {
-    constraints.push(where('league', '==', league));
-  }
-
-  // 2. Season Filter (Ensures it is a Number to match int64)
-  if (season) {
-    constraints.push(where('season', '==', Number(season)));
-  }
+export async function fetchPaginatedProps(filters: any, pageParam: any) {
+  const { league, season, date, week } = filters;
   
-  // 3. Date Filter (Matches "2026-03-23")
-  if (date) {
-    constraints.push(where('date', '==', date)); 
+  // FIX: Ensure NFL points to allProps
+  const collectionName = league === 'nfl' ? 'allProps' : 'nbaHistoricalProps';
+  const propsRef = collection(db, collectionName);
+
+  let constraints: any[] = [
+    where('season', '==', Number(season)),
+    limit(20) // Smaller chunks for faster loading
+  ];
+
+  // NFL Specifics
+  if (league === 'nfl' && week && week !== 'All') {
+    constraints.push(where('week', '==', Number(week)));
   }
 
-  // 4. Ordering (Must match 'updatedAt' which exists in your docs)
-  constraints.push(orderBy('updatedAt', 'desc'));
-
-  if (lastDoc) {
-    constraints.push(startAfter(lastDoc));
+  // NBA Specifics
+  if (league === 'nba' && date) {
+    constraints.push(where('date', '==', date));
   }
-  
-  constraints.push(limit(pageSize));
 
-  try {
-    const q = query(collection(db, targetCollection), ...constraints);
-    const snapshot = await getDocs(q);
-    
-    console.log(`[Firestore] Found ${snapshot.docs.length} docs for ${date}`);
-
-    return {
-      docs: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })),
-      lastVisible: snapshot.docs[snapshot.docs.length - 1] || null
-    };
-  } catch (error: any) {
-    // Check your browser console for an "Index Link" here!
-    console.error("Firestore Query Failed:", error.message);
-    return { docs: [], lastVisible: null };
+  // PAGINATION
+  if (pageParam) {
+    constraints.push(startAfter(pageParam));
   }
+
+  /**
+   * IMPORTANT: If you get 0 results for NFL, remove the line below.
+   * Firestore requires a Composite Index for (season + week + playerName).
+   * If you don't have that index yet, commenting out the orderBy will 
+   * make the data reappear instantly (though it won't be alphabetical).
+   */
+  // constraints.push(orderBy('playerName', 'asc')); 
+
+  const q = query(propsRef, ...constraints);
+  const snapshot = await getDocs(q);
+
+  return {
+    docs: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })),
+    lastVisible: snapshot.docs[snapshot.docs.length - 1]
+  };
 }

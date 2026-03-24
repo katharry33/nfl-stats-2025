@@ -4,25 +4,18 @@ import { adminDb } from '@/lib/firebase/admin';
 import { Bet } from "../types";
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 
-interface BetSubmissionResult {
-  success: boolean;
-  betId?: string;
-  error?: string;
-}
+// Helper to get correct collection name
+const getCol = (sport?: string) => sport === 'nba' ? 'bettingLogNba_2025' : 'bettingLog';
 
-/**
- * FETCH ALL BETS (Admin SDK)
- */
-export async function getBets(): Promise<any[]> {
+export async function getBets(sport?: string): Promise<any[]> {
   try {
-    const snapshot = await adminDb.collection('bettingLog').get();
+    const snapshot = await adminDb.collection(getCol(sport)).get();
     return snapshot.docs.map(doc => {
       const data = doc.data();
       return {
         id: doc.id,
         ...data,
         createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt,
-        updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : data.updatedAt,
       };
     });
   } catch (error) {
@@ -31,22 +24,16 @@ export async function getBets(): Promise<any[]> {
   }
 }
 
-/**
- * ADD OR UPDATE BET (Admin SDK)
- */
-export async function addBet(userId: string, betData: Partial<Bet>): Promise<BetSubmissionResult> {
+export async function addBet(userId: string, betData: Partial<Bet>, sport?: string) {
   try {
     const db = adminDb;
-    // Use the existing ID if editing, otherwise generate a new one
-    const betId = betData.id || db.collection('bettingLog').doc().id;
-    const betRef = db.collection('bettingLog').doc(betId);
+    const betId = betData.id || db.collection(getCol(sport)).doc().id;
+    const betRef = db.collection(getCol(sport)).doc(betId);
 
     const payload: any = {
       ...betData,
       id: betId,
-      // We keep the fields in the DB for data integrity, 
-      // but we don't block the request if they are missing.
-      userId: userId || betData.userId || 'system_user',
+      userId,
       updatedAt: FieldValue.serverTimestamp(),
     };
 
@@ -58,21 +45,16 @@ export async function addBet(userId: string, betData: Partial<Bet>): Promise<Bet
     await betRef.set(payload, { merge: true });
     return { success: true, betId };
   } catch (error) {
-    console.error('Error in addBet:', error);
-    return { success: false, error: 'Failed to save bet' };
+    console.error('Error saving bet:', error);
+    return { success: false, error: 'Failed to save' };
   }
 }
 
-/**
- * DELETE BET (Admin SDK)
- */
-export async function deleteBet(betId: string): Promise<BetSubmissionResult> {
+export async function deleteBet(betId: string, sport?: string) {
   try {
-    const db = adminDb;
-    await db.collection('bettingLog').doc(betId).delete();
+    await adminDb.collection(getCol(sport)).doc(betId).delete();
     return { success: true };
   } catch (error) {
-    console.error('Error deleting bet:', error);
-    return { success: false, error: 'Failed to delete bet' };
+    return { success: false, error: 'Delete failed' };
   }
 }

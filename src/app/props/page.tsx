@@ -4,10 +4,11 @@ import React, { useState, useMemo } from 'react';
 import { usePropsQuery } from '@/hooks/use-props-query';
 import { FlexibleDataTable } from '@/components/data-table/flexible-data-table';
 import { ColumnController } from '@/components/bet-builder/column-controller';
-import { getVaultColumns } from '@/lib/columns/prop-columns';
+import { getVaultColumns } from '@/lib/columns/prop-columns.tsx'; // Updated import
 import { PostGameModal } from '@/components/modals/PostGameModal';
 import { Search, Database, RefreshCw, Trophy, Sparkles, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { SortingState, VisibilityState } from '@tanstack/react-table';
 
 export default function HistoricalVaultPage() {
   const [league, setLeague] = useState<'nba' | 'nfl'>('nba');
@@ -18,25 +19,26 @@ export default function HistoricalVaultPage() {
   const [tableInstance, setTableInstance] = useState<any>(null);
   const [isEnriching, setIsEnriching] = useState(false);
   const [isPostGameOpen, setIsPostGameOpen] = useState(false);
+  
+  // Add types for state
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
 
   const { data, isLoading, refetch } = usePropsQuery({ 
     league, 
     season: Number(season),
     date: league === 'nba' ? date : undefined,
     week: league === 'nfl' && week !== 'All' ? Number(week) : undefined,
+    // Search is now handled by the query directly
+    search,
   });
 
-  const allProps = useMemo(() => {
-    const docs = data?.pages.flatMap((page) => page.docs) ?? [];
-    if (!search) return docs;
-    return docs.filter((p: any) => 
-      (p.player || p.playerName || '').toLowerCase().includes(search.toLowerCase())
-    );
-  }, [data, search]);
+  // Data is now passed directly from the query
+  const allProps = useMemo(() => data?.pages.flatMap((page) => page.docs) ?? [], [data]);
 
+  // Columns are memoized from the external file
   const columns = useMemo(() => getVaultColumns(league), [league]);
 
-  // Enrichment Logic
   const handleEnrich = async () => {
     setIsEnriching(true);
     try {
@@ -64,7 +66,6 @@ export default function HistoricalVaultPage() {
   return (
     <div className="min-h-screen bg-[#080808] text-white p-6 space-y-4">
       
-      {/* HEADER SECTION */}
       <div className="bg-[#141414] border border-white/5 rounded-[32px] p-8 flex justify-between items-center shadow-2xl">
         <div className="flex items-center gap-4">
           <div className="p-3 bg-indigo-500/10 rounded-2xl border border-indigo-500/20">
@@ -91,7 +92,6 @@ export default function HistoricalVaultPage() {
         </div>
       </div>
 
-      {/* ACTION BAR (Post Game & Enrich) */}
       <div className="bg-[#141414] border border-white/5 rounded-2xl p-4 flex items-center justify-between">
          <div className="flex items-center gap-6 px-4">
             <button 
@@ -118,7 +118,6 @@ export default function HistoricalVaultPage() {
          </button>
       </div>
 
-      {/* FILTER BAR */}
       <div className="bg-[#141414] border border-white/5 rounded-t-[24px] p-4 flex items-center gap-4">
         <div className="relative flex-1">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600" size={14} />
@@ -130,8 +129,19 @@ export default function HistoricalVaultPage() {
           />
         </div>
 
-        <select value={season} onChange={(e) => setSeason(e.target.value)} className={SELECT_STYLE}>
-          {['2025', '2024', '2023'].map(s => <option key={s} value={s}>Season {s}</option>)}
+        <select 
+          value={season} 
+          onChange={(e) => setSeason(e.target.value)} 
+          className={SELECT_STYLE}
+        >
+          {league === 'nfl' ? (
+            <>
+              <option value="2024">2024-2025</option>
+              <option value="2025">2025-2026</option>
+            </>
+          ) : (
+            <option value="2025">2025-2026</option>
+          )}
         </select>
 
         {league === 'nfl' ? (
@@ -151,10 +161,13 @@ export default function HistoricalVaultPage() {
         data={allProps}
         isLoading={isLoading}
         onTableInstance={(instance) => setTableInstance(instance)}
+        state={{ columnVisibility, sorting }}
+        onColumnVisibilityChange={setColumnVisibility}
+        onSortingChange={setSorting}
       />
 
       <PostGameModal 
-        isOpen={isPostGameOpen} 
+        isOpen={isPostGameOpen}
         onClose={() => setIsPostGameOpen(false)} 
         gameDate={date} 
       />
