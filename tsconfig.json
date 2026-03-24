@@ -22,6 +22,6 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", "src/lib/enrichment/nba/enrichAndSaveCSV.ts"],
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", "src/lib/enrichment/nba/enrichAndSaveCSV.ts", "../studio/_archive/dashboard-old/page.tsx"],
   "exclude": ["node_modules"]
 }

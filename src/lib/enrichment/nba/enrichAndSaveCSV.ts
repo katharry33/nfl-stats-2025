@@ -6,12 +6,9 @@ import { normalizeNBAProp } from './normalize-nba';
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-// ADDED: Pass 'date' as an optional 3rd argument
 export async function enrichAndSaveCSVProps(props: any[], season: number | string, passedDate?: string) {
   const colName = `nbaProps_${season}`;
   const results = { success: 0, skipped: 0, errors: [] as string[] };
-  
-  // FIXED: Use the passedDate if available, otherwise fallback to NY time
   const dateStr = passedDate || new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
 
   // 1. PRE-FETCH ID MAP
@@ -30,35 +27,35 @@ export async function enrichAndSaveCSVProps(props: any[], season: number | strin
       const playerName = raw.player.trim();
       const propNorm = normalizeNBAProp(raw.prop);
       
-      // UNIQUE DOC ID - Stays consistent with the date used for filtering
       const docId = `${playerName}_${propNorm}_${dateStr}`.replace(/\s+/g, '_');
       const docRef = db.collection(colName).doc(docId);
 
-      // --- SMART RESUME CHECK ---
+      // --- SMART RESUME ---
       const existing = await docRef.get();
-      if (existing.exists && existing.data()?.math) {
-        console.log(`⏩ Skipping ${playerName} (${propNorm}): Already Enriched.`);
+      if (existing.exists && existing.data()?.math && existing.data()?.league) {
+        console.log(`⏩ Skipping ${playerName}: Already Enriched.`);
         results.success++;
         continue; 
       }
 
-      // 2. ID LOOKUP
-      let brid = nameToIdMap.get(playerName.toLowerCase()) || 
-                 `${playerName.split(' ').pop()?.toLowerCase().substring(0, 5)}${playerName.toLowerCase().substring(0, 2)}01`;
+      // 2. ID LOOKUP & LOGGING
+      const cachedId = nameToIdMap.get(playerName.toLowerCase());
+      let brid = cachedId || `${playerName.split(' ').pop()?.toLowerCase().substring(0, 5)}${playerName.toLowerCase().substring(0, 2)}01`;
 
-      // 3. RATE LIMIT PROTECTION (2 seconds per player)
+      if (!cachedId) console.log(`🔍 Guessing ID: ${brid} for ${playerName}`);
+
+      // 3. RATE LIMIT (2s)
       await sleep(2000); 
 
       // 4. FETCH LOGS
       const gameLog = await fetchNBASeasonLog(playerName, brid, Number(season));
-      
       if (!gameLog || gameLog.length === 0) {
-        results.errors.push(`${playerName}: No Logs Found.`);
+        results.errors.push(`${playerName}: No Logs Found (BR ID: ${brid})`);
         results.skipped++;
         continue;
       }
 
-      // 5. MATH & TEAM LOGIC
+      // 5. MATH
       const teamMatch = raw.team?.match(/\/([A-Z]{3})\.webp$/);
       const playerTeam = teamMatch ? teamMatch[1] : (raw.team?.toUpperCase() || 'UNK');
       const opponent = raw.matchup?.split(/ @ | vs /i).find((t: string) => t.trim().toUpperCase() !== playerTeam) || 'UNK';
@@ -80,8 +77,7 @@ export async function enrichAndSaveCSVProps(props: any[], season: number | strin
         propNorm
       }, 'nba');
 
-      // 6. IMMEDIATE SAVE
-      // CRITICAL: Ensure 'date' field exists for your Firestore Index/Query
+      // 6. IMMEDIATE SAVE (With Indexing Fixes)
       await docRef.set({
         ...raw,
         brid,
@@ -89,25 +85,29 @@ export async function enrichAndSaveCSVProps(props: any[], season: number | strin
         odds,
         line,
         ...math,
-        date: dateStr,      // Matches the 'date' filter in your usePropsQuery
-        gameDate: dateStr,  // Keep for legacy compatibility
+        league: 'nba',        // For Querying
+        season: Number(season), // For Querying
+        date: dateStr,        // For Querying
+        gameDate: dateStr,    // Legacy
         updatedAt: new Date().toISOString()
       }, { merge: true });
 
-      // 7. AUTO-UPDATE MAP
+      // 7. AUTO-UPDATE ID MAP
       if (!nameToIdMap.has(playerName.toLowerCase())) {
-        await db.collection('static_brIdMap').doc(brid).set({ player: playerName }, { merge: true });
+        await db.collection('static_brIdMap').doc(brid).set({ 
+          player: playerName,
+          isGuessed: true 
+        }, { merge: true });
         nameToIdMap.set(playerName.toLowerCase(), brid);
       }
 
       results.success++;
-      console.log(`✅ Processed: ${playerName} (${propNorm}) for ${dateStr}`);
+      console.log(`✅ ${playerName} (${propNorm}) Saved.`);
 
     } catch (e: any) {
       results.errors.push(`Error on ${raw.player}: ${e.message}`);
       results.skipped++;
     }
   }
-
   return results;
 }

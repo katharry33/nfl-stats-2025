@@ -1,46 +1,48 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/firebase/admin';
-// Import your league-specific enrichers
-import { enrichNFLProps } from '@/lib/enrichment/nfl/enrichProps';
-import { enrichNBAProps } from '@/lib/enrichment/nba/enrichProps';
+import { adminDb } from '@/lib/firebase/admin';
+
+// Assuming your actual enrichment logic is in these files
+// The path and function names should match your project structure
+import { enrichAllPropsCollection as enrichNFL } from '@/lib/enrichment/nfl/enrichProps';
+import { enrichAllPropsCollection as enrichNBA } from '@/lib/enrichment/nba/enrichProps';
+
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { 
+    const {
       league = 'nfl', 
-      season = 2025, 
+      season = new Date().getFullYear(), // Default to current year
       week, 
-      force = false 
+      skipEnriched = true, // Changed from 'force' to 'skipEnriched'
     } = body;
 
-    // 1. Determine the correct collection hierarchy
-    // Priority: allProps_SEASON -> allProps
-    const seasonCollection = `allProps_${season}`;
-    const masterCollection = 'allProps';
-    
-    // Check which collection actually has data for this league
-    const seasonSnap = await db.collection(seasonCollection).where('league', '==', league).limit(1).get();
-    const targetCollection = !seasonSnap.empty ? seasonCollection : masterCollection;
+    const collectionName = `nflProps_${season}`;
+    console.log(`
+      League: ${league.toUpperCase()}\n
+      Collection: ${collectionName}\n
+      Season: ${season}\n
+      Skip Enriched: ${skipEnriched}\n
+      ${week ? `Week: ${week}` : ''}
+    `);
 
-    console.log(`🚀 Target: ${league.toUpperCase()} | Collection: ${targetCollection} | Season: ${season}`);
-
-    // 2. Route to the correct enrichment engine
     let result;
-    if (league === 'nba') {
-      result = await enrichNBAProps({ collection: targetCollection, season, force });
+    const options = { season, week, skipEnriched };
+
+    if (league.toLowerCase() === 'nba') {
+      result = await enrichNBA(options);
     } else {
-      result = await enrichNFLProps({ collection: targetCollection, season, week, force });
+      result = await enrichNFL(options);
     }
 
     return NextResponse.json({
-      success: true,
-      count: result?.enrichedCount ?? 0,
-      targetCollection
+      message: `Enrichment complete for ${league.toUpperCase()} ${season}.`,
+      enrichedCount: result,
+      collection: collectionName,
     });
 
   } catch (err: any) {
-    console.error('❌ Enrichment Route Error:', err);
+    console.error('[API/props/enrich] Error:', err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

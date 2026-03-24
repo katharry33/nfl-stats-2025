@@ -1,118 +1,139 @@
+// src/hooks/use-performance.ts
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
-import { toDecimal } from '@/lib/utils/odds';
+import { useMemo } from "react";
 
-export function usePerformance() {
-  const [bets, setBets] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  // 1. Fetch data from your API
-  useEffect(() => {
-    let isMounted = true;
-    
-    fetch('/api/performance')
-      .then((r) => r.json())
-      .then((json) => {
-        if (isMounted) {
-          setBets(Array.isArray(json) ? json : []);
-          setLoading(false);
-        }
-      })
-      .catch((err) => {
-        console.error("Performance API Error:", err);
-        if (isMounted) setLoading(false);
-      });
-
-    return () => { isMounted = false; };
-  }, []);
-
+export function usePerformance(bets: any[], loadingBets: boolean) {
   const stats = useMemo(() => {
-    // 2. Filter settled bets (Exclude pending/void/push from ROI/WinRate)
-    const settled = bets.filter(
-      (b) => !['pending', 'void', 'push'].includes((b.status || '').toLowerCase())
-    );
-    
-    const wins = settled.filter((b) => 
-      ['won', 'win'].includes((b.status || '').toLowerCase())
-    );
+    if (!bets || bets.length === 0) {
+      return {
+        totalProfit: 0,
+        totalWagered: 0,
+        winRate: 0,
+        roi: 0,
+        chartData: [],
+        settledCount: 0,
+        winCount: 0,
+        totalBets: 0,
+        rawBets: [],
+        avgEdge: 0,
+        avgConfidence: 0,
+        avgCLV: 0,
+        avgEV: 0,
+        profitByPropType: {},
+        profitByTeam: {},
+        profitByPlayer: {},
+        hitRateByPropType: {},
+        hitRateByTeam: {},
+        hitRateByPlayer: {},
+        bestPropType: null,
+        worstPropType: null,
+        bestPlayer: null,
+        worstPlayer: null,
+      };
+    }
 
-    // 3. Profit Calculation Logic (Handles Stake, Odds, and Boosts)
-    const calcProfit = (bet: any) => {
-      if (bet.isBonusBet) return 0; // Bonus bets usually don't return stake
-      
-      const stake = Number(bet.stake || bet.wager) || 0;
-      const status = (bet.status || '').toLowerCase();
-      
-      if (['won', 'win'].includes(status)) {
-        const odds = Number(bet.odds) || 0;
-        // Parse boost (e.g., "10%" -> 0.10)
-        const boostStr = String(bet.boost || '0').replace('%', '');
-        const boost = parseFloat(boostStr) / 100;
-        
-        // Formula: (Stake * Decimal Odds * BoostMultiplier) - Stake
-        return stake * toDecimal(odds) * (1 + boost) - stake;
-      }
-      
-      if (['lost', 'loss'].includes(status)) {
-        return -stake;
-      }
-      
-      return 0; // Pushes/Voids = $0 profit
-    };
+    const settled = bets.filter(b => b.status !== "Pending");
+    const wins = settled.filter(b => b.status === "Win" || b.status === "Cashed");
 
-    const totalProfit = settled.reduce((a, b) => a + calcProfit(b), 0);
-    const totalWagered = settled.reduce((a, b) => a + (Number(b.stake || b.wager) || 0), 0);
+    const totalProfit = settled.reduce((sum, b) => sum + (b.profit ?? 0), 0);
+    const totalWagered = settled.reduce((sum, b) => sum + (b.stake ?? 0), 0);
+
     const winRate = settled.length ? (wins.length / settled.length) * 100 : 0;
     const roi = totalWagered ? (totalProfit / totalWagered) * 100 : 0;
 
-    // 4. Cumulative Chart Data Generation
-    // We sort by date to ensure the "Momentum" line moves forward correctly
-    const sortedBets = [...bets].sort((a, b) => {
-      const dateA = new Date(a.createdAt || 0).getTime();
-      const dateB = new Date(b.createdAt || 0).getTime();
-      return dateA - dateB;
-    });
+    const avgEdge = average(bets.map(b => b.edgePct ?? 0));
+    const avgConfidence = average(bets.map(b => b.confidenceScore ?? 0));
+    const avgCLV = average(bets.map(b => b.closingLineValue ?? 0));
+    const avgEV = average(bets.map(b => b.expectedValue ?? 0));
 
-    let runningTotal = 0;
-    const dailyTotals: Record<string, number> = {};
+    const profitByPropType = groupSum(bets, "propType", "profit");
+    const profitByTeam = groupSum(bets, "team", "profit");
+    const profitByPlayer = groupSum(bets, "player", "profit");
 
-    sortedBets.forEach((b) => {
-      // Basic validation for dates
-      const dateObj = new Date(b.createdAt);
-      if (isNaN(dateObj.getTime())) return;
+    const hitRateByPropType = groupHitRate(bets, "propType");
+    const hitRateByTeam = groupHitRate(bets, "team");
+    const hitRateByPlayer = groupHitRate(bets, "player");
 
-      const key = dateObj.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
-      
-      // Update the running total with this specific bet's outcome
-      runningTotal += calcProfit(b);
-      
-      // Store the snapshot for that day
-      dailyTotals[key] = runningTotal;
-    });
+    const bestPropType = bestKey(profitByPropType);
+    const worstPropType = worstKey(profitByPropType);
 
-    // Convert the map into the format Recharts/Sparkline expects
-    const chartData = Object.entries(dailyTotals).map(([name, cumulative]) => ({
-      name,
-      profit: cumulative // We label it 'profit' so the PnLSparkline can find the value
-    }));
+    const bestPlayer = bestKey(profitByPlayer);
+    const worstPlayer = worstKey(profitByPlayer);
 
     return {
       totalProfit,
       totalWagered,
       winRate,
       roi,
-      chartData,
+      chartData: buildChartData(settled),
       settledCount: settled.length,
       winCount: wins.length,
-      totalBets: bets.length, // Total number of bets (including pending)
-      rawBets: bets
+      totalBets: bets.length,
+      rawBets: bets,
+      avgEdge,
+      avgConfidence,
+      avgCLV,
+      avgEV,
+      profitByPropType,
+      profitByTeam,
+      profitByPlayer,
+      hitRateByPropType,
+      hitRateByTeam,
+      hitRateByPlayer,
+      bestPropType,
+      worstPropType,
+      bestPlayer,
+      worstPlayer,
     };
   }, [bets]);
 
-  return { 
-    stats, 
-    loading, 
-    refresh: () => setLoading(true) 
-  };
+  return { stats, loading: loadingBets };
+}
+
+// --- helpers ---
+function average(arr: number[]) {
+  if (!arr.length) return 0;
+  return arr.reduce((a, b) => a + b, 0) / arr.length;
+}
+
+function groupSum(arr: any[], key: string, field: string) {
+  return arr.reduce((acc, item) => {
+    const k = item[key] ?? "Unknown";
+    acc[k] = (acc[k] ?? 0) + (item[field] ?? 0);
+    return acc;
+  }, {} as Record<string, number>);
+}
+
+function groupHitRate(arr: any[], key: string) {
+  const groups: Record<string, { wins: number; total: number }> = {};
+
+  arr.forEach(b => {
+    const k = b[key] ?? "Unknown";
+    if (!groups[k]) groups[k] = { wins: 0, total: 0 };
+    if (b.status === "Win" || b.status === "Cashed") groups[k].wins++;
+    if (b.status !== "Pending") groups[k].total++;
+  });
+
+  return Object.fromEntries(
+    Object.entries(groups).map(([k, v]) => [
+      k,
+      v.total ? (v.wins / v.total) * 100 : 0,
+    ])
+  );
+}
+
+function bestKey(obj: Record<string, number>) {
+  return Object.entries(obj).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+}
+
+function worstKey(obj: Record<string, number>) {
+  return Object.entries(obj).sort((a, b) => a[1] - b[1])[0]?.[0] ?? null;
+}
+
+function buildChartData(bets: any[]) {
+  return bets.map(b => ({
+    name: b.date ?? "",
+    profit: b.profit,
+  }));
 }

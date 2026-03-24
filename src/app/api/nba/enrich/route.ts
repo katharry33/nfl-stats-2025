@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: results.success,
       skipped: results.skipped || 0,
-      errors: results.errors || [],
+      errors: results.errors || [], // This contains the "No Logs Found" list
     });
 
   } catch (err: any) {
