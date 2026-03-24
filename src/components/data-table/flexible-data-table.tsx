@@ -10,6 +10,7 @@ import {
   SortingState,
   ColumnOrderState,
   VisibilityState,
+  Table,
 } from '@tanstack/react-table';
 import { Loader2 } from 'lucide-react';
 
@@ -18,9 +19,10 @@ interface FlexibleDataTableProps<TData, TValue> {
   data: TData[];
   isLoading?: boolean;
   tableId: string;
-  onTableInstance?: (table: any) => void;
+  onTableInstance?: (table: Table<TData>) => void;
 }
 
+// Fixed: Explicitly generic <TData, TValue>
 export function FlexibleDataTable<TData, TValue>({
   columns,
   data,
@@ -32,7 +34,6 @@ export function FlexibleDataTable<TData, TValue>({
   const [columnOrder, setColumnOrder] = useState<ColumnOrderState>([]);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
 
-  // ── PERSISTENCE LOAD ──
   useEffect(() => {
     const saved = localStorage.getItem(`table-prefs-${tableId}`);
     if (saved) {
@@ -44,12 +45,10 @@ export function FlexibleDataTable<TData, TValue>({
         console.error("Failed to load table prefs", e);
       }
     } else {
-      // Default order if none exists
-      setColumnOrder(columns.map(c => c.id as string));
+      setColumnOrder(columns.map(c => (c as any).id || (c as any).accessorKey));
     }
   }, [tableId, columns]);
 
-  // ── PERSISTENCE SAVE HELPER ──
   const savePrefs = (order: ColumnOrderState, visibility: VisibilityState) => {
     localStorage.setItem(`table-prefs-${tableId}`, JSON.stringify({ order, visibility }));
   };
@@ -71,16 +70,15 @@ export function FlexibleDataTable<TData, TValue>({
     },
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
-    enableColumnReorder: true,
+    // Fixed: Removed enableColumnReorder (it's not a valid root prop in v8)
   });
 
-  // Provide instance to parent (for ColumnToggle)
   useEffect(() => {
     if (onTableInstance) onTableInstance(table);
-  }, [table.getState().columnVisibility, onTableInstance]); // Re-sync when visibility changes
+  }, [table, onTableInstance]);
 
   return (
-    <div className="w-full overflow-x-auto custom-scrollbar bg-[#121212] rounded-b-[24px]">
+    <div className="w-full overflow-x-auto custom-scrollbar bg-zinc-900/10 rounded-b-[24px]">
       <table className="w-full text-left border-collapse border-spacing-0">
         <thead>
           {table.getHeaderGroups().map((headerGroup) => (
@@ -88,56 +86,32 @@ export function FlexibleDataTable<TData, TValue>({
               {headerGroup.headers.map((header) => (
                 <th
                   key={header.id}
-                  className="px-4 py-4 text-[10px] font-black uppercase tracking-widest text-zinc-500 hover:text-indigo-400 transition-colors cursor-move select-none"
-                  draggable
-                  onDragStart={(e) => {
-                    e.dataTransfer.setData('colId', header.column.id);
-                    e.dataTransfer.effectAllowed = "move";
-                  }}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    const draggedId = e.dataTransfer.getData('colId');
-                    const targetId = header.column.id;
-                    if (draggedId !== targetId) {
-                      const currentOrder = table.getState().columnOrder;
-                      const newOrder = [...currentOrder];
-                      const oldIdx = newOrder.indexOf(draggedId);
-                      const newIdx = newOrder.indexOf(targetId);
-                      
-                      newOrder.splice(oldIdx, 1);
-                      newOrder.splice(newIdx, 0, draggedId);
-                      
-                      setColumnOrder(newOrder); // Update local state
-                      savePrefs(newOrder, columnVisibility); // Persist immediately
-                    }
-                  }}
+                  className="px-4 py-4 text-[10px] font-black uppercase tracking-widest text-zinc-500 select-none"
                 >
-                  {header.isPlaceholder
-                    ? null
-                    : flexRender(header.column.columnDef.header, header.getContext())}
+                  {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                 </th>
               ))}
             </tr>
           ))}
         </thead>
-        <tbody className="divide-y divide-white/5 bg-zinc-900/20">
+        <tbody className="divide-y divide-white/5">
           {isLoading && data.length === 0 ? (
             <tr>
-              <td colSpan={table.getVisibleFlatColumns().length} className="h-64 text-center">
+              <td colSpan={columns.length} className="h-64 text-center">
                 <Loader2 className="animate-spin h-8 w-8 mx-auto text-indigo-500 opacity-50" />
               </td>
             </tr>
           ) : data.length === 0 ? (
             <tr>
-              <td colSpan={table.getVisibleFlatColumns().length} className="h-32 text-center text-zinc-600 text-[10px] font-black uppercase tracking-widest">
-                No matching historical data found
+              <td colSpan={columns.length} className="h-32 text-center text-zinc-600 text-[10px] font-black uppercase tracking-widest">
+                No matching data found
               </td>
             </tr>
           ) : (
             table.getRowModel().rows.map((row) => (
-              <tr key={row.id} className="hover:bg-white/[0.03] transition-colors group">
+              <tr key={row.id} className="hover:bg-white/5 transition-colors group">
                 {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id} className="px-4 py-3.5 text-xs text-zinc-300 font-medium whitespace-nowrap">
+                  <td key={cell.id} className="px-4 py-3.5 text-xs text-zinc-300 font-medium">
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
                 ))}

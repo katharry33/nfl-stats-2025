@@ -6,6 +6,7 @@ import {
   User, Zap, Loader2, CheckCircle2, XCircle, 
   ArrowUpDown, Search
 } from 'lucide-react';
+import { InfiniteQueryObserverResult, FetchNextPageOptions, InfiniteData } from '@tanstack/react-query';
 
 interface PropsTableProps {
   props: any[];
@@ -13,7 +14,7 @@ interface PropsTableProps {
   isLoading: boolean;
   mode: 'builder' | 'archive';
   hasMore?: boolean;
-  onLoadMore?: () => void;
+  onLoadMore?: (options?: FetchNextPageOptions) => Promise<InfiniteQueryObserverResult<InfiniteData<any, unknown>, Error>>;
   onRefresh?: () => void;
   onEdit?: (prop: any) => void;
   onDelete?: (prop: any) => void;
@@ -84,7 +85,7 @@ export default function PropsTable({
               <th className="py-5 px-8 text-[9px] font-black text-zinc-500 uppercase tracking-widest text-right">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-white/[0.02]">
+          <tbody className="divide-y divide-white/2">
             {props.map((prop, i) => {
               const resultRaw = (prop.actualResult || '').toLowerCase();
               const isWin = resultRaw.includes('hit') || resultRaw.includes('won') || resultRaw.includes('over');
@@ -185,7 +186,7 @@ export default function PropsTable({
       {hasMore && (
         <div className="p-8 flex justify-center border-t border-white/5 bg-black/20">
           <button 
-            onClick={onLoadMore} 
+            onClick={() => onLoadMore?.()}
             className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.4em] hover:text-white transition-all"
           >
             Load More Records
