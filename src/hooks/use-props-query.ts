@@ -9,7 +9,6 @@ export function usePropsQuery(filters: {
   date?: string;
   week?: number | string;
   search?: string;
-  vaultMode?: boolean; // Critical for hitting the archive collections
 }) {
   return useInfiniteQuery({
     // The key must change whenever ANY filter changes to trigger a refetch

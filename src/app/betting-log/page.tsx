@@ -10,19 +10,16 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 
-// 1. IMPORT YOUR NEW SHARED TYPES & NORMALIZATION LOGIC
-import { NormalizedProp } from '@/lib/types';
+import { Bet } from '@/lib/types';
 import { normalizePlayerName } from '@/lib/enrichment/shared/normalize';
 
 export default function BettingLogPage() {
-  // Use the Shared Interface instead of a local 'Bet' interface
-  const [bets, setBets] = useState<NormalizedProp[]>([]);
+  const [bets, setBets] = useState<Bet[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [sport, setSport] = useState<'nba' | 'nfl'>('nba');
   const [search, setSearch] = useState('');
 
-  // 2. FETCH DATA FROM FIRESTORE
   const fetchBets = async () => {
     setLoading(true);
     try {
@@ -32,7 +29,7 @@ export default function BettingLogPage() {
       const data = snapshot.docs.map(doc => ({ 
         id: doc.id, 
         ...doc.data() 
-      } as NormalizedProp));
+      } as Bet));
       
       setBets(data);
     } catch (error) {
@@ -47,16 +44,14 @@ export default function BettingLogPage() {
     fetchBets();
   }, []);
 
-  // 3. SYNC HANDLER (Triggers your API route)
   const syncNbaResults = async () => {
     setIsSyncing(true);
     const toastId = toast.loading("Syncing NBA box scores...");
     try {
-      // Ensure this endpoint matches your folder: src/app/api/betting-log/sync-nba/route.ts
       const res = await fetch('/api/betting-log/sync-nba', { method: 'POST' });
       if (res.ok) {
         toast.success("NBA Results Synced", { id: toastId });
-        fetchBets(); // Refresh local state with new scores
+        fetchBets();
       } else {
         throw new Error("Sync API returned an error");
       }
@@ -67,21 +62,19 @@ export default function BettingLogPage() {
     }
   };
 
-  // 4. SMART FILTERING
   const filteredBets = useMemo(() => {
     return bets.filter(bet => {
-      // League Filter
       const matchesSport = bet.league?.toLowerCase() === sport.toLowerCase();
-      
-      // Smart Player Search (Uses your normalization logic to strip 'Jr.', dots, etc.)
       const normalizedQuery = normalizePlayerName(search);
       const normalizedPlayer = normalizePlayerName(bet.player || '');
-      
       const matchesSearch = normalizedPlayer.includes(normalizedQuery);
-        
       return matchesSport && matchesSearch;
     });
   }, [bets, search, sport]);
+
+  const handleSave = () => {}; // Placeholder
+  const handleDelete = () => {}; // Placeholder
+  const handleEdit = () => {}; // Placeholder
 
   if (loading) {
     return (
@@ -98,7 +91,6 @@ export default function BettingLogPage() {
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8 min-h-screen">
-      {/* HEADER SECTION */}
       <div className="flex justify-between items-end">
         <div>
           <h1 className="text-4xl font-black italic uppercase tracking-tighter text-white">
@@ -122,13 +114,10 @@ export default function BettingLogPage() {
         </div>
       </div>
 
-      {/* STATS OVERVIEW CARDS */}
-      <BettingStats bets={filteredBets} />
+      <BettingStats bets={filteredBets as Bet[]} />
 
-      {/* TABLE SECTION */}
       <div className="bg-[#0a0a0a] border border-white/5 rounded-[32px] overflow-hidden shadow-2xl border-t-white/10">
         <div className="p-5 border-b border-white/5 flex flex-col md:flex-row gap-4 items-center justify-between bg-zinc-900/20">
-           {/* SEARCH BOX */}
            <div className="relative w-full md:max-w-sm">
              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600 w-4 h-4" />
              <Input 
@@ -139,7 +128,6 @@ export default function BettingLogPage() {
              />
            </div>
            
-           {/* SPORT TOGGLE */}
            <div className="flex p-1.5 bg-black/40 border border-white/5 rounded-2xl">
              {(['nba', 'nfl'] as const).map((s) => (
                <button
@@ -157,12 +145,13 @@ export default function BettingLogPage() {
            </div>
         </div>
 
-        {/* DATA TABLE */}
         <div className="p-2">
           <BetsTable 
-            data={filteredBets} 
-            // The BetsTable internally handles the mapping of the NormalizedProp 
-            // to the specific columns we defined.
+            bets={filteredBets as Bet[]}
+            loading={loading}
+            onDelete={handleDelete}
+            onSave={handleSave}
+            onEdit={handleEdit}
           />
         </div>
       </div>

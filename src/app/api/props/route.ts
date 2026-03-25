@@ -1,48 +1,63 @@
-import { NextRequest, NextResponse } from 'next/server';
+
 import { adminDb } from '@/lib/firebase/admin';
+import { NextResponse } from 'next/server';
+import { DocumentData, Query } from 'firebase-admin/firestore';
 
-// Assuming your actual enrichment logic is in these files
-// The path and function names should match your project structure
-import { enrichAllPropsCollection as enrichNFL } from '@/lib/enrichment/nfl/enrichProps';
-import { enrichAllPropsCollection as enrichNBA } from '@/lib/enrichment/nba/enrichProps';
-
-
-export async function POST(req: NextRequest) {
+export async function GET(req: Request) {
   try {
-    const body = await req.json();
-    const {
-      league = 'nfl', 
-      season = new Date().getFullYear(), // Default to current year
-      week, 
-      skipEnriched = true, // Changed from 'force' to 'skipEnriched'
-    } = body;
-
-    const collectionName = `nflProps_${season}`;
-    console.log(`
-      League: ${league.toUpperCase()}\n
-      Collection: ${collectionName}\n
-      Season: ${season}\n
-      Skip Enriched: ${skipEnriched}\n
-      ${week ? `Week: ${week}` : ''}
-    `);
-
-    let result;
-    const options = { season, week, skipEnriched };
-
-    if (league.toLowerCase() === 'nba') {
-      result = await enrichNBA(options);
-    } else {
-      result = await enrichNFL(options);
+    const { searchParams } = new URL(req.url);
+    const league = searchParams.get('league');
+    const season = searchParams.get('season');
+    const week = searchParams.get('week');
+    const date = searchParams.get('date');
+    
+    // 1. Determine the Collection Path
+    let collectionPath = 'allProps'; // Default
+    if (league === 'nba') {
+        collectionPath = `nbaProps_${season}`;
+    } else if (league === 'nfl') {
+        collectionPath = season === '2024' ? 'allProps' : `nflProps_${season}`;
     }
 
-    return NextResponse.json({
-      message: `Enrichment complete for ${league.toUpperCase()} ${season}.`,
-      enrichedCount: result,
-      collection: collectionName,
+    // 2. Build the Query
+    let query: Query<DocumentData> = adminDb.collection(collectionPath);
+
+    // Apply filters
+    if (league === 'nfl' && week && week !== 'All') {
+      query = query.where('week', '==', Number(week));
+    }
+    
+    if (league === 'nba' && date && date !== 'All') {
+      query = query.where('gameDate', '==', date);
+    }
+
+    // Common ordering and limit
+    query = query.orderBy('gameDate', 'desc').limit(50);
+
+    const snapshot = await query.get();
+    const docs = snapshot.docs.map((doc) => {
+      const data = doc.data();
+      
+      // Normalize NBA vs NFL field names so the table can read them
+      return {
+        id: doc.id,
+        player: data.brid || data.player || "Unknown",
+        matchup: data.matchup || "N/A",
+        prop: data.prop || "N/A",
+        line: data.line || 0,
+        // Fix the NaN and naming issues
+        ev: data.expectedValue || data.ev || 0,
+        conf: data.confidenceScore || data.winprobability || 0,
+        actual: data.actual || data.result_value || null,
+        result: data.modelResult || data.result || "pending",
+        gameDate: data.gameDate || data.date || ""
+      };
     });
 
-  } catch (err: any) {
-    console.error('[API/props/enrich] Error:', err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ docs });
+
+  } catch (error: any) {
+    console.error("Error fetching props:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

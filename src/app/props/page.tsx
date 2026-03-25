@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { usePropsQuery } from '@/hooks/use-props-query';
 import { FlexibleDataTable } from '@/components/data-table/flexible-data-table';
 import { ColumnController } from '@/components/bet-builder/column-controller';
@@ -12,30 +12,51 @@ import { SortingState, VisibilityState, Table, ColumnOrderState } from '@tanstac
 import { NormalizedProp } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 
+const INITIAL_COLUMN_VISIBILITY: VisibilityState = {
+  scalingFactor: false,
+  yardsScore: false,
+  rankScore: false,
+  totalScore: false,
+  opponentAvgVsStat: false,
+  impliedProb: false,
+  kellyPct: false,
+};
+
+const INITIAL_COLUMN_ORDER: ColumnOrderState = ['time_period', 'player', 'matchup', 'prop', 'line_ou', 'playerAvg', 'oppRank', 'ev', 'conf', 'actual', 'diff', 'result'];
+
 export default function HistoricalVaultPage() {
   const [league, setLeague] = useState<'nba' | 'nfl'>('nba');
   const [search, setSearch] = useState('');
-  const [season, setSeason] = useState('2025');
+  const [season, setSeason] = useState('2025'); // Default for NBA
   const [week, setWeek] = useState('All');
-  const [date, setDate] = useState('2026-03-23');
-  
+  const [date, setDate] = useState('2026-03-23'); // Default to a specific date
+
   // Table States
   const [tableInstance, setTableInstance] = useState<Table<NormalizedProp> | null>(null);
   const [sorting, setSorting] = useState<SortingState>([]);
-  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(['time_period', 'player', 'matchup', 'prop', 'line_ou', 'playerAvg', 'oppRank', 'ev', 'conf', 'actual', 'diff', 'result']);
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({
-    // NFL-specific "Nerdy" math hidden by default for clean UI
-    scalingFactor: false,
-    yardsScore: false,
-    rankScore: false,
-    totalScore: false,
-    opponentAvgVsStat: false,
-    impliedProb: false,
-    kellyPct: false,
-  });
+  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(INITIAL_COLUMN_ORDER);
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(INITIAL_COLUMN_VISIBILITY);
 
   const [isEnriching, setIsEnriching] = useState(false);
   const [isPostGameOpen, setIsPostGameOpen] = useState(false);
+
+  useEffect(() => {
+    // When league changes, reset table state for a clean slate
+    setColumnOrder(INITIAL_COLUMN_ORDER);
+    setColumnVisibility(INITIAL_COLUMN_VISIBILITY);
+  }, [league]);
+
+  const handleLeagueChange = (l: 'nba' | 'nfl') => {
+    setLeague(l);
+    // Auto-switch season to match your database availability
+    if (l === 'nfl') {
+      setSeason('2024'); // Match 'allProps'
+      setWeek('All');
+    } else {
+      setSeason('2025'); // Match 'nbaProps_2025'
+      setDate('2026-03-23');    // Default NBA to a specific date
+    }
+  };
 
   const { 
     data, 
@@ -47,17 +68,13 @@ export default function HistoricalVaultPage() {
   } = usePropsQuery({ 
     league, 
     season: Number(season),
-    date: league === 'nba' ? date : undefined,
-    week: league === 'nfl' && week !== 'All' ? Number(week) : undefined,
-    vaultMode: true 
+    date: (league === 'nba' && date !== 'All') ? date : undefined,
+    week: (league === 'nfl' && week !== 'All') ? Number(week) : undefined,
   });
 
-  // Flatten the infinite pages into one array for the table
   const allProps = useMemo(() => {
     const docs = data?.pages.flatMap((page: any) => page.docs) ?? [];
     if (!search) return docs;
-    
-    // Client-side search is better for partial matches (e.g., "Bijan")
     return docs.filter(p => 
       p.player.toLowerCase().includes(search.toLowerCase())
     );
@@ -71,7 +88,7 @@ export default function HistoricalVaultPage() {
       const res = await fetch(`/api/${league}/backfill`, {
         method: 'POST',
         body: JSON.stringify({ 
-          date: league === 'nba' ? date : undefined, 
+          date: (league === 'nba' && date !== 'All') ? date : undefined, 
           week: league === 'nfl' && week !== 'All' ? Number(week) : undefined,
           season 
         }),
@@ -92,7 +109,6 @@ export default function HistoricalVaultPage() {
   return (
     <div className="min-h-screen bg-[#080808] text-white p-6 space-y-6">
       
-      {/* HEADER CARD */}
       <div className="bg-[#141414] border border-white/5 rounded-[40px] p-8 flex flex-col md:flex-row justify-between items-center gap-6 shadow-2xl border-t-white/10">
         <div className="flex items-center gap-5">
           <div className="p-4 bg-indigo-500/10 rounded-2xl border border-indigo-500/20 shadow-[0_0_20px_rgba(99,102,241,0.1)]">
@@ -108,15 +124,11 @@ export default function HistoricalVaultPage() {
           </div>
         </div>
 
-        {/* LEAGUE TOGGLE */}
         <div className="flex bg-black/40 p-1.5 rounded-2xl border border-white/5 shadow-inner">
           {['nba', 'nfl'].map((l) => (
             <button 
               key={l}
-              onClick={() => {
-                setLeague(l as any);
-                setWeek('All'); // Reset week when switching to NFL
-              }}
+              onClick={() => handleLeagueChange(l as any)}
               className={`px-10 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
                 league === l 
                 ? 'bg-white text-black shadow-[0_0_25px_rgba(255,255,255,0.1)]' 
@@ -129,7 +141,6 @@ export default function HistoricalVaultPage() {
         </div>
       </div>
 
-      {/* ACTIONS BAR */}
       <div className="bg-[#141414] border border-white/5 rounded-[24px] p-4 flex flex-wrap items-center justify-between gap-4">
          <div className="flex items-center gap-6 px-4">
             <button 
@@ -148,7 +159,7 @@ export default function HistoricalVaultPage() {
             <div className="hidden md:flex items-center gap-2">
                 <Trophy size={14} className="text-amber-500/50" />
                 <span className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest">
-                  Viewing: {league === 'nba' ? date : week === 'All' ? 'Full Season' : `Week ${week}`}
+                  Viewing: {league === 'nba' ? (date === 'All' ? 'Full Season' : date) : (week === 'All' ? 'Full Season' : `Week ${week}`)}
                 </span>
             </div>
          </div>
@@ -160,8 +171,7 @@ export default function HistoricalVaultPage() {
          </button>
       </div>
 
-      {/* SEARCH & FILTERS SECTION */}
-      <div className="bg-[#141414] border border-white/5 rounded-t-[32px] p-5 flex flex-col lg:flex-row items-center gap-4 bg-gradient-to-b from-[#1a1a1a] to-[#141414]">
+      <div className="bg-[#141414] border border-white/5 rounded-t-[32px] p-5 flex flex-col lg:flex-row items-center gap-4 bg-linear-to-b from-[#1a1a1a] to-[#141414]">
         <div className="relative flex-1 w-full">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-600" size={16} />
           <input 
@@ -173,17 +183,18 @@ export default function HistoricalVaultPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
-          {/* SEASON SELECT */}
           <select 
             value={season} 
             onChange={(e) => setSeason(e.target.value)} 
             className={SELECT_STYLE}
           >
-            <option value="2024">2024-25</option>
-            <option value="2025">2025-26</option>
+            {league === 'nfl' ? (
+              <option value="2024">2024-25 (AllProps)</option>
+            ) : (
+              <option value="2025">2025-26 (NBA 2025)</option>
+            )}
           </select>
 
-          {/* DYNAMIC LEAGUE FILTERS */}
           {league === 'nfl' ? (
             <select value={week} onChange={(e) => setWeek(e.target.value)} className={SELECT_STYLE}>
               <option value="All">Full Season</option>
@@ -192,6 +203,21 @@ export default function HistoricalVaultPage() {
               ))}
             </select>
           ) : (
+            <select value={date === 'All' ? 'All' : 'Custom'} 
+                    onChange={(e) => {
+                      if (e.target.value === 'All') {
+                        setDate('All');
+                      } else {
+                        setDate(new Date().toISOString().split('T')[0]);
+                      }
+                    }}
+                    className={SELECT_STYLE}>
+              <option value="All">Full Season</option>
+              <option value="Custom">Custom Date</option>
+            </select>
+          )}
+
+          {league === 'nba' && date !== 'All' && (
             <div className="relative">
               <input 
                 type="date" 
@@ -210,7 +236,6 @@ export default function HistoricalVaultPage() {
         </div>
       </div>
 
-      {/* DATA TABLE WRAPPER */}
       <div className="bg-[#0a0a0a] border border-white/5 rounded-[32px] overflow-hidden shadow-2xl">
         <FlexibleDataTable 
           tableId={`vault-${league}`}
@@ -228,7 +253,6 @@ export default function HistoricalVaultPage() {
           onColumnOrderChange={setColumnOrder}
         />
 
-        {/* PAGINATION FOOTER */}
         {hasNextPage && (
           <div className="p-8 flex justify-center border-t border-white/5 bg-zinc-900/10">
             <Button
@@ -255,11 +279,10 @@ export default function HistoricalVaultPage() {
         )}
       </div>
 
-      {/* MODALS */}
       <PostGameModal 
         isOpen={isPostGameOpen}
         onClose={() => setIsPostGameOpen(false)} 
-        gameDate={date || ""}
+        gameDate={date ?? ""}
         week={league === 'nfl' ? (week === 'All' ? undefined : Number(week)) : undefined}
         league={league}
       />

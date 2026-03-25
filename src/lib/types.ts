@@ -11,30 +11,6 @@ export interface BetLeg {
   league?: string;
 }
 
-export interface Bet {
-  id: string;
-  userId: string;
-  uid?: string; // For backwards compatibility
-  status: 'pending' | 'win' | 'loss' | 'push' | 'cashed';
-  odds: number;
-  stake: number;
-  payout?: number;
-  isBonusBet?: boolean;
-  boost?: string | number;
-  gameDate?: string;
-  createdAt?: string | Timestamp | any;
-  updatedAt?: string | Timestamp | any;
-  legs?: BetLeg[];
-  actualResult?: 'won' | 'lost' | 'pending'; // For archive mode
-  week?: string | number;
-  season?: number;
-}
-
-// Keeping your existing scoring types if they were here
-export interface ScoringCriteria {
-  [key: string]: any;
-}
-
 export interface NormalizedProp {
   id: string;
   player: string;
@@ -50,6 +26,29 @@ export interface NormalizedProp {
   league: 'nba' | 'nfl';
   // Add any other fields you're using (e.g., playerAvg, diff, etc.)
   [key: string]: any; 
+}
+
+export interface Bet extends NormalizedProp {
+  // Fields made optional to accommodate historical market data
+  userId?: string; 
+  status?: 'pending' | 'won' | 'lost' | 'void' | 'cashed' | 'push';
+  odds?: number | string; // Keep flexible as API sometimes returns strings
+  stake?: number;
+  
+  // Optional metadata for tracked wagers
+  payout?: number;
+  cashOutAmount?: number | null;
+  createdAt?: string;
+  isBonusBet?: boolean;
+  isGhostParlay?: boolean;
+  
+  // For parlays
+  legs?: any[]; 
+}
+
+// Keeping your existing scoring types if they were here
+export interface ScoringCriteria {
+  [key: string]: any;
 }
 
 // Also fix the DefenseMap error

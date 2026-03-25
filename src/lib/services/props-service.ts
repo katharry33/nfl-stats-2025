@@ -3,12 +3,24 @@ import { db } from '@/lib/firebase/config';
 import { collection, query, where, limit, getDocs, startAfter, orderBy } from 'firebase/firestore';
 import { hydrateProp } from '@/lib/enrichment/shared/normalize';
 
-export async function fetchPaginatedProps(filters: any, pageParam: any) {
-  const { league, season, date, week, vaultMode } = filters;
+const getCollectionPath = (league: 'nba' | 'nfl', season: number) => {
+  if (league === 'nfl') {
+    // NFL 2024 maps to your 'allProps' collection
+    return season === 2024 ? 'allProps' : `nflProps_${season}`;
+  }
   
-  const collectionName = vaultMode 
-    ? (league === 'nfl' ? 'allProps' : 'nbaProps_2025') 
-    : 'props';
+  if (league === 'nba') {
+    // NBA 2025 maps to your 'nbaProps_2025' collection
+    return `nbaProps_${season}`;
+  }
+  
+  return 'allProps'; // Fallback
+};
+
+export async function fetchPaginatedProps(filters: any, pageParam: any) {
+  const { league, season, date, week } = filters;
+  
+  const collectionName = getCollectionPath(league, season);
   
   const constraints: any[] = [];
 
