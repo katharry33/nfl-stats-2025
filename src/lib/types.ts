@@ -34,3 +34,23 @@ export interface Bet {
 export interface ScoringCriteria {
   [key: string]: any;
 }
+
+export interface NormalizedProp {
+  id: string;
+  player: string;
+  prop: string;
+  line: number;
+  overUnder: 'Over' | 'Under';
+  matchup: string;
+  team: string;
+  opponent: string;
+  gameDate: string;
+  season: number;
+  week?: number | null;
+  league: 'nba' | 'nfl';
+  // Add any other fields you're using (e.g., playerAvg, diff, etc.)
+  [key: string]: any; 
+}
+
+// Also fix the DefenseMap error
+export type DefenseMap = Record<string, any>;

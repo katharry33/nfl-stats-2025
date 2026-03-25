@@ -91,7 +91,7 @@ export default function PropsTable({
               const isWin = resultRaw.includes('hit') || resultRaw.includes('won') || resultRaw.includes('over');
               
               return (
-                <tr key={prop.id || i} className="hover:bg-white/[0.02] transition-colors group">
+                <tr key={prop.id || i} className="hover:bg-white/2 transition-colors group">
                   <td className="py-5 px-8">
                     <div className="flex items-center gap-4">
                       <div className="p-2.5 bg-zinc-900 rounded-xl border border-white/5 group-hover:border-indigo-500/30">

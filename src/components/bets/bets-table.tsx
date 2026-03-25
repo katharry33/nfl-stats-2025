@@ -340,7 +340,7 @@ export function BetsTable({ bets, loading, onDelete, onSave, onEdit, sweetSpotCr
   }, [sortKey]);
 
   const filtered = useMemo(() => {
-    let list = [...bets];
+    let list = Array.isArray(bets) ? [...bets] : [];
     if (statusFilter !== 'all') {
       list = list.filter(b => {
         const s = (b.status ?? '').toLowerCase();
@@ -387,7 +387,7 @@ export function BetsTable({ bets, loading, onDelete, onSave, onEdit, sweetSpotCr
     catch (err: any) { toast.error('Save failed', { description: err.message }); }
   }, [onSave]);
 
-  if (loading) return (
+  if (loading || !Array.isArray(bets)) return (
     <div className="flex items-center justify-center py-20 text-muted-foreground">
       <Loader2 className="h-5 w-5 animate-spin mr-2" />
       <span className="text-sm">Loading bets…</span>

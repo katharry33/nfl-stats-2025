@@ -1,96 +1,109 @@
-export interface RangeCriterion {
-  min: number;
-  max: number;
-  weight: number;
-  inverted?: boolean;
-}
+// src/lib/utils/sweetSpotScore.ts
 
-export interface PropCriterion {
-  type: string;
-  weight: number;
-}
+/**
+ * This file defines the logic for scoring a proposition bet based on a 
+ * configurable set of criteria. It's the "secret sauce" for the Sweet Spot feature.
+ */
 
-export interface OverUnderCriterion {
-  direction: 'any' | 'over' | 'under';
-  weight: number;
-}
-
+// The criteria weights. User can override these.
 export interface ScoringCriteria {
-  prop: PropCriterion;
-  overUnder: OverUnderCriterion;
-  scoreDiff: RangeCriterion;
-  confidenceScore: RangeCriterion;
-  opponentRank: RangeCriterion;
-  bestEdgePct: RangeCriterion;
-  kellyPct: RangeCriterion;
+  tierThresholds: {
+    bullseye: number;
+    hot: number;
+    warm: number;
+  };
+  weights: {
+    scoreDiff: number;      // e.g., 2.5
+    confidence: number;     // e.g., 1.5
+    opponentRank: number;   // e.g., 1.0
+    bestEdge: number;       // e.g., 2.0
+    kelly: number;          // e.g., 1.0
+    parlayLegs: number;     // e.g., -0.5 (penalty for more legs)
+  };
 }
 
+// The data for a single prop needed for scoring
 export interface PropData {
-  prop?: string | null;
-  overUnder?: string | null;
-  scoreDiff?: number | null;
-  confidenceScore?: number | null;
-  opponentRank?: number | null;
-  bestEdgePct?: number | null;
-  kellyPct?: number | null;
+  prop: string;
+  overUnder: 'Over' | 'Under';
+  scoreDiff: number | null | undefined;
+  confidenceScore: number | null | undefined;
+  opponentRank: number | null | undefined;
+  bestEdgePct: number | null | undefined;
+  kellyPct: number | null | undefined;
+  legCount?: number;
 }
 
-export interface SweetSpotResult {
-  score: number;
-  tier: 'bullseye' | 'hot' | 'strong' | 'cold';
-  contributingFactors: { factor: string; score: number }[];
+export type ScoreTier = 'bullseye' | 'hot' | 'warm' | 'cold';
+
+export interface ScoreResult {
+  totalScore: number;
+  tier: ScoreTier;
+  breakdown: Record<string, number>;
 }
 
-function normalize(value: number, min: number, max: number, inverted = false): number {
-  if (value < min) value = min;
-  if (value > max) value = max;
-  const normalized = (value - min) / (max - min);
-  return inverted ? 1 - normalized : normalized;
-}
-
-export function scoreProp(propData: PropData, criteria: ScoringCriteria): SweetSpotResult {
+/**
+ * Scores a single prop based on provided data and criteria.
+ * @param prop - The prop data to score.
+ * @param criteria - The weights and thresholds to use.
+ * @returns A score result with total, tier, and breakdown.
+ */
+export function scoreProp(prop: PropData, criteria: ScoringCriteria): ScoreResult {
+  const breakdown: Record<string, number> = {};
   let totalScore = 0;
-  const contributingFactors: { factor: string; score: number }[] = [];
 
-  const factors: (keyof ScoringCriteria)[] = [
-    'scoreDiff', 'confidenceScore', 'opponentRank', 'bestEdgePct', 'kellyPct'
-  ];
-
-  factors.forEach(factor => {
-    const criterion = criteria[factor] as RangeCriterion;
-    const value = propData[factor] as number | null | undefined;
-
-    if (value != null && criterion.weight > 0) {
-      const normalizedValue = normalize(value, criterion.min, criterion.max, criterion.inverted);
-      const factorScore = normalizedValue * criterion.weight;
-      if (factorScore > 0) {
-        totalScore += factorScore;
-        contributingFactors.push({ factor, score: factorScore });
-      }
-    }
-  });
-
-  // Handle discrete prop type
-  if (criteria.prop.weight > 0 && criteria.prop.type !== 'any' && propData.prop === criteria.prop.type) {
-    totalScore += criteria.prop.weight;
-    contributingFactors.push({ factor: 'prop type', score: criteria.prop.weight });
+  // 1. Score Difference
+  if (prop.scoreDiff) {
+    const score = prop.scoreDiff * criteria.weights.scoreDiff;
+    breakdown.scoreDiff = score;
+    totalScore += score;
   }
 
-  // Handle discrete over/under
-  if (criteria.overUnder.weight > 0 && criteria.overUnder.direction !== 'any' && propData.overUnder?.toLowerCase() === criteria.overUnder.direction) {
-    totalScore += criteria.overUnder.weight;
-    contributingFactors.push({ factor: 'over/under', score: criteria.overUnder.weight });
+  // 2. Confidence Score
+  if (prop.confidenceScore) {
+    const score = prop.confidenceScore * criteria.weights.confidence;
+    breakdown.confidence = score;
+    totalScore += score;
   }
 
-  let tier: SweetSpotResult['tier'] = 'cold';
-  if (totalScore >= 4.5) tier = 'bullseye';
-  else if (totalScore >= 3.0) tier = 'hot';
-  else if (totalScore >= 1.5) tier = 'strong';
+  // 3. Opponent Rank (Lower rank is better for O, worse for U)
+  if (prop.opponentRank) {
+    const rankEffect = prop.overUnder === 'Over' ? (31 - prop.opponentRank) : prop.opponentRank;
+    const score = (rankEffect / 30) * 10 * criteria.weights.opponentRank;
+    breakdown.opponentRank = score;
+    totalScore += score;
+  }
 
-  return { score: totalScore, tier, contributingFactors };
-}
+  // 4. Best Edge Percentage
+  if (prop.bestEdgePct) {
+    const score = prop.bestEdgePct * criteria.weights.bestEdge;
+    breakdown.bestEdge = score;
+    totalScore += score;
+  }
 
-export async function fetchScoringCriteria() {
-  // your logic here
-  // return ...
+  // 5. Kelly Criterion Percentage
+  if (prop.kellyPct) {
+    const score = prop.kellyPct * 100 * criteria.weights.kelly; // Scale it up
+    breakdown.kelly = score;
+    totalScore += score;
+  }
+
+  // 6. Parlay Legs Penalty
+  if (prop.legCount && prop.legCount > 1) {
+    const score = (prop.legCount - 1) * criteria.weights.parlayLegs;
+    breakdown.parlayLegs = score;
+    totalScore += score;
+  }
+  
+  // Determine Tier
+  let tier: ScoreTier = 'cold';
+  if (totalScore >= criteria.tierThresholds.bullseye) {
+    tier = 'bullseye';
+  } else if (totalScore >= criteria.tierThresholds.hot) {
+    tier = 'hot';
+  } else if (totalScore >= criteria.tierThresholds.warm) {
+    tier = 'warm';
+  }
+
+  return { totalScore, tier, breakdown };
 }

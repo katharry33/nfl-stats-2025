@@ -11,6 +11,7 @@ import {
   ColumnOrderState,
   VisibilityState,
   Table,
+  Updater,
 } from '@tanstack/react-table';
 import { Loader2 } from 'lucide-react';
 
@@ -20,68 +21,80 @@ interface FlexibleDataTableProps<TData, TValue> {
   isLoading?: boolean;
   tableId: string;
   onTableInstance?: (table: Table<TData>) => void;
+  state?: {
+    columnVisibility?: VisibilityState;
+    sorting?: SortingState;
+    columnOrder?: ColumnOrderState;
+  };
+  onColumnVisibilityChange?: (updater: Updater<VisibilityState>) => void;
+  onSortingChange?: (updater: Updater<SortingState>) => void;
+  onColumnOrderChange?: (updater: Updater<ColumnOrderState>) => void;
 }
 
-// Fixed: Explicitly generic <TData, TValue>
 export function FlexibleDataTable<TData, TValue>({
   columns,
   data,
   isLoading,
   tableId,
   onTableInstance,
+  state: externalState,
+  onColumnVisibilityChange,
+  onSortingChange,
+  onColumnOrderChange,
 }: FlexibleDataTableProps<TData, TValue>) {
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>([]);
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
+    
+  const [internalSorting, setInternalSorting] = useState<SortingState>([]);
+  const [internalColumnOrder, setInternalColumnOrder] = useState<ColumnOrderState>(() => 
+      columns.map(c => (c as any).id || (c as any).accessorKey)
+  );
+  const [internalColumnVisibility, setInternalColumnVisibility] = useState<VisibilityState>({});
+
+  const state = React.useMemo(() => ({
+      sorting: externalState?.sorting ?? internalSorting,
+      columnOrder: externalState?.columnOrder ?? internalColumnOrder,
+      columnVisibility: externalState?.columnVisibility ?? internalColumnVisibility,
+  }), [
+      externalState?.sorting,
+      externalState?.columnOrder,
+      externalState?.columnVisibility,
+      internalSorting,
+      internalColumnOrder,
+      internalColumnVisibility
+  ]);
 
   useEffect(() => {
-    const saved = localStorage.getItem(`table-prefs-${tableId}`);
-    if (saved) {
-      try {
-        const { order, visibility } = JSON.parse(saved);
-        if (order) setColumnOrder(order);
-        if (visibility) setColumnVisibility(visibility);
-      } catch (e) {
-        console.error("Failed to load table prefs", e);
+    if (!onColumnOrderChange && !onColumnVisibilityChange) {
+      const saved = localStorage.getItem(`table-prefs-${tableId}`);
+      if (saved) {
+        try {
+          const { order, visibility } = JSON.parse(saved);
+          if (order) setInternalColumnOrder(order);
+          if (visibility) setInternalColumnVisibility(visibility);
+        } catch (e) {
+          console.error("Failed to load table prefs", e);
+        }
       }
-    } else {
-      setColumnOrder(columns.map(c => (c as any).id || (c as any).accessorKey));
     }
-  }, [tableId, columns]);
+  }, [tableId, onColumnOrderChange, onColumnVisibilityChange]);
 
-  // Add this useEffect to sync visibility when columns change (like switching NFL -> NBA)
   useEffect(() => {
-    const initialVisibility: VisibilityState = {};
-    columns.forEach((col: any) => {
-      const id = col.id || col.accessorKey;
-      if (id) initialVisibility[id] = true;
-    });
-    setColumnVisibility(initialVisibility);
-  }, [columns]);
-
-
-  const savePrefs = (order: ColumnOrderState, visibility: VisibilityState) => {
-    localStorage.setItem(`table-prefs-${tableId}`, JSON.stringify({ order, visibility }));
-  };
+      if (!onColumnOrderChange && !onColumnVisibilityChange) {
+          localStorage.setItem(`table-prefs-${tableId}`, JSON.stringify({ 
+              order: internalColumnOrder, 
+              visibility: internalColumnVisibility 
+            }));
+      }
+  }, [internalColumnOrder, internalColumnVisibility, tableId, onColumnOrderChange, onColumnVisibilityChange]);
 
   const table = useReactTable({
     data,
     columns,
-    state: { sorting, columnOrder, columnVisibility },
-    onSortingChange: setSorting,
-    onColumnOrderChange: (updater) => {
-      const next = typeof updater === 'function' ? updater(columnOrder) : updater;
-      setColumnOrder(next);
-      savePrefs(next, columnVisibility);
-    },
-    onColumnVisibilityChange: (updater) => {
-      const next = typeof updater === 'function' ? updater(columnVisibility) : updater;
-      setColumnVisibility(next);
-      savePrefs(columnOrder, next);
-    },
+    state,
+    onSortingChange: onSortingChange ?? setInternalSorting,
+    onColumnOrderChange: onColumnOrderChange ?? setInternalColumnOrder,
+    onColumnVisibilityChange: onColumnVisibilityChange ?? setInternalColumnVisibility,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
-    // Fixed: Removed enableColumnReorder (it's not a valid root prop in v8)
   });
 
   useEffect(() => {
@@ -98,7 +111,7 @@ export function FlexibleDataTable<TData, TValue>({
                 <th
                   key={header.id}
                   className="px-4 py-4 text-[10px] font-black uppercase tracking-widest text-zinc-500 select-none cursor-pointer hover:text-white transition-colors"
-                  onClick={header.column.getToggleSortingHandler()} // THIS ENABLES SORTING ON CLICK
+                  onClick={header.column.getToggleSortingHandler()}
                 >
                   <div className="flex items-center gap-2">
                     {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
@@ -130,7 +143,6 @@ export function FlexibleDataTable<TData, TValue>({
               <tr key={row.id} className="hover:bg-white/5 transition-colors group">
                 {row.getVisibleCells().map((cell) => (
                   <td key={cell.id} className="px-4 py-3.5 text-xs text-zinc-300 font-medium">
-                    {/* Ensure cell and column exist before rendering */}
                     {cell ? flexRender(cell.column.columnDef.cell, cell.getContext()) : null}
                   </td>
                 ))}

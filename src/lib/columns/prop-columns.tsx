@@ -1,82 +1,94 @@
+'use client';
 
+import React from 'react';
 import { ColumnDef } from '@tanstack/react-table';
-import { User, MapPin } from 'lucide-react';
+import { NormalizedProp } from '@/lib/types';
+import { AddToBetslipButton } from '@/components/bets/add-to-betslip-button';
+import { ScoreDiff } from '@/components/bets/ScoreDiff';
+import { ResultBadge } from '@/components/bets/ResultBadge';
+import { fmt, fmtPct, formatBetDate } from '@/lib/utils/formatters';
 
-export const getVaultColumns = (league: 'nba' | 'nfl'): ColumnDef<any>[] => [
-  {
-    id: 'playerName',
-    accessorKey: 'playerName',
-    header: 'Player',
-    enableSorting: true,
-    enableHiding: false, // Player should always be visible
-    cell: ({ row }) => {
-      const p = row.original;
-      const name = p.playerName || p.player || 'Unknown';
-      
-      // Clean up Matchup (Remove leading hyphens)
-      let matchup = p.matchup || '';
-      if (matchup.startsWith('-')) matchup = matchup.substring(1).trim();
+export const getVaultColumns = (league: 'nba' | 'nfl'): ColumnDef<NormalizedProp>[] => {
+  const isNFL = league === 'nfl';
 
-      return (
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-zinc-900 rounded-lg border border-white/5">
-            <User size={14} className="text-zinc-500" />
-          </div>
-          <div className="flex flex-col">
-            <span className="text-[11px] font-black uppercase text-white">{name}</span>
-            <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-tight">
-              {matchup}
-            </span>
-          </div>
-        </div>
-      );
-    }
-  },
-  {
-    id: 'team',
-    accessorKey: 'team',
-    header: 'Team',
-    enableSorting: true,
-    cell: ({ getValue }) => {
-      const val = getValue() as string;
-      if (!val) return '—';
-      // Fix NBA URL issue: Extract abbreviation from path if it's a URL
-      if (val.includes('http')) {
-        return val.split('/').pop()?.split('.')[0]?.toUpperCase() || val;
+  return [
+    {
+      // We use a stable ID 'time_period' so reordering works for both sports
+      id: 'time_period',
+      accessorKey: isNFL ? 'week' : 'gameDate',
+      header: isNFL ? 'WK' : 'DATE',
+      cell: ({ getValue }) => {
+        const val = getValue();
+        if (isNFL) return <span className="font-bold text-zinc-400">{val || '—'}</span>;
+        
+        // Format NBA Date: 2026-03-23 -> 3/23
+        const dateStr = String(val || '');
+        const shortDate = dateStr.split('-').slice(1).join('/');
+        return <span className="text-[10px] font-medium text-zinc-500">{shortDate || '—'}</span>;
       }
-      return val.toUpperCase();
-    }
-  },
-  {
-    id: 'prop',
-    accessorKey: 'prop',
-    header: 'Prop Type',
-    enableSorting: true,
-  },
-  {
-    id: 'line',
-    accessorKey: 'line',
-    header: 'Line',
-    enableSorting: true,
-    cell: ({ row }) => {
-      // Access safely using optional chaining
-      const lineValue = row?.original?.line;
-      
-      return (
-        <span className="font-mono font-bold text-indigo-400">
-          {lineValue !== undefined && lineValue !== null ? lineValue : '—'}
+    },
+    {
+      accessorKey: 'player',
+      header: 'PLAYER',
+      cell: ({ row }) => <span className="font-bold text-white uppercase">{row.original.player}</span>
+    },
+    { 
+      accessorKey: 'matchup', 
+      header: 'MATCHUP', 
+      id: 'matchup',
+      cell: ({ getValue }) => <span className="text-zinc-400 tabular-nums">{String(getValue())}</span>
+    },
+    { accessorKey: 'prop', header: 'PROP', id: 'prop' },
+
+    // COMBINED LINE & O/U
+    { 
+      id: 'line_ou',
+      header: 'LINE', 
+      cell: ({ row }) => (
+        <div className="flex flex-col leading-tight">
+          <span className="font-bold text-white">{row.original.line}</span>
+          <span className="text-[9px] font-black uppercase text-zinc-500 tracking-tighter">
+            {row.original.overUnder}
+          </span>
+        </div>
+      )
+    },
+
+    // ADDED MISSING STATS
+    { 
+      accessorKey: 'playerAvg', 
+      header: 'AVG', 
+      id: 'playerAvg',
+      cell: ({ getValue }) => <span className="text-zinc-300">{fmt(getValue() as number)}</span>
+    },
+    { 
+      accessorKey: 'opponentRank', 
+      header: 'OPP RNK', 
+      id: 'oppRank',
+      cell: ({ getValue }) => (
+        <span className={`font-bold ${Number(getValue()) <= 10 ? 'text-rose-400' : 'text-zinc-400'}`}>
+          #{getValue() ?? '—'}
         </span>
-      );
+      )
+    },
+
+    // VALUE & ANALYTICS
+    { accessorKey: 'expectedValue', header: 'EV', id: 'ev', cell: ({ getValue }) => fmt(getValue() as number, 2) },
+    { accessorKey: 'confidenceScore', header: 'CONF', id: 'conf' },
+
+    // RESULTS
+    { accessorKey: 'gameStat', header: 'ACTUAL', id: 'actual' },
+    { 
+      accessorKey: 'scoreDiff', 
+      header: 'DIFF', 
+      id: 'diff',
+      cell: ({ getValue }) => <ScoreDiff v={getValue()} /> 
+    },
+    { 
+      accessorKey: 'actualResult', 
+      header: 'RESULT', 
+      id: 'result',
+      cell: ({ getValue }) => <ResultBadge v={getValue()} /> 
     }
-  },
-  {
-    id: 'actualResult',
-    accessorKey: 'actualResult',
-    header: 'Actual',
-    enableSorting: true,
-    cell: ({ row }) => {
-      const resultValue = row?.original?.actualResult;
-      return resultValue !== undefined && resultValue !== null ? resultValue : '—';
-    }
-  }
-];
+  ];
+};

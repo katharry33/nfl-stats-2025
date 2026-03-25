@@ -37,24 +37,13 @@ export function normalizeProp(raw: string): string {
 
 export function normalizeTeamAbbr(raw: string): string {
   if (!raw) return '';
-  const t = raw.trim().toUpperCase();
-  if (/^[A-Z]{2,3}$/.test(t)) return t;
-
-  const map: Record<string, string> = {
-    'ARIZONA CARDINALS': 'ARI', 'ATLANTA FALCONS': 'ATL', 'BALTIMORE RAVENS': 'BAL',
-    'BUFFALO BILLS': 'BUF', 'CAROLINA PANTHERS': 'CAR', 'CHICAGO BEARS': 'CHI',
-    'CINCINNATI BENGALS': 'CIN', 'CLEVELAND BROWNS': 'CLE', 'DALLAS COWBOYS': 'DAL',
-    'DENVER BRONCOS': 'DEN', 'DETROIT LIONS': 'DET', 'GREEN BAY PACKERS': 'GB',
-    'HOUSTON TEXANS': 'HOU', 'INDIANAPOLIS COLTS': 'IND', 'JACKSONVILLE JAGUARS': 'JAX',
-    'KANSAS CITY CHIEFS': 'KC', 'LAS VEGAS RAIDERS': 'LV', 'LOS ANGELES RAMS': 'LAR',
-    'LOS ANGELES CHARGERS': 'LAC', 'MIAMI DOLPHINS': 'MIA', 'MINNESOTA VIKINGS': 'MIN',
-    'NEW ENGLAND PATRIOTS': 'NE', 'NEW ORLEANS SAINTS': 'NO', 'NEW YORK GIANTS': 'NYG',
-    'NEW YORK JETS': 'NYJ', 'PHILADELPHIA EAGLES': 'PHI', 'PITTSBURGH STEELERS': 'PIT',
-    'SAN FRANCISCO 49ERS': 'SF', 'SEATTLE SEAHAWKS': 'SEA', 'TAMPA BAY BUCCANEERS': 'TB',
-    'TENNESSEE TITANS': 'TEN', 'WASHINGTON COMMANDERS': 'WAS',
-  };
-
-  return map[t] ?? t;
+  // If it's a URL like "https://.../PHI.webp", extract "PHI"
+  if (raw.includes('logos/')) {
+    const parts = raw.split('/');
+    return parts[parts.length - 1].replace('.webp', '').toUpperCase();
+  }
+  // Strip leading dashes or dots
+  return raw.replace(/^[-.\s]+/, '').trim().toUpperCase();
 }
 
 export function getOpponent(myTeam: string, matchup: string): string | null {
@@ -101,4 +90,30 @@ export function splitComboProp(propNorm: string): string[] | null {
   const mapped = parts.map(p => componentMap[p]);
   if (mapped.some(m => !m)) return null;
   return mapped;
+}
+import { NormalizedProp } from '@/lib/types';
+
+// Helper to strip the noise seen in your NBA screenshot
+const scrub = (val: string) => (val || '').replace(/^[-.\s]+/, '').trim();
+
+export function hydrateProp(raw: any, id: string): NormalizedProp {
+  return {
+    ...raw,
+    id,
+    // NBA Fix: Remove the leading dashes/dots from these specific fields
+    player: scrub(raw.player || raw.playerName),
+    matchup: scrub(raw.matchup).replace(/-/g, '@'), // Also swap hyphen for @
+    opponent: scrub(raw.opponent),
+    team: scrub(raw.team),
+    
+    // Core normalization
+    prop: normalizeProp(raw.prop || ''),
+    gameDate: raw.gameDate || raw.date || '',
+    overUnder: raw.overunder || raw.overUnder || 'Over',
+    
+    // Safety check for numbers
+    line: Number(raw.line) || 0,
+    season: Number(raw.season),
+    week: raw.week ? Number(raw.week) : null,
+  };
 }

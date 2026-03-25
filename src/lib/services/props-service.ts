@@ -1,47 +1,42 @@
-
-import { db } from '@/lib/firebase';
+// src/lib/services/props-service.ts
+import { db } from '@/lib/firebase/config';
 import { collection, query, where, limit, getDocs, startAfter, orderBy } from 'firebase/firestore';
+import { hydrateProp } from '@/lib/enrichment/shared/normalize';
 
 export async function fetchPaginatedProps(filters: any, pageParam: any) {
-  const { league, season, date, week } = filters;
+  const { league, season, date, week, vaultMode } = filters;
   
-  // FIX: Ensure NFL points to allProps
-  const collectionName = league === 'nfl' ? 'allProps' : 'nbaHistoricalProps';
-  const propsRef = collection(db, collectionName);
+  const collectionName = vaultMode 
+    ? (league === 'nfl' ? 'allProps' : 'nbaProps_2025') 
+    : 'props';
+  
+  const constraints: any[] = [];
 
-  let constraints: any[] = [
-    where('season', '==', Number(season)),
-    limit(20) // Smaller chunks for faster loading
-  ];
+  // Season match (Ensure UI '2025' matches DB 2025)
+  if (season) constraints.push(where('season', '==', Number(season)));
 
-  // NFL Specifics
+  // NFL Week Filter
   if (league === 'nfl' && week && week !== 'All') {
     constraints.push(where('week', '==', Number(week)));
   }
 
-  // NBA Specifics
+  // NBA Date Filter
   if (league === 'nba' && date) {
-    constraints.push(where('date', '==', date));
+    constraints.push(where('gameDate', '==', String(date))); 
   }
+
+  // ORDERING - This is the primary cause of empty results if indexes are missing.
+  constraints.push(orderBy('gameDate', 'desc'));
 
   // PAGINATION
-  if (pageParam) {
-    constraints.push(startAfter(pageParam));
-  }
+  if (pageParam) constraints.push(startAfter(pageParam));
+  constraints.push(limit(40)); 
 
-  /**
-   * IMPORTANT: If you get 0 results for NFL, remove the line below.
-   * Firestore requires a Composite Index for (season + week + playerName).
-   * If you don't have that index yet, commenting out the orderBy will 
-   * make the data reappear instantly (though it won't be alphabetical).
-   */
-  // constraints.push(orderBy('playerName', 'asc')); 
-
-  const q = query(propsRef, ...constraints);
+  const q = query(collection(db, collectionName), ...constraints);
   const snapshot = await getDocs(q);
 
   return {
-    docs: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })),
-    lastVisible: snapshot.docs[snapshot.docs.length - 1]
+    docs: snapshot.docs.map(doc => hydrateProp(doc.data(), doc.id)),
+    lastVisible: snapshot.docs[snapshot.docs.length - 1] || null
   };
 }
