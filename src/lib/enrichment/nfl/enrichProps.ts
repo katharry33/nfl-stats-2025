@@ -7,8 +7,8 @@
 // Both delegate to runEnrichmentBatch() → enrichPropCore() / enrichComboPropCore()
 // to eliminate the previous ~250-line duplication.
 
-import type { NFLProp } from '../types';
 import { adminDb } from '@/lib/firebase/admin';
+import type { NFLProp } from '../types';
 import {
   normalizeProp, getOpponent, normalizePlayerName, splitComboProp,
 } from '../shared/normalize';
@@ -21,6 +21,7 @@ import {
   getPlayerTeamMap, updateAllProps, getPlayerSeasonAvg, getTeamDefenseStats,
 } from '../firestore';
 import type { PFRGame } from '../types';
+import { Query, QueryDocumentSnapshot } from 'firebase-admin/firestore';
 
 // ─── Shared types ─────────────────────────────────────────────────────────────
 
@@ -40,7 +41,7 @@ interface PropInput {
   gameDate?:          string;
   fdOdds?:            number | null;
   dkOdds?:            number | null;
-  // Existing values — used to decide whether to skip enrichment
+  // Existing values — used to decide whether to enrich
   playerAvg?:         number | null;
   opponentRank?:      number | null;
   opponentAvgVsStat?: number | null;
@@ -500,7 +501,7 @@ export async function enrichAllPropsCollection(opts: EnrichAllOptions): Promise<
   if (!adminDb) { console.error('❌ DB undefined'); return 0; }
 
   const collectionName  = `nflProps_${season}`;
-  let query: adminDb.Query = adminDb.collection(collectionName);
+  let query: Query = adminDb.collection(collectionName);
 
   if (skipEnriched) {
     query = query.where('enriched', '==', false);
@@ -532,7 +533,7 @@ export async function enrichAllPropsCollection(opts: EnrichAllOptions): Promise<
     return null;
   };
 
-  const rawProps = uniqueDocs.map((d: any) => {
+  const rawProps = uniqueDocs.map((d: QueryDocumentSnapshot) => {
     const r = d.data() as Record<string, any>;
     const playerName = pick(r, 'player', 'Player');
     

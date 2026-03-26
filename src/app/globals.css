@@ -40,15 +40,6 @@
   --color-profit: #4ade80;
   --color-loss: #f87171;
   --color-push: #94a3b8;
-
-  /* ── Animation ────────────────────────────────────────────────────────── */
-  --animate-shimmer: shimmer 2s infinite;
-
-  @keyframes shimmer {
-    100% {
-      transform: translateX(100%);
-    }
-  }
 }
 
 /* ── Base Styles ────────────────────────────────────────────────────────── */
@@ -65,6 +56,16 @@
 
 /* ── Custom Utilities ───────────────────────────────────────────────────── */
 @layer utilities {
+  .animate-shimmer {
+    animation: shimmer 2s infinite linear;
+    background-size: 200% 100%;
+  }
+
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+
   .text-glow-primary {
     text-shadow: 0 0 20px rgba(99, 102, 241, 0.35);
   }

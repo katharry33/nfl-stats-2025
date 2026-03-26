@@ -11,7 +11,9 @@ export async function fetchNBASeasonLog(
   const cacheKey = `${brId}:${season}`;
   if (BR_CACHE.has(cacheKey)) return BR_CACHE.get(cacheKey)!;
 
-  const url = `https://www.basketball-reference.com/players/${brId[0].toLowerCase()}/${brId}/gamelog/${season}/`;
+  // If 'season' is passed as 2025 for the 25-26 season, increment it for BR URL.
+  const brSeason = Number(season) === 2025 ? 2026 : season;
+  const url = `https://www.basketball-reference.com/players/${brId[0].toLowerCase()}/${brId}/gamelog/${brSeason}/`;
   
   try {
     const res = await fetchWithRetry(url);
@@ -84,17 +86,23 @@ function parseBRGameLog(html: string): BRGame[] {
 
 export function getNBAStatFromGame(game: any, propRaw: string): number | null {
   const p = normalizeNBAProp(propRaw);
+  
+  // Ensure we are working with numbers and defaulting to 0 if missing
+  const val = (v: any) => (v === undefined || v === null ? 0 : parseFloat(v));
+
   switch (p) {
-    case 'points': return game.pts;
-    case 'assists': return game.ast;
-    case 'rebounds': return game.reb;
-    case 'steals': return game.stl;
-    case 'blocks': return game.blk;
-    case 'threes': return game.fg3m;
-    case 'turnovers': return game.tov;
+    case 'points': return val(game.pts);
+    case 'assists': return val(game.ast);
+    case 'rebounds': return val(game.reb);
+    case 'steals': return val(game.stl);
+    case 'blocks': return val(game.blk);
+    case 'threes': return val(game.fg3m);
+    case 'turnovers': return val(game.tov);
     default:
       const parts = splitNBACombo(p);
-      if (parts) return parts.reduce((sum, part) => sum + (getNBAStatFromGame(game, part) || 0), 0);
+      if (parts) {
+        return parts.reduce((sum, part) => sum + (getNBAStatFromGame(game, part) || 0), 0);
+      }
       return null;
   }
 }

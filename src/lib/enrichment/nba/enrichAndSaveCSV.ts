@@ -65,6 +65,7 @@ export async function enrichAndSaveCSVProps(props: any[], season: number | strin
 
       const defStats = lookupNBADefenseStats(defMap, propNorm, opponent);
       const seasonAvg = gameLog.reduce((acc, g) => acc + (getNBAStatFromGame(g, propNorm) || 0), 0) / gameLog.length;
+      console.log(`[MATH] ${playerName} | ${propNorm} | Avg: ${seasonAvg.toFixed(2)}`);
       const hitPct = calculateNBAHitPct(gameLog, propNorm, line, raw.overUnder || 'Over', 999);
       
       const math = computeScoring({
@@ -89,7 +90,8 @@ export async function enrichAndSaveCSVProps(props: any[], season: number | strin
         season: Number(season), // For Querying
         date: dateStr,        // For Querying
         gameDate: dateStr,    // Legacy
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
+        mathVersion: '1.1'
       }, { merge: true });
 
       // 7. AUTO-UPDATE ID MAP

@@ -7,6 +7,7 @@ import {
   ArrowUpDown, Search
 } from 'lucide-react';
 import { InfiniteQueryObserverResult, FetchNextPageOptions, InfiniteData } from '@tanstack/react-query';
+import { toast } from 'sonner'; // Assuming Sonner for that clean UI
 
 interface PropsTableProps {
   props: any[];
@@ -26,6 +27,30 @@ export default function PropsTable({
   props, league, isLoading, mode, hasMore, 
   onLoadMore, onRefresh, onEdit, onDelete, onAddToSlip, onManualEntry 
 }: PropsTableProps) {
+
+  // --- SINGLE ENRICHMENT HANDLER ---
+  const handleSingleEnrich = async (prop: any) => {
+    const playerName = prop.playerName || prop.player;
+    
+    const promise = fetch('/api/nba/enrich', {
+      method: 'POST',
+      body: JSON.stringify({ 
+        mode: 'refine_existing', 
+        date: prop.date || prop.gameDate, 
+        league,
+        season: prop.season || 2025 
+      }),
+    });
+
+    toast.promise(promise, {
+      loading: `Recalculating ${playerName}...`,
+      success: () => {
+        onRefresh?.(); // Trigger parent refresh to update UI
+        return `${playerName} stats updated!`;
+      },
+      error: (err) => `Error: ${err.message}`,
+    });
+  };
 
   if (isLoading && props.length === 0) {
     return (
@@ -74,7 +99,6 @@ export default function PropsTable({
               <th className="py-5 px-6 text-[9px] font-black text-zinc-500 uppercase tracking-widest text-center">Prop Type</th>
               <th className="py-5 px-6 text-[9px] font-black text-zinc-500 uppercase tracking-widest text-center">Line</th>
               
-              {/* HISTORICAL ONLY COLUMN */}
               {mode === 'archive' && (
                 <th className="py-5 px-6 text-[9px] font-black text-emerald-500 uppercase tracking-widest text-center">Actual</th>
               )}
@@ -90,12 +114,15 @@ export default function PropsTable({
               const resultRaw = (prop.actualResult || '').toLowerCase();
               const isWin = resultRaw.includes('hit') || resultRaw.includes('won') || resultRaw.includes('over');
               
+              // Logic check for missing data
+              const needsEnrichment = !prop.playerAvg || prop.playerAvg === 0;
+
               return (
                 <tr key={prop.id || i} className="hover:bg-white/2 transition-colors group">
                   <td className="py-5 px-8">
                     <div className="flex items-center gap-4">
-                      <div className="p-2.5 bg-zinc-900 rounded-xl border border-white/5 group-hover:border-indigo-500/30">
-                        <User size={16} className="text-zinc-600 group-hover:text-indigo-400" />
+                      <div className={`p-2.5 rounded-xl border transition-all ${needsEnrichment ? 'bg-amber-500/5 border-amber-500/20' : 'bg-zinc-900 border-white/5 group-hover:border-indigo-500/30'}`}>
+                        <User size={16} className={needsEnrichment ? 'text-amber-500' : 'text-zinc-600 group-hover:text-indigo-400'} />
                       </div>
                       <div className="flex flex-col">
                         <span className="text-[12px] font-black text-white group-hover:text-indigo-400 uppercase tracking-tight">
@@ -117,7 +144,7 @@ export default function PropsTable({
                   <td className="py-5 px-6 text-center">
                     <div className="flex flex-col items-center">
                       <div className="flex items-center gap-1.5">
-                        <Zap size={12} className="text-zinc-600" />
+                        <Zap size={12} className={needsEnrichment ? 'text-amber-500 animate-pulse' : 'text-zinc-600'} />
                         <span className="text-[14px] font-black text-white tabular-nums tracking-tighter">
                           {prop.line}
                         </span>
@@ -128,7 +155,6 @@ export default function PropsTable({
                     </div>
                   </td>
 
-                  {/* ACTUAL STATS (Archive Only) */}
                   {mode === 'archive' && (
                     <td className="py-5 px-6 text-center">
                       <span className="text-[15px] font-mono font-black text-white italic underline underline-offset-4 decoration-emerald-500/30">
@@ -147,10 +173,10 @@ export default function PropsTable({
                       </div>
                     ) : (
                       <div className="flex flex-col items-center">
-                        <span className="text-[13px] font-black text-zinc-300 italic">
-                          {prop.projection || '—'}
+                        <span className={`text-[13px] font-black italic ${needsEnrichment ? 'text-zinc-700' : 'text-zinc-300'}`}>
+                          {needsEnrichment ? 'PENDING' : (prop.projection || '—')}
                         </span>
-                        {prop.projection && (
+                        {prop.projection && !needsEnrichment && (
                           <span className={`text-[8px] font-black ${Number(prop.projection) > prop.line ? 'text-emerald-500' : 'text-rose-500'}`}>
                             {Number(prop.projection) > prop.line ? '▲' : '▼'} {Math.abs(Number(prop.projection) - prop.line).toFixed(1)}
                           </span>
@@ -161,6 +187,17 @@ export default function PropsTable({
 
                   <td className="py-5 px-8">
                     <div className="flex items-center justify-end gap-2">
+                      {/* ⚡ ZAP BUTTON: Show if playerAvg is 0 */}
+                      {needsEnrichment && (
+                        <button 
+                          onClick={() => handleSingleEnrich(prop)}
+                          className="p-2 text-amber-500 hover:bg-amber-500/10 rounded-lg transition-all"
+                          title="Retry Enrichment"
+                        >
+                          <Zap size={14} className="fill-current" />
+                        </button>
+                      )}
+
                       <button 
                         onClick={() => onAddToSlip?.(prop)}
                         className="bg-white text-black px-4 py-1.5 rounded-lg text-[9px] font-black uppercase hover:bg-indigo-500 hover:text-white transition-all active:scale-95 shadow-lg shadow-white/5"
@@ -182,7 +219,6 @@ export default function PropsTable({
         </table>
       </div>
 
-      {/* 🟢 PAGINATION */}
       {hasMore && (
         <div className="p-8 flex justify-center border-t border-white/5 bg-black/20">
           <button 

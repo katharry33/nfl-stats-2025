@@ -24,12 +24,17 @@ const INITIAL_COLUMN_VISIBILITY: VisibilityState = {
 
 const INITIAL_COLUMN_ORDER: ColumnOrderState = ['time_period', 'player', 'matchup', 'prop', 'line_ou', 'playerAvg', 'oppRank', 'ev', 'conf', 'actual', 'diff', 'result'];
 
+const SEASON_OPTIONS = [
+  { label: '2024–25', value: '2024' },
+  { label: '2025–26', value: '2025' },
+];
+
 export default function HistoricalVaultPage() {
   const [league, setLeague] = useState<'nba' | 'nfl'>('nba');
   const [search, setSearch] = useState('');
-  const [season, setSeason] = useState('2025'); // Default for NBA
+  const [season, setSeason] = useState('2025');
   const [week, setWeek] = useState('All');
-  const [date, setDate] = useState('2026-03-23'); // Default to a specific date
+  const [date, setDate] = useState('2026-03-23');
 
   // Table States
   const [tableInstance, setTableInstance] = useState<Table<NormalizedProp> | null>(null);
@@ -39,6 +44,14 @@ export default function HistoricalVaultPage() {
 
   const [isEnriching, setIsEnriching] = useState(false);
   const [isPostGameOpen, setIsPostGameOpen] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [selectedDate, setSelectedDate] = useState('');
+
+  const [enrichStatus, setEnrichStatus] = useState<{
+    total: number;
+    processed: number;
+    error?: string;
+  }>({ total: 0, processed: 0 });
 
   useEffect(() => {
     // When league changes, reset table state for a clean slate
@@ -48,13 +61,12 @@ export default function HistoricalVaultPage() {
 
   const handleLeagueChange = (l: 'nba' | 'nfl') => {
     setLeague(l);
-    // Auto-switch season to match your database availability
     if (l === 'nfl') {
-      setSeason('2024'); // Match 'allProps'
+      setSeason('2024');
       setWeek('All');
     } else {
-      setSeason('2025'); // Match 'nbaProps_2025'
-      setDate('2026-03-23');    // Default NBA to a specific date
+      setSeason('2025');
+      setDate('2026-03-23');
     }
   };
 
@@ -67,40 +79,71 @@ export default function HistoricalVaultPage() {
     refetch 
   } = usePropsQuery({ 
     league, 
-    season: Number(season),
-    date: (league === 'nba' && date !== 'All') ? date : undefined,
-    week: (league === 'nfl' && week !== 'All') ? Number(week) : undefined,
+    season: season,
+    date: date,
+    week: week,
+    search: search,
   });
 
   const allProps = useMemo(() => {
-    const docs = data?.pages.flatMap((page: any) => page.docs) ?? [];
+    const docs = data?.pages.flatMap((page: any) => page.docs ?? []) ?? [];
     if (!search) return docs;
+    const searchLower = search.toLowerCase();
     return docs.filter(p => 
-      p.player.toLowerCase().includes(search.toLowerCase())
+      p.player?.toLowerCase().includes(searchLower) || 
+      p.matchup?.toLowerCase().includes(searchLower) ||
+      p.team?.toLowerCase().includes(searchLower)
     );
   }, [data, search]);
   const columns = useMemo(() => getVaultColumns(league), [league]);
 
-  const handleEnrich = async () => {
+  const runEnrichment = async (date: string) => {
     setIsEnriching(true);
-    const toastId = toast.loading(`Enriching ${league.toUpperCase()} Data...`);
+    setEnrichStatus({ total: 0, processed: 0, error: undefined });
+    setProgress(0);
+    setSelectedDate(date === 'All' ? 'Full Season' : date);
+    const toastId = toast.loading("Starting enrichment process...");
+
+    let remaining = 1; 
+    let totalProcessed = 0;
+    let lastProcessedCount = -1;
+
     try {
-      const res = await fetch(`/api/${league}/backfill`, {
-        method: 'POST',
-        body: JSON.stringify({ 
-          date: (league === 'nba' && date !== 'All') ? date : undefined, 
-          week: league === 'nfl' && week !== 'All' ? Number(week) : undefined,
-          season 
-        }),
-      });
-      if (res.ok) {
-        toast.success("Averages and Ranks Synchronized", { id: toastId });
-        refetch();
+      while (remaining > 0) {
+        const res = await fetch('/api/nba/enrich', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: 'refine_existing', date, league: 'nba', season: 2025 })
+        });
+        
+        const data = await res.json();
+
+        if (!res.ok) throw new Error(data.error || "Failed to enrich");
+        
+        // CIRCUIT BREAKER
+        if (data.updated === 0 && totalProcessed === lastProcessedCount) {
+           console.error("Stopping: No progress made in this batch.");
+           break;
+        }
+        
+        lastProcessedCount = totalProcessed;
+        remaining = data.remaining;
+        totalProcessed += data.updated;
+
+        setEnrichStatus({ 
+          total: data.totalCount || 489, // Pass the total once from backend if possible
+          processed: totalProcessed 
+        });
+        
+        if (remaining === 0) break;
       }
-    } catch (e) {
-      toast.error("Enrichment failed. Check server logs.", { id: toastId });
+    } catch (err: any) {
+      console.error(err);
+      setEnrichStatus(prev => ({ ...prev, error: "Missing Firestore Index. Check logs." }));
+      toast.error(err.message || "Missing Firestore Index. Check logs.", { id: toastId });
     } finally {
       setIsEnriching(false);
+      refetch();
     }
   };
 
@@ -144,7 +187,7 @@ export default function HistoricalVaultPage() {
       <div className="bg-[#141414] border border-white/5 rounded-[24px] p-4 flex flex-wrap items-center justify-between gap-4">
          <div className="flex items-center gap-6 px-4">
             <button 
-              onClick={handleEnrich} 
+              onClick={() => runEnrichment(date)} 
               disabled={isEnriching}
               className="flex items-center gap-3 group transition-all disabled:opacity-50"
             >
@@ -188,11 +231,11 @@ export default function HistoricalVaultPage() {
             onChange={(e) => setSeason(e.target.value)} 
             className={SELECT_STYLE}
           >
-            {league === 'nfl' ? (
-              <option value="2024">2024-25 (AllProps)</option>
-            ) : (
-              <option value="2025">2025-26 (NBA 2025)</option>
-            )}
+            {SEASON_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
           </select>
 
           {league === 'nfl' ? (
@@ -235,6 +278,33 @@ export default function HistoricalVaultPage() {
           )}
         </div>
       </div>
+      
+      {isEnriching || enrichStatus.error ? (
+        <div className="mb-6 p-4 bg-zinc-900/50 border border-zinc-800 rounded-lg">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[10px] font-bold uppercase text-zinc-400">
+              {enrichStatus.error ? "Enrichment Halted" : `Enriching: ${enrichStatus.processed} / ${enrichStatus.total} Props`}
+            </span>
+            <span className="text-[10px] font-black text-indigo-400">
+              {progress}%
+            </span>
+          </div>
+
+          {/* The Progress Bar */}
+          <div className="h-1.5 w-full bg-zinc-800 rounded-full overflow-hidden">
+            <div 
+              className={`h-full transition-all duration-700 ${enrichStatus.error ? 'bg-red-500' : 'bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)]'}`}
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+
+          {enrichStatus.error && (
+            <p className="mt-2 text-[9px] text-red-400 font-medium">
+              ⚠️ {enrichStatus.error} — Paste the URL from your terminal into a browser to create the required index.
+            </p>
+          )}
+        </div>
+      ) : null}
 
       <div className="bg-[#0a0a0a] border border-white/5 rounded-[32px] overflow-hidden shadow-2xl">
         <FlexibleDataTable 

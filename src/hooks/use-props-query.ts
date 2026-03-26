@@ -1,30 +1,57 @@
 // src/hooks/use-props-query.ts
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { fetchPaginatedProps } from '@/lib/services/props-service';
-import { QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
 
 export function usePropsQuery(filters: {
   league: 'nba' | 'nfl';
-  season?: number;
+  season: string;
   date?: string;
-  week?: number | string;
+  week?: string | number;
   search?: string;
 }) {
+  const { league, season, week, date, search } = filters;
+
   return useInfiniteQuery({
-    // The key must change whenever ANY filter changes to trigger a refetch
-    queryKey: ['props', filters],
+    // The Key: A unique identifier for THIS specific set of data
+    queryKey: [
+      'props-vault', // Base identifier
+      league,        // 'nba' | 'nfl'
+      season,        // '2024' | '2025'
+      { week, date, search } // Specific filters
+    ],
     
-    queryFn: ({ pageParam }: { pageParam: QueryDocumentSnapshot<DocumentData> | null }) => 
-      fetchPaginatedProps(filters, pageParam),
-
-    initialPageParam: null as QueryDocumentSnapshot<DocumentData> | null, 
-
-    getNextPageParam: (lastPage) => {
-      if (!lastPage.docs || lastPage.docs.length === 0) return undefined;
-      return lastPage.lastVisible;
+    queryFn: async ({ pageParam = null }: { pageParam?: string | null }) => {
+      // Construct URL safely
+      const url = new URL(`/api/props`, window.location.origin);
+      url.searchParams.append('league', league);
+      url.searchParams.append('season', season);
+      
+      // Only append week/date if they are not 'All'
+      if (week && week !== 'All') {
+        url.searchParams.append('week', String(week));
+      }
+      if (date && date !== 'All') {
+        url.searchParams.append('date', date);
+      }
+      
+      if (pageParam) {
+        url.searchParams.append('cursor', pageParam);
+      }
+      
+      const res = await fetch(url.toString());
+      if (!res.ok) {
+        throw new Error(`Failed to fetch props: ${res.statusText}`);
+      }
+      return res.json();
     },
     
+    // Pagination logic
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    
+    initialPageParam: null,
+
+    // ⚡ Performance Optimization
+    staleTime: 1000 * 60 * 5, // 5 mins: Data stays "fresh" in cache
+    gcTime: 1000 * 60 * 30,    // 30 mins: Data stays in memory even if unused
     refetchOnWindowFocus: false,
-    staleTime: 1000 * 60 * 2, // 2 minutes is safer for active dev
   });
 }

@@ -1,56 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { recalculateExistingProps } from '@/lib/enrichment/nba/recalculate';
 import { enrichAndSaveCSVProps } from '@/lib/enrichment/nba/enrichAndSaveCSV';
-import Papa from 'papaparse';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    
-    // 1. Extract the date sent from NBAIngestTools
-    // Default to 2025 string if season is missing
-    const { csvString, season = "2025", date } = body;
+    const { mode, date, league, season, csvString } = body;
 
-    if (!csvString) {
-      return NextResponse.json({ error: "No CSV data provided" }, { status: 400 });
+    console.log("Received date for enrichment:", date);
+
+    // --- MODE A: RE-CALCULATE (From Historical Vault) ---
+    if (mode === 'refine_existing') {
+      if (!date) return NextResponse.json({ error: "Date required" }, { status: 400 });
+      
+      // This calls the utility we just wrote to fill in the Avgs/EVs
+      const result = await recalculateExistingProps(Number(season), date);
+      
+      return NextResponse.json({ 
+        success: true, 
+        ...result // returns { updated, remaining } for your progress bar
+      });
     }
 
-    // 2. Parse CSV with normalized headers (lowercase + trimmed)
-    const parsed = Papa.parse(csvString, {
-      header: true,
-      skipEmptyLines: true,
-      transformHeader: (h) => h.trim().toLowerCase(), 
-    });
-
-    const props = parsed.data;
-
-    if (!props || !Array.isArray(props) || props.length === 0) {
-      return NextResponse.json({ error: "CSV parsing resulted in an empty dataset" }, { status: 400 });
+    // --- MODE B: INITIAL INGEST (From Bet Builder) ---
+    if (csvString) {
+      // Your existing CSV logic remains here...
+      const result = await enrichAndSaveCSVProps(csvString, Number(season), date);
+      return NextResponse.json(result);
     }
 
-    console.log(`🚀 Ingesting ${props.length} NBA props | Season: ${season} | Date: ${date || 'Today'}`);
+    return NextResponse.json({ error: "Invalid request mode" }, { status: 400 });
 
-    // 3. Pass the 'date' parameter into your logic
-    // Ensure your enrichAndSaveCSVProps function signature accepts this 3rd argument
-    const results = await enrichAndSaveCSVProps(props, season, date);
-
-    // 4. Enhanced Logging for your terminal
-    if (results.errors && results.errors.length > 0) {
-      console.warn(`⚠️ Partial Success. Saved: ${results.success}, Errors: ${results.errors.length}`);
-    }
-
-    return NextResponse.json({
-      success: results.success,
-      skipped: results.skipped || 0,
-      errors: results.errors || [], // This contains the "No Logs Found" list
-    });
-
-  } catch (err: any) {
-    console.error('❌ CSV Enrichment Route Error:', err);
-    
-    // SAFEGUARD: Ensure we return a string, not an error object, to prevent UI crashes
-    return NextResponse.json(
-      { error: String(err.message || "An internal server error occurred") }, 
-      { status: 500 }
-    );
+  } catch (error: any) {
+    console.error("Enrichment Route Error:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

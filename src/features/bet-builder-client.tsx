@@ -49,7 +49,8 @@ export default function BetBuilderClient({
     propType: 'all',
     search: '',
     league,
-    date: activeDate
+    date: activeDate,
+    season: String(season)
   });
 
   const {
