@@ -1,78 +1,104 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState } from 'react';
+import { X, Loader2, UploadCloud, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 
-interface EnrichModalProps {
-  isOpen:             boolean;
-  onClose:            () => void;
-  onComplete:         () => void;
-  league:             'nba' | 'nfl';
-  defaultSeason:      number;
-  defaultCollection?: string; 
-  defaultDate?:       string;
-  defaultWeek?:       number;
+interface IngestEnrichModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onComplete: () => void;
+  league: 'nba' | 'nfl';
+  defaultDate: string;
+  defaultSeason: number;
+  props: any[]; // small manual seed rows (optional)
+  uploadId?: string | null; // optional uploadId for CSV flows
 }
 
-export function EnrichModal({
-  isOpen, onClose, onComplete, league, defaultDate, defaultSeason, defaultWeek,
-}: EnrichModalProps) {
+export function IngestEnrichModal({
+  isOpen,
+  onClose,
+  onComplete,
+  league,
+  defaultDate,
+  defaultSeason,
+  props,
+  uploadId = null
+}: IngestEnrichModalProps) {
   const [loading, setLoading] = useState(false);
-  const [force, setForce] = useState(false);
-  
-  const displayTarget = defaultDate
-    ? `Date ${defaultDate}`
-    : defaultWeek
-    ? `Week ${defaultWeek} · ${defaultSeason}`
-    : `full ${defaultSeason} season`;
 
-  const handleEnrich = async () => {
-    setLoading(true);
-    const toastId = toast.loading(`Connecting to ${league.toUpperCase()} Stats Engine...`, {
-      description: `Target: ${displayTarget}`,
-    });
-
+  const pollJobStatus = async (jobId: string) => {
+    const start = Date.now();
     try {
+      while (true) {
+        const s = await fetch(`/api/${league}/enrich/status?jobId=${jobId}`);
+        if (!s.ok) {
+          const err = await s.json().catch(() => ({ error: 'Unknown' }));
+          toast.error('Job status error', { description: err?.error || 'Failed to fetch job status' });
+          return;
+        }
+        const body = await s.json();
+        if (body.status === 'completed') {
+          toast.success('Protocol Complete', {
+            description: `${body.created ?? 0} props created, ${body.updated ?? 0} updated.`
+          });
+          onComplete();
+          onClose();
+          return;
+        }
+        if (body.status === 'failed') {
+          toast.error('Enrichment failed', { description: body.error || 'See server logs' });
+          return;
+        }
+        // timeout after 5 minutes
+        if (Date.now() - start > 1000 * 60 * 5) {
+          toast('Processing', { description: 'Job still running. Check job status later.' });
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+    } catch (err: any) {
+      toast.error('Polling error', { description: err?.message || 'Unknown error' });
+    }
+  };
+
+  const handleRun = async () => {
+    setLoading(true);
+    try {
+      const payload: any = {
+        date: defaultDate,
+        season: defaultSeason
+      };
+      if (uploadId) payload.uploadId = uploadId;
+      else if (props && props.length > 0) payload.rows = props;
+
       const res = await fetch(`/api/${league}/enrich`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          season: defaultSeason,
-          date: defaultDate || new Date().toISOString().split('T')[0],
-          force: force,
-          league: league,
-          mode: defaultDate ? 'daily' : 'season'
-        })
+        body: JSON.stringify(payload)
       });
-      
-      const data = await res.json();
 
-      if (res.status === 409) {
-        toast.error('Stale Data Detected', {
-          id: toastId,
-          description: data.message || 'Data is currently being updated.',
-          duration: 5000,
-        });
-        return;
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json?.error || 'Enrichment failed');
       }
 
-      if (!res.ok) throw new Error(data.error || `Server Error: ${res.status}`);
-
-      const count = data.count ?? data.enriched ?? 0;
-
-      toast.success('Enrichment Complete!', {
-        id: toastId,
-        description: `Successfully analyzed ${count} ${league.toUpperCase()} props with updated edges.`,
-        duration: 4000,
-      });
-
-      onComplete();
-      onClose();
+      // If server returned a jobId, poll it
+      if (json.jobId) {
+        toast('Started enrichment job', { description: `Job ${json.jobId} started.` });
+        pollJobStatus(json.jobId);
+      } else if (json.enriched) {
+        // synchronous small-batch response
+        toast.success('Protocol Complete', { description: 'Data seeded and enriched.' });
+        onComplete();
+        onClose();
+      } else {
+        toast.success('Protocol Complete', { description: 'Operation completed.' });
+        onComplete();
+        onClose();
+      }
     } catch (err: any) {
-      toast.error('Enrichment Failed', {
-        id: toastId,
-        description: err.message || 'Check server logs.',
-      });
+      toast.error('Error', { description: err?.message || 'Unknown error' });
     } finally {
       setLoading(false);
     }
@@ -81,51 +107,21 @@ export function EnrichModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-100 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
-      <div className="bg-[#1a1d27] border border-[#2d313e] w-full max-w-md p-8 rounded-3xl shadow-2xl">
-        <div className="flex items-center gap-3 mb-2">
-          <span className="text-2xl">{league === 'nba' ? '🏀' : '🏈'}</span>
-          <h2 className="text-xl font-black uppercase italic text-orange-500">
-            {league.toUpperCase()} Prop Enrichment
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="bg-[#121214] border border-white/10 rounded-[32px] w-full max-w-md p-8 shadow-2xl">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-xl font-black uppercase italic tracking-tight">
+            Seed <span className="text-orange-500">Enrichment</span>
           </h2>
+          <button onClick={onClose} className="text-zinc-500 hover:text-white">
+            <X size={20} />
+          </button>
         </div>
-        
-        <p className="text-slate-400 text-sm leading-relaxed">
-          Retrieves player averages, defensive rankings, and hit-rates for{' '}
-          <strong className="text-white">{displayTarget}</strong>.
-        </p>
 
-        <div className="mt-8 space-y-6">
-          <label className="flex items-center gap-4 p-4 rounded-2xl bg-white/5 border border-white/5 cursor-pointer hover:bg-white/10 transition-colors group">
-            <input
-              type="checkbox"
-              checked={force}
-              onChange={e => setForce(e.target.checked)}
-              className="w-5 h-5 rounded-md border-slate-700 bg-transparent text-orange-500 focus:ring-orange-500/20"
-            />
-            <div className="flex flex-col">
-              <span className="text-sm font-bold text-white">Force Refresh</span>
-              <span className="text-[10px] text-slate-500 uppercase font-black">Overwrite existing data</span>
-            </div>
-          </label>
-
-          <div className="flex gap-3">
-            <button
-              onClick={onClose}
-              className="flex-1 px-6 py-3 border border-[#2d313e] rounded-xl text-xs font-black uppercase tracking-widest text-slate-400 hover:bg-white/5 transition-all"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleEnrich}
-              disabled={loading}
-              className="flex-1 px-6 py-3 bg-orange-500 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:brightness-110 active:scale-95 transition-all disabled:opacity-30 disabled:grayscale"
-            >
-              {loading ? 'Processing...' : 'Run Analysis'}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+        <div className="space-y-4 mb-8">
+          <div className="p-4 bg-orange-500/5 border border-orange-500/10 rounded-2xl flex gap-4">
+            <UploadCloud className="text-orange-500 shrink-0" />
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              This will pull the latest lines for <span className="text-white font-bold">{defaultDate}</span> and
+              cross-reference them with Guru projections.
+            </p>

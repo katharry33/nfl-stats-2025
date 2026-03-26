@@ -1,6 +1,7 @@
+// components/flexible-data-table.tsx
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import {
   ColumnDef,
   flexRender,
@@ -15,7 +16,7 @@ import {
 } from '@tanstack/react-table';
 import { Loader2 } from 'lucide-react';
 
-interface FlexibleDataTableProps<TData, TValue> {
+interface FlexibleDataTableProps<TData, TValue = unknown> {
   columns: ColumnDef<TData, TValue>[];
   data: TData[];
   isLoading?: boolean;
@@ -31,7 +32,30 @@ interface FlexibleDataTableProps<TData, TValue> {
   onColumnOrderChange?: (updater: Updater<ColumnOrderState>) => void;
 }
 
-export function FlexibleDataTable<TData, TValue>({
+function ColumnSelector<TData>({ table }: { table: Table<TData> }) {
+  return (
+    <div className="p-2">
+      <details className="relative">
+        <summary className="cursor-pointer text-xs font-black select-none">Columns</summary>
+        <div className="absolute bg-zinc-900 p-3 rounded shadow mt-2 z-10">
+          {table.getAllLeafColumns().map((col) => (
+            <label key={col.id} className="flex items-center gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={col.getIsVisible()}
+                onChange={() => col.toggleVisibility()}
+                aria-label={`Toggle column ${col.id}`}
+              />
+              <span className="capitalize">{String(col.id)}</span>
+            </label>
+          ))}
+        </div>
+      </details>
+    </div>
+  );
+}
+
+export function FlexibleDataTable<TData, TValue = unknown>({
   columns,
   data,
   isLoading,
@@ -42,25 +66,20 @@ export function FlexibleDataTable<TData, TValue>({
   onSortingChange,
   onColumnOrderChange,
 }: FlexibleDataTableProps<TData, TValue>) {
-    
-  const [internalSorting, setInternalSorting] = useState<SortingState>([]);
-  const [internalColumnOrder, setInternalColumnOrder] = useState<ColumnOrderState>(() => 
-      columns.map(c => (c as any).id || (c as any).accessorKey)
+  const [internalSorting, setInternalSorting] = React.useState<SortingState>([]);
+  const [internalColumnOrder, setInternalColumnOrder] = React.useState<ColumnOrderState>(() =>
+    columns.map((c) => ((c as any).id || (c as any).accessorKey) as string)
   );
-  const [internalColumnVisibility, setInternalColumnVisibility] = useState<VisibilityState>({});
+  const [internalColumnVisibility, setInternalColumnVisibility] = React.useState<VisibilityState>({});
 
-  const state = React.useMemo(() => ({
+  const state = useMemo(
+    () => ({
       sorting: externalState?.sorting ?? internalSorting,
       columnOrder: externalState?.columnOrder ?? internalColumnOrder,
       columnVisibility: externalState?.columnVisibility ?? internalColumnVisibility,
-  }), [
-      externalState?.sorting,
-      externalState?.columnOrder,
-      externalState?.columnVisibility,
-      internalSorting,
-      internalColumnOrder,
-      internalColumnVisibility
-  ]);
+    }),
+    [externalState?.sorting, externalState?.columnOrder, externalState?.columnVisibility, internalSorting, internalColumnOrder, internalColumnVisibility]
+  );
 
   useEffect(() => {
     if (!onColumnOrderChange && !onColumnVisibilityChange) {
@@ -70,20 +89,18 @@ export function FlexibleDataTable<TData, TValue>({
           const { order, visibility } = JSON.parse(saved);
           if (order) setInternalColumnOrder(order);
           if (visibility) setInternalColumnVisibility(visibility);
-        } catch (e) {
-          console.error("Failed to load table prefs", e);
-        }
+        } catch (e) {}
       }
     }
   }, [tableId, onColumnOrderChange, onColumnVisibilityChange]);
 
   useEffect(() => {
-      if (!onColumnOrderChange && !onColumnVisibilityChange) {
-          localStorage.setItem(`table-prefs-${tableId}`, JSON.stringify({ 
-              order: internalColumnOrder, 
-              visibility: internalColumnVisibility 
-            }));
-      }
+    if (!onColumnOrderChange && !onColumnVisibilityChange) {
+      localStorage.setItem(
+        `table-prefs-${tableId}`,
+        JSON.stringify({ order: internalColumnOrder, visibility: internalColumnVisibility })
+      );
+    }
   }, [internalColumnOrder, internalColumnVisibility, tableId, onColumnOrderChange, onColumnVisibilityChange]);
 
   const table = useReactTable({
@@ -103,6 +120,13 @@ export function FlexibleDataTable<TData, TValue>({
 
   return (
     <div className="w-full overflow-x-auto custom-scrollbar bg-zinc-900/10 rounded-b-[24px]">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-white/5">
+        <div className="flex items-center gap-2">
+          <ColumnSelector table={table} />
+        </div>
+        <div className="text-xs text-zinc-400">Rows: {data.length}</div>
+      </div>
+
       <table className="w-full text-left border-collapse border-spacing-0">
         <thead>
           {table.getHeaderGroups().map((headerGroup) => (
@@ -125,6 +149,7 @@ export function FlexibleDataTable<TData, TValue>({
             </tr>
           ))}
         </thead>
+
         <tbody className="divide-y divide-white/5">
           {isLoading && data.length === 0 ? (
             <tr>

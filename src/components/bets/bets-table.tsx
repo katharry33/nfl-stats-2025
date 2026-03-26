@@ -10,8 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Shield, TrendingUp, Sparkles, AlertTriangle, Check, X, Circle, HelpCircle } from 'lucide-react';
 
 // ─── Cells ──────────────────────────────────────────────────────────────────
-import { EditableOddsCell, EditableStakeCell, EditableStatusCell } from './editable-cells';
-
+import { EditableOddsCell, EditableStakeCell, EditableStatusCell } from './editable-cell';
 // ─── Types & Interfaces ───────────────────────────────────────────────────
 
 interface BetsTableProps {
@@ -56,40 +55,11 @@ export function BetsTable({ bets, loading, onSave, onDelete, onEdit }: BetsTable
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editData, setEditData] = useState<Partial<Bet>>({});
 
-  const handleEditClick = (bet: Bet) => {
-    setEditingId(bet.id);
-    setEditData(bet);
-  };
-
-  const handleCancel = () => {
-    setEditingId(null);
-    setEditData({});
-  };
-
-  const handleSave = () => {
-    if (editingId && onSave) {
-      const betToSave = bets.find(b => b.id === editingId);
-      if (betToSave) {
-        onSave({ ...betToSave, ...editData });
-      }
+  const handleUpdate = (id: string, updates: Partial<Bet>) => {
+    const betToUpdate = bets.find(b => b.id === id);
+    if (betToUpdate && onSave) {
+      onSave({ ...betToUpdate, ...updates });
     }
-    setEditingId(null);
-    setEditData({});
-  };
-
-  const renderCell = (bet: Bet, field: keyof Bet) => {
-    if (editingId === bet.id) {
-      if (field === 'stake') {
-        return <EditableStakeCell value={editData.stake} onChange={(v) => setEditData({...editData, stake: v})} />;
-      }
-      if (field === 'odds') {
-        return <EditableOddsCell value={editData.odds} onChange={(v) => setEditData({...editData, odds: v})} />;
-      }
-      if (field === 'status') {
-        return <EditableStatusCell value={editData.status} onChange={(v) => setEditData({...editData, status: v})} />;
-      }
-    }
-    return null;
   };
 
   return (
@@ -127,20 +97,23 @@ export function BetsTable({ bets, loading, onSave, onDelete, onEdit }: BetsTable
                 </div>
               </div>
             </TableCell>
-            <TableCell>{editingId === bet.id ? renderCell(bet, 'stake') : <StakeCell bet={bet} />}</TableCell>
-            <TableCell className="font-mono">{editingId === bet.id ? renderCell(bet, 'odds') : bet.odds}</TableCell>
             <TableCell>
-                <Badge 
-                  className={cn(
-                    "text-[10px] font-black uppercase tracking-wider",
-                    bet.status === 'won' && "bg-green-500/20 text-green-400 border border-green-500/30",
-                    bet.status === 'lost' && "bg-red-500/20 text-red-400 border border-red-500/30",
-                    bet.status === 'pending' && "bg-zinc-700/50 text-zinc-400 border border-zinc-600/50",
-                    (bet.status === 'void' || bet.status === 'push') && "bg-gray-600/50 text-gray-300 border border-gray-500/50",
-                  )}
-                >
-                  {bet.status}
-                </Badge>
+              <EditableStakeCell 
+                value={bet.stake ?? 0} 
+                onSave={(v: number) => handleUpdate(bet.id, { stake: v })}
+              />
+            </TableCell>
+            <TableCell className="font-mono">
+              <EditableOddsCell 
+                value={bet.odds ?? 0} 
+                onSave={(v: number) => handleUpdate(bet.id, { odds: v })}
+              />
+            </TableCell>
+            <TableCell>
+                <EditableStatusCell 
+                  value={bet.status ?? 'pending'} 
+                  onSave={(v: string) => handleUpdate(bet.id, { status: v })}
+                />
             </TableCell>
             <TableCell className="text-zinc-400 text-xs font-mono">{formatTimestamp(bet.createdAt)}</TableCell>
           </TableRow>

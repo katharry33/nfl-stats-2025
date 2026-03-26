@@ -2,11 +2,9 @@
 
 import React, { useState, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { usePropsQuery } from '@/hooks/use-props-query';
+import { usePropsQuery } from '@/hooks/usePropsQuery';
 import { useBetSlip } from '@/context/betslip-context';
-// Updated import to match your standard path
 import PropsTable from "@/components/bets/PropsTable";
-import { EnrichModal } from '@/components/bets/EnrichModal';
 import { SyncPropsButton } from '@/components/bets/SyncPropsButton';
 import { BetBuilderUpload } from '@/components/bet-builder/bet-builder-upload';
 import { NormalizedProp } from '@/lib/types';
@@ -64,9 +62,7 @@ export default function BetBuilderClient({
   } = usePropsQuery(filters);
 
   const { selections, addLeg } = useBetSlip();
-  const [showEnrich, setShowEnrich] = useState(false);
 
-  // FIX: Explicitly typed 'page' to solve implicit any
   const allProps = useMemo(() => 
     data?.pages.flatMap((page: any) => page.docs) ?? [], 
   [data]);
@@ -84,7 +80,6 @@ export default function BetBuilderClient({
     router.push(`/bet-builder?league=${league}&date=${newDate}&season=${season}`);
   };
 
-  // FIX: Explicitly typed 'prop'
   const handleAddToSlip = useCallback((prop: NormalizedProp) => {
     const propId = String(prop.id);
     if (slipIds.has(propId)) return toast.error(`${prop.player} already in slip`);
@@ -99,6 +94,23 @@ export default function BetBuilderClient({
     });
     toast.success(`${prop.player} added!`);
   }, [addLeg, slipIds]);
+
+  const handleRefresh = async (date: string) => {
+    toast.loading(`Backfilling slate for ${date}...`);
+    
+    await fetch('/api/nba/enrich', {
+      method: 'POST',
+      body: JSON.stringify({ 
+        date, 
+        season: 2025, // Your constant for this season
+        league: 'nba',
+        mode: 'backfill' 
+      })
+    });
+    
+    refetch(); // Refresh the TanStack Query
+    toast.success(`Slate for ${date} is live.`);
+  };
 
   const theme = THEME[league] || THEME.nba;
 
@@ -152,12 +164,6 @@ export default function BetBuilderClient({
           <BetBuilderUpload onUploadComplete={() => refetch()} />
           <SyncPropsButton league={league} date={activeDate} onComplete={() => refetch()} />
           <button 
-            onClick={() => setShowEnrich(true)} 
-            className="flex items-center gap-2 px-6 py-3 rounded-xl text-[11px] font-black uppercase bg-indigo-600 text-white shadow-lg hover:bg-indigo-500 transition-all"
-          >
-            <Zap size={14} fill="currentColor" /> Enrich
-          </button>
-          <button 
             onClick={() => refetch()} 
             className="p-3 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10 transition-colors"
           >
@@ -183,6 +189,7 @@ export default function BetBuilderClient({
           slipIds={slipIds} 
           hasMore={hasNextPage}
           onLoadMore={() => fetchNextPage()}
+          onRefresh={() => handleRefresh(filters.date)}
         />
 
         {isLoading && allProps.length === 0 && (
@@ -199,17 +206,6 @@ export default function BetBuilderClient({
           </div>
         )}
       </div>
-
-      {showEnrich && (
-        <EnrichModal 
-          isOpen={showEnrich} 
-          onClose={() => setShowEnrich(false)} 
-          onComplete={() => { refetch(); toast.success("Market Analytics Refreshed"); }} 
-          league={league as any} 
-          defaultDate={activeDate} 
-          defaultSeason={season} 
-        />
-      )}
     </div>
   );
 }

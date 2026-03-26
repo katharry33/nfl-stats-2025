@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Loader2, Database } from "lucide-react";
+import { Loader2, Database, Calendar } from "lucide-react"; // Added Calendar icon
 import { useToast } from "@/components/ui/use-toast";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import Papa from 'papaparse';
@@ -16,6 +16,10 @@ export default function NBAIngestTools({ onComplete }: NBAIngestToolsProps) {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState("Idle");
+  
+  // 1. New State: Target Date for the upload (defaults to today)
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  
   const { toast } = useToast();
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -35,11 +39,10 @@ export default function NBAIngestTools({ onComplete }: NBAIngestToolsProps) {
         if (!parsed.data || parsed.data.length === 0) throw new Error("CSV is empty.");
 
         const rowCount = parsed.data.length;
-        const today = new Date().toISOString().split('T')[0];
 
-        setStatus(`Enriching ${rowCount} Players...`);
+        // 2. Status now reflects the specific date being seeded
+        setStatus(`Enriching ${rowCount} Players for ${selectedDate}...`);
 
-        // Artificial progress bar logic
         const totalExpectedMs = rowCount * 2100; 
         const intervalMs = 500;
         const step = (intervalMs / totalExpectedMs) * 100;
@@ -50,7 +53,12 @@ export default function NBAIngestTools({ onComplete }: NBAIngestToolsProps) {
         const res = await fetch('/api/nba/enrich', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ csvString, season: 2025, date: today }),
+          // 3. Passing the manually selected date to the API
+          body: JSON.stringify({ 
+            csvString, 
+            season: 2025, 
+            date: selectedDate 
+          }),
         });
 
         const result = await res.json();
@@ -61,10 +69,9 @@ export default function NBAIngestTools({ onComplete }: NBAIngestToolsProps) {
         setProgress(100);
         setStatus("Complete!");
         
-        // Fix: Use 'as any' to bypass the Toast property type check
         (toast as any)({
           title: "Success",
-          description: `Enriched ${result.success} props.`,
+          description: `Enriched ${result.success} props for ${selectedDate}.`,
         });
 
         if (onComplete) onComplete();
@@ -88,7 +95,23 @@ export default function NBAIngestTools({ onComplete }: NBAIngestToolsProps) {
 
   return (
     <TooltipProvider>
-      <div className="flex flex-col gap-2 min-w-[220px]">
+      <div className="flex flex-col gap-3 min-w-[220px] p-2 bg-white/5 rounded-2xl border border-white/5">
+        
+        {/* 4. Date Picker Input: Allows you to specify the slate date before clicking Seed */}
+        <div className="flex flex-col gap-1">
+          <label className="flex items-center gap-2 text-[9px] font-black text-zinc-500 uppercase px-1">
+            <Calendar size={10} className="text-indigo-500" />
+            Target Slate Date
+          </label>
+          <input 
+            type="date"
+            value={selectedDate}
+            onChange={(e) => setSelectedDate(e.target.value)}
+            disabled={loading}
+            className="bg-zinc-950 border border-white/10 rounded-xl px-3 py-2 text-[10px] text-zinc-300 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-all"
+          />
+        </div>
+
         <div className="flex items-center gap-2">
           <input type="file" id="nba-csv-upload" className="hidden" accept=".csv" onChange={handleFile} disabled={loading} />
           <Button
@@ -104,6 +127,7 @@ export default function NBAIngestTools({ onComplete }: NBAIngestToolsProps) {
             </label>
           </Button>
         </div>
+
         {loading && (
           <div className="px-1 space-y-1">
             <div className="flex justify-between text-[8px] font-black text-zinc-500 uppercase">

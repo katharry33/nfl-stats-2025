@@ -19,7 +19,7 @@ export function ColumnToggle<TData>({ table }: ColumnToggleProps<TData>) {
           View
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[200px] bg-[#1e1e1e] border-white/10 shadow-2xl p-2">
+      <PopoverContent align="end" className="w-[200px] bg-surface border-white/10 shadow-2xl p-2">
         <div className="px-2 py-2 font-black text-[10px] uppercase tracking-tighter text-zinc-500 border-b border-white/5 mb-2">
           Toggle Columns
         </div>

@@ -82,3 +82,10 @@ export function ResultBadge({ v }: { v: any }) {
     </div>
   );
 }
+
+export function formatTimestamp(date: string | Date | any) {
+  if (!date) return '—';
+  // If it's a Firestore timestamp (has seconds)
+  const d = date?.seconds ? new Date(date.seconds * 1000) : new Date(date);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}

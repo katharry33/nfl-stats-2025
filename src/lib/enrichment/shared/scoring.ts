@@ -1,80 +1,90 @@
-// src/lib/enrichment/shared/scoring.ts
-
-// 1. REMOVE all imports from '@/lib/enrichment/scoring'
-// 2. Ensure interfaces and functions are EXPORTED
-
+// lib/enrichment/shared/scoring.ts
 export type PropResult = 'won' | 'lost' | 'push' | 'pending';
 
 export interface ScoringInput {
-  playerAvg:         number;
-  opponentRank:      number;
+  playerAvg: number;
+  opponentRank: number;
   opponentAvgVsStat: number;
-  line:              number;
-  seasonHitPct:      number | null;
-  odds:              number | null;
-  propNorm:          string;
+  line: number;
+  seasonHitPct: number | null;
+  odds: number | null;
+  propNorm: string;
 }
 
 export interface ScoringOutput {
-    bestEdge: number | null;
-    bestEdgePct: number | null;
-    conf: number | null;
-    expectedValue: number | null;
-    impliedOdds: number;
-    modelResult: "over" | "under" | "even";
-    modelProb: number;
+  bestEdge: number | null;
+  bestEdgePct: number | null;
+  conf: number | null;
+  expectedValue: number | null;
+  impliedOdds: number;
+  modelResult: 'over' | 'under' | 'even';
+  modelProb: number;
 }
 
-// Ensure the keyword 'export' is in front of the function
 export function computeScoring(input: ScoringInput, sport: 'nfl' | 'nba' = 'nfl'): ScoringOutput {
-    const { playerAvg, opponentRank, opponentAvgVsStat, line, seasonHitPct, odds, propNorm } = input;
+  const { playerAvg, opponentAvgVsStat, line, seasonHitPct, odds } = input;
 
-    // VERY simple model for now - this will evolve
-    const avgWeight = 0.6;
-    const oppWeight = 0.2;
-    const hitRateWeight = 0.2;
+  const oppWeight = 0.2;
+  const hitRateWeight = 0.2;
 
-    const oppAdj = (playerAvg - opponentAvgVsStat) / playerAvg;
-    const weightedAvg = playerAvg * (1 + oppAdj * oppWeight);
+  const oppAdj = playerAvg ? (playerAvg - opponentAvgVsStat) / playerAvg : 0;
+  const weightedAvg = playerAvg * (1 + oppAdj * oppWeight);
 
-    let modelLine = weightedAvg;
-    if (seasonHitPct) {
-        modelLine = (modelLine * (1 - hitRateWeight)) + (line * seasonHitPct * hitRateWeight);
-    }
+  let modelLine = weightedAvg;
+  if (seasonHitPct != null) {
+    modelLine = modelLine * (1 - hitRateWeight) + line * seasonHitPct * hitRateWeight;
+  }
 
-    const diff = modelLine - line;
-    const modelResult = diff > 0 ? 'over' : 'under';
-    const modelProb = 0.5 + (diff / (line * 2)); // Simplified probability
+  const diff = modelLine - line;
+  const modelResult = diff > 0 ? 'over' : 'under';
 
-    const impliedOdds = modelProb > 0.5 ? (100 / (modelProb * 100)) * -100 : (100 / modelProb) - 100;
-    const bestEdge = odds ? odds - impliedOdds : null;
-    const bestEdgePct = bestEdge ? bestEdge / Math.abs(impliedOdds) : null;
-    const confidenceScore = Math.abs(diff / line) * 100;
-    const expectedValue = bestEdge ? (bestEdge / 100) * 100 : null;
+  let modelProb = 0.5 + diff / Math.max(Math.abs(line) * 2, 1);
+  modelProb = Math.max(0.01, Math.min(0.99, modelProb));
 
+  let impliedOdds: number;
+  if (modelProb > 0.5) {
+    const decimal = modelProb / (1 - modelProb);
+    impliedOdds = -Math.round(decimal * 100);
+  } else {
+    const decimal = (1 - modelProb) / modelProb;
+    impliedOdds = Math.round(decimal * 100);
+  }
 
-    return {
-        bestEdge,
-        bestEdgePct,
-        conf: confidenceScore,
-        expectedValue,
-        impliedOdds,
-        modelResult,
-        modelProb,
-    };
+  const marketOdds = odds ?? -110;
+  const marketDecimal = marketOdds > 0 ? 1 + marketOdds / 100 : 1 + 100 / Math.abs(marketOdds);
+  const impliedDecimal = impliedOdds > 0 ? 1 + impliedOdds / 100 : 1 + 100 / Math.abs(impliedOdds);
+
+  const bestEdgeDecimal = impliedDecimal - marketDecimal;
+  const bestEdgePct = marketDecimal ? bestEdgeDecimal / marketDecimal : null;
+
+  const payout = impliedDecimal;
+  const evCurrency = modelProb * (payout - 1) - (1 - modelProb) * 1;
+  const evPercent = evCurrency * 100;
+
+  const confidenceScore = Math.abs(diff) / Math.max(Math.abs(line), 1) * 100;
+
+  return {
+    bestEdge: Number((bestEdgeDecimal * 100).toFixed(2)),
+    bestEdgePct: bestEdgePct != null ? Number((bestEdgePct * 100).toFixed(2)) : null,
+    conf: Number(confidenceScore.toFixed(2)),
+    expectedValue: Number(evPercent.toFixed(2)),
+    impliedOdds,
+    modelResult,
+    modelProb,
+  };
 }
 
 export function determineResult(stat: number, line: number, overUnder: 'Over' | 'Under'): PropResult {
-  if (stat > line) return overUnder === 'Over' ? 'won' : 'lost';
-  if (stat < line) return overUnder === 'Under' ? 'won' : 'lost';
-  return 'push';
+  if (stat === line) return 'push';
+  if (overUnder === 'Over') return stat > line ? 'won' : 'lost';
+  return stat < line ? 'won' : 'lost';
 }
 
 export function calculateProfitLoss(betAmount: number, odds: number, result: PropResult): number {
-    if (result === 'won') {
-        if (odds > 0) return betAmount * (odds / 100);
-        return betAmount / (Math.abs(odds) / 100);
-    }
-    if (result === 'lost') return -betAmount;
-    return 0; // Push
+  if (result === 'won') {
+    if (odds > 0) return betAmount * (odds / 100);
+    return betAmount / (Math.abs(odds) / 100);
+  }
+  if (result === 'lost') return -betAmount;
+  return 0;
 }

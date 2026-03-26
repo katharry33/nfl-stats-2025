@@ -1,139 +1,142 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { usePropsQuery } from '@/hooks/use-props-query';
-import PropsTable from '@/components/bets/PropsTable'; 
-import NBAIngestTools from '@/lib/enrichment/nba/NBAIngestTools';
-import { ManualEntryModal } from '@/components/modals/manual-entry-modal';
-import { EditBetModal } from '@/components/modals/edit-bet-modal';
-import { RefreshCw, LayoutPanelLeft, Search, Activity } from 'lucide-react';
-import { toast } from 'sonner';
+import { useSearchParams } from 'next/navigation';
+import { parse } from 'papaparse';
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/components/ui/use-toast";
+import { PropsTable } from "@/components/bets/PropsTable"; // Changed to named import
+import { 
+  Alert, AlertDescription, AlertTitle 
+} from "@/components/ui/alert";
+import { Upload, Inbox, FileText, X } from "lucide-react";
 
 export default function BetBuilderPage() {
-  const [search, setSearch] = useState('');
-  const [selectedProp, setSelectedProp] = useState<any>(null);
-  const [isManualOpen, setIsManualOpen] = useState(false);
-  const [season] = useState(2025);
-  
-  // Hardcoded to match your current migration target
-  const today = "2026-03-23"; 
+  const searchParams = useSearchParams();
+  const { toast } = useToast();
+  const [csvString, setCsvString] = useState('');
+  const [parsedData, setParsedData] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const { data, fetchNextPage, hasNextPage, isLoading, refetch } = usePropsQuery({ 
-    league: 'nba',
-    season: season.toString(), 
-    search,
-    date: today
-  });
+  const league = searchParams.get('league') || 'nba';
+  const date = searchParams.get('date') || new Date().toISOString().split('T')[0];
+  const season = searchParams.get('season') || '2025';
 
-  const allProps = useMemo(() => {
-    const rawDocs = data?.pages.flatMap((page) => page.docs) ?? [];
-    if (!search) return rawDocs;
-    return rawDocs.filter((p: any) => {
-      const pName = (p.playerName || p.player || '').toLowerCase();
-      const mUp = (p.matchup || '').toLowerCase();
-      const sTerm = search.toLowerCase();
-      return pName.includes(sTerm) || mUp.includes(sTerm);
+  const handleParse = () => {
+    if (!csvString.trim()) {
+      setError("CSV data cannot be empty.");
+      return;
+    }
+    setError(null);
+    parse(csvString, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (results) => {
+        setParsedData(results.data);
+        toast({ title: "CSV Parsed", description: `${results.data.length} records found.` });
+      },
+      error: (err: any) => {
+        setError(`CSV Parsing Error: ${err.message}`);
+      }
     });
-  }, [data, search]);
+  };
 
-  const handleUpdateProp = async (updatedData: any) => {
+  const handleEnrich = async () => {
+    if (parsedData.length === 0) {
+      toast({ variant: 'destructive', title: "No Data", description: "Parse CSV data before enriching." });
+      return;
+    }
+    setIsLoading(true);
     try {
-      const res = await fetch('/api/props/update', {
+      const response = await fetch(`/api/${league}/enrich`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...updatedData, collection: 'nbaProps_2025' }),
+        body: JSON.stringify({ csvString, date, season, league, mode: 'initial_ingest' })
       });
-      if (!res.ok) throw new Error('Update failed');
-      toast.success("Prop updated successfully");
-      refetch();
-    } catch (err) {
-      toast.error("Failed to update prop");
+
+      if (!response.ok) {
+        throw new Error(`Enrichment failed with status: ${response.status}`);
+      }
+
+      const result = await response.json();
+      toast({ 
+        title: "Enrichment Complete", 
+        description: `${result.createdCount} new props added, ${result.updatedCount} updated.` 
+      });
+      // Optionally clear state after success
+      setCsvString('');
+      setParsedData([]);
+
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: "Enrichment Error", description: err.message });
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleManualAdd = async (leg: any) => {
-    // Logic to push manual entry to Firestore
-    console.log("Adding Manual Leg:", leg);
-    refetch();
-  };
-
   return (
-    <div className="min-h-screen bg-[#080808] p-6 space-y-6 text-white font-sans">
-      {/* HEADER SECTION */}
-      <div className="flex flex-col lg:flex-row justify-between items-center p-8 rounded-[32px] bg-[#141414] border border-white/5 shadow-2xl gap-6">
-        <div className="flex items-center gap-4">
-          <div className="p-3 bg-indigo-500/10 rounded-2xl border border-indigo-500/20">
-            <LayoutPanelLeft className="text-indigo-400" size={24} />
-          </div>
-          <div>
-            <h1 className="text-3xl font-black italic uppercase tracking-tighter">
-              NBA <span className="text-indigo-500">Builder</span>
-            </h1>
-            <div className="flex items-center gap-2">
-              <Activity size={10} className="text-emerald-500 animate-pulse" />
-              <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest italic">
-                Live Slate: {today}
-              </p>
-            </div>
-          </div>
-        </div>
+    <div className="container mx-auto py-8 px-4 md:px-6 lg:px-8">
+      <div className="space-y-8">
+        <header className="text-center space-y-2">
+          <h1 className="text-3xl md:text-4xl font-black uppercase tracking-tighter text-indigo-500 italic">Bet Builder</h1>
+          <p className="text-zinc-500 text-sm md:text-base">Paste raw CSV data to parse and enrich player props.</p>
+        </header>
 
-        <div className="flex items-center gap-4 w-full lg:w-auto">
-          <div className="relative flex-1 lg:min-w-[280px]">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" size={14} />
-            <input 
-              type="text" 
-              placeholder="Search Player..." 
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full bg-black/40 border border-white/5 rounded-2xl py-3 pl-11 pr-4 text-xs font-bold focus:border-indigo-500 outline-none transition-all placeholder:text-zinc-700"
+        {error && (
+          <Alert variant="destructive">
+            <AlertTitle>Error</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        <Card className="bg-zinc-900/50 border-dashed border-zinc-700 shadow-lg">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="w-5 h-5 text-indigo-500" />
+              <span>Raw CSV Input</span>
+            </CardTitle>
+            <CardDescription>Paste the raw text from your CSV file below.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Textarea
+              value={csvString}
+              onChange={(e) => setCsvString(e.target.value)}
+              placeholder="Player,Prop,Line,Odds...\nJohn Doe,Points,10.5,-110..."
+              className="h-48 bg-zinc-950 border-zinc-800 focus:border-indigo-500/50"
+              rows={10}
             />
-          </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Button onClick={handleParse} className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white font-bold">Parse CSV</Button>
+              <Button onClick={() => { setCsvString(''); setParsedData([]); setError(null); }} variant="outline" className="w-full sm:w-auto">Clear</Button>
+            </div>
+          </CardContent>
+        </Card>
 
-          <button 
-            onClick={() => refetch()} 
-            className="p-3.5 bg-zinc-900 border border-white/5 rounded-2xl hover:bg-zinc-800 transition-all text-zinc-400 hover:text-white"
-          >
-            <RefreshCw size={18} className={isLoading ? 'animate-spin text-indigo-500' : ''} />
-          </button>
-          
-          <NBAIngestTools onComplete={() => refetch()} />
-        </div>
+        {parsedData.length > 0 && (
+          <Card className="bg-zinc-900/50 border-zinc-800">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Inbox className="w-5 h-5 text-emerald-500" />
+                  <span>Parsed Props</span>
+                </CardTitle>
+                <CardDescription>{parsedData.length} props ready for enrichment.</CardDescription>
+              </div>
+              <Button onClick={handleEnrich} disabled={isLoading} className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold">
+                {isLoading ? 'Enriching...' : 'Enrich & Save'}
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <div className="max-h-96 overflow-auto rounded-lg border border-zinc-800">
+                <PropsTable data={parsedData} />
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
-
-      {/* TABLE SECTION */}
-      <div className="bg-[#141414]/80 rounded-[28px] border border-white/5 overflow-hidden min-h-[500px]">
-        <PropsTable 
-          props={allProps} 
-          league="nba" 
-          isLoading={isLoading}
-          mode="builder"
-          hasMore={hasNextPage}
-          onLoadMore={fetchNextPage}
-          onRefresh={() => refetch()}
-          onEdit={(prop: any) => setSelectedProp(prop)}
-          onManualEntry={() => setIsManualOpen(true)}
-          onDelete={(prop: any) => console.log('Delete Logic')}
-        />
-      </div>
-
-      {/* MODALS */}
-      <ManualEntryModal 
-        isOpen={isManualOpen} 
-        onClose={() => setIsManualOpen(false)} 
-        activeLeague="nba"
-        onAddLeg={handleManualAdd}
-      />
-
-      {selectedProp && (
-        <EditBetModal 
-          bet={selectedProp} 
-          isOpen={!!selectedProp} 
-          onClose={() => setSelectedProp(null)} 
-          onSave={handleUpdateProp} 
-          mode="active"
-        />
-      )}
     </div>
   );
 }
