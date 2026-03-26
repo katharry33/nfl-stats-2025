@@ -20,10 +20,9 @@ export default function BetBuilderPage() {
 
   const { data, fetchNextPage, hasNextPage, isLoading, refetch } = usePropsQuery({ 
     league: 'nba',
-    season, 
+    season: season.toString(), 
     search,
-    date: today,
-    collection: 'nbaProps_2025' 
+    date: today
   });
 
   const allProps = useMemo(() => {

@@ -1,40 +1,49 @@
 // src/hooks/use-props-query.ts
 import { useInfiniteQuery } from '@tanstack/react-query';
 
-export function usePropsQuery(filters: {
+// Define the shape of the data coming back from your /api/props route
+export interface PropsResponse {
+  props: any[];
+  nextCursor: string | null;
+  total?: number;
+}
+
+export interface PropsFilters {
   league: 'nba' | 'nfl';
   season: string;
   date?: string;
   week?: string | number;
   search?: string;
-}) {
+  // [key: string]: any; // Optional: Add this if you want to allow passing extra state safely
+}
+
+export function usePropsQuery(filters: PropsFilters) {
   const { league, season, week, date, search } = filters;
 
-  return useInfiniteQuery({
-    // The Key: A unique identifier for THIS specific set of data
+  return useInfiniteQuery<PropsResponse>({
     queryKey: [
-      'props-vault', // Base identifier
-      league,        // 'nba' | 'nfl'
-      season,        // '2024' | '2025'
-      { week, date, search } // Specific filters
+      'props-vault', 
+      league, 
+      season, 
+      { week, date, search }
     ],
     
-    queryFn: async ({ pageParam = null }: { pageParam?: string | null }) => {
-      // Construct URL safely
+    queryFn: async ({ pageParam = null }) => {
       const url = new URL(`/api/props`, window.location.origin);
       url.searchParams.append('league', league);
       url.searchParams.append('season', season);
       
-      // Only append week/date if they are not 'All'
       if (week && week !== 'All') {
         url.searchParams.append('week', String(week));
       }
       if (date && date !== 'All') {
         url.searchParams.append('date', date);
       }
-      
+      if (search) {
+        url.searchParams.append('search', search);
+      }
       if (pageParam) {
-        url.searchParams.append('cursor', pageParam);
+        url.searchParams.append('cursor', String(pageParam));
       }
       
       const res = await fetch(url.toString());
@@ -44,14 +53,11 @@ export function usePropsQuery(filters: {
       return res.json();
     },
     
-    // Pagination logic
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
-    
     initialPageParam: null,
 
-    // ⚡ Performance Optimization
-    staleTime: 1000 * 60 * 5, // 5 mins: Data stays "fresh" in cache
-    gcTime: 1000 * 60 * 30,    // 30 mins: Data stays in memory even if unused
+    staleTime: 1000 * 60 * 5, 
+    gcTime: 1000 * 60 * 30, 
     refetchOnWindowFocus: false,
   });
 }

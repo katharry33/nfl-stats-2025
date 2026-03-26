@@ -18,7 +18,7 @@ export interface ScoringInput {
 export interface ScoringOutput {
     bestEdge: number | null;
     bestEdgePct: number | null;
-    confidenceScore: number | null;
+    conf: number | null;
     expectedValue: number | null;
     impliedOdds: number;
     modelResult: "over" | "under" | "even";
@@ -56,7 +56,7 @@ export function computeScoring(input: ScoringInput, sport: 'nfl' | 'nba' = 'nfl'
     return {
         bestEdge,
         bestEdgePct,
-        confidenceScore,
+        conf: confidenceScore,
         expectedValue,
         impliedOdds,
         modelResult,
@@ -78,4 +78,3 @@ export function calculateProfitLoss(betAmount: number, odds: number, result: Pro
     if (result === 'lost') return -betAmount;
     return 0; // Push
 }
-

@@ -6,25 +6,44 @@ const BR_CACHE = new Map<string, BRGame[]>();
 export async function fetchNBASeasonLog(
   playerName: string,
   brId: string,
-  season: number
+  passedSeason: number | string
 ): Promise<BRGame[]> {
-  const cacheKey = `${brId}:${season}`;
+  const cacheKey = `${brId}:${passedSeason}`;
   if (BR_CACHE.has(cacheKey)) return BR_CACHE.get(cacheKey)!;
 
-  // If 'season' is passed as 2025 for the 25-26 season, increment it for BR URL.
-  const brSeason = Number(season) === 2025 ? 2026 : season;
-  const url = `https://www.basketball-reference.com/players/${brId[0].toLowerCase()}/${brId}/gamelog/${brSeason}/`;
+  // --- AUTO-SEASON DETECTOR ---
+  // BBRef URLs use the year the season ENDS. 
+  // If we are in the 2025-26 season, the URL must be /2026/
+  let brYear = Number(passedSeason);
   
+  // Logic: If the user passes 2025 (meaning the 25-26 season start), 
+  // or if we are currently in a month > September 2025, the year is 2026.
+  if (brYear === 2025) {
+    brYear = 2026;
+  }
+
+  const url = `https://www.basketball-reference.com/players/${brId[0].toLowerCase()}/${brId}/gamelog/${brYear}/`;
+  
+  console.log(`[ENRICH] Fetching ${playerName} from: ${url}`);
+
   try {
     const res = await fetchWithRetry(url);
     if (!res || res.status !== 200) {
+      console.warn(`⚠️ No 200 OK for ${playerName} at ${url}`);
       BR_CACHE.set(cacheKey, []);
       return [];
     }
+    
     const html = await res.text();
     const games = parseBRGameLog(html);
     
-    if (games.length > 0) BR_CACHE.set(cacheKey, games);
+    if (games.length > 0) {
+      BR_CACHE.set(cacheKey, games);
+      console.log(`✅ Found ${games.length} games for ${playerName}`);
+    } else {
+      console.warn(`⚠️ Table found but 0 games parsed for ${playerName}. Check data-stat keys.`);
+    }
+    
     return games;
   } catch (err) {
     console.warn(`❌ BBRef error for ${playerName}:`, err);
@@ -56,30 +75,36 @@ function parseBRGameLog(html: string): BRGame[] {
 
   while ((rowMatch = rowRegex.exec(tableHtml)) !== null) {
     const row = rowMatch[1];
-    if (row.includes('class="thead"') || row.includes('over_header')) continue;
+    
+    // Skip headers and "Inactive/Did Not Play" rows
+    if (row.includes('class="thead"') || row.includes('over_header') || row.includes('Did Not Play')) continue;
 
     const getVal = (stat: string) => {
-      const m = row.match(new RegExp(`data-stat="${stat}"[^>]*>([\\s\\S]*?)<\\/`, 'i'));
+      // Look for data-stat="pts" etc.
+      const m = row.match(new RegExp(`data-stat="${stat}"[^>]*>([\\s\\S]*?)<\/`, 'i'));
       if (!m) return '';
+      // Strip HTML tags (like <a> links around dates)
       return m[1].replace(/<[^>]+>/g, '').trim();
     };
 
     const date = getVal('date_game') || getVal('date');
     const mp = getVal('mp');
-    if (!date || !mp || !mp.includes(':')) continue;
+    
+    // If there's no Minutes Played, they didn't record stats for this game
+    if (!date || !mp || mp === '0:00' || !mp.includes(':')) continue;
 
     games.push({
       gameNum: parseInt(getVal('ranker'), 10) || 0,
       date,
       pts:  parseFloat(getVal('pts')) || 0,
       ast:  parseFloat(getVal('ast')) || 0,
-      reb:  parseFloat(getVal('trb')) || 0,
+      reb:  parseFloat(getVal('trb')) || 0, // BBRef uses 'trb' for total rebounds
       stl:  parseFloat(getVal('stl')) || 0,
       blk:  parseFloat(getVal('blk')) || 0,
       tov:  parseFloat(getVal('tov')) || 0,
-      fg3m: parseFloat(getVal('fg3')) || 0,
+      fg3m: parseFloat(getVal('fg3')) || 0, // BBRef uses 'fg3' for 3PM
       mp
-    } as any);
+    } as unknown as BRGame);
   }
   return games;
 }

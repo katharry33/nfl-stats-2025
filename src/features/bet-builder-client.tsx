@@ -178,8 +178,8 @@ export default function BetBuilderClient({
           props={allProps} 
           league={league} 
           isLoading={isLoading} 
-          onAddToBetSlip={handleAddToSlip} 
-          onEditProp={(p: NormalizedProp) => console.log("Edit:", p)}
+          onAddToSlip={handleAddToSlip} 
+          onEdit={(p: NormalizedProp) => console.log("Edit:", p)}
           slipIds={slipIds} 
           hasMore={hasNextPage}
           onLoadMore={() => fetchNextPage()}
