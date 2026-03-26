@@ -1,55 +1,46 @@
-import { Timestamp } from 'firebase-admin/firestore';
-
-export interface BetLeg {
-  id?: string;
-  player?: string;
-  prop?: string;
-  line?: number;
-  odds?: number;
-  status?: 'pending' | 'won' | 'lost' | 'void';
-  gameDate?: string;
-  league?: string;
-}
-
-export interface NormalizedProp {
+export interface PropData {
   id: string;
   player: string;
+  team: string; // Logo URL
   prop: string;
   line: number;
-  overUnder: 'Over' | 'Under';
+  overUnder: string;
   matchup: string;
-  team: string;
-  opponent: string;
-  gameDate: string;
-  season: number;
-  week?: number | null;
+  week: number | null;
+  gameDate: string | null;
+  gameTime: string;
+  season: number | null;
   league: 'nba' | 'nfl';
-  // Add any other fields you're using (e.g., playerAvg, diff, etc.)
-  [key: string]: any; 
+
+  // NBA Specific
+  pace?: number;
+
+  // Unified Analytics
+  playerAvg: number;
+  opponentRank: number;
+  opponentAvgVsStat: number;
+  yardsScore: number;
+  rankScore: number;
+  totalScore: number;
+  scoreDiff: number;
+  scalingFactor: number;
+  winProbability: number;
+  projWinPct: number;
+  seasonHitPct: number;
+  avgWinProb: number;
+  odds: number;
+  impliedProb: number;
+  bestEdgePct: number;
+  expectedValue: number;
+  kellyPct: number;
+  valueIcon: string;
+  confidenceScore: number;
+  gameStats: any; // Keep as any for now, since we don't have a type for this
+  actualResult: string;
+  updatedAt: string;
+  enriched?: boolean;
 }
 
-export interface Bet extends NormalizedProp {
-  // Fields made optional to accommodate historical market data
-  userId?: string; 
-  status?: 'pending' | 'won' | 'lost' | 'void' | 'cashed' | 'push';
-  odds?: number | string; // Keep flexible as API sometimes returns strings
-  stake?: number;
-  
-  // Optional metadata for tracked wagers
-  payout?: number;
-  cashOutAmount?: number | null;
-  createdAt?: string;
-  isBonusBet?: boolean;
-  isGhostParlay?: boolean;
-  
-  // For parlays
-  legs?: any[]; 
-}
-
-// Keeping your existing scoring types if they were here
-export interface ScoringCriteria {
-  [key: string]: any;
-}
-
-// Also fix the DefenseMap error
+export type NFLProp = PropData;
+export type PropRow = any;
 export type DefenseMap = Record<string, any>;

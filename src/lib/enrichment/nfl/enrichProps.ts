@@ -9,9 +9,7 @@
 
 import { adminDb } from '@/lib/firebase/admin';
 import type { NFLProp } from '../types';
-import {
-  normalizeProp, getOpponent, normalizePlayerName, splitComboProp,
-} from '../shared/normalize';
+import {normalizeProp, getOpponent, normalizePlayerName, splitComboProp,} from './shared/normalize';
 import { fetchSeasonLog, getPfrId, calculateAvg, calculateHitPct } from './pfr';
 import { fetchAllDefenseStats, lookupDefenseStats } from './defense';
 import { computeScoring } from '../shared/scoring';
@@ -238,7 +236,7 @@ async function enrichComboPropCore(
   // but TypeScript infers the mapped array as (string|undefined)[] — filter it here
   // so the rest of this function sees a clean string[].
   const components: string[] | null = rawComponents
-    ? (rawComponents.filter((c): c is string => c != null))
+    ? (rawComponents.filter((c: any): c is string => c != null))
     : null;
   const playerAvgs = playerAvgCache.get(playerName);
 
@@ -674,7 +672,7 @@ export async function enrichLeagueProps(league: string, collectionName: string, 
     const docRef = adminDb.collection(collectionName).doc(doc.id);
     batch.update(docRef, {
       enriched: true,
-      lastUpdated: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
       // ...stats
     });
 

@@ -1,54 +1,66 @@
 // src/lib/services/props-service.ts
 import { db } from '@/lib/firebase/config';
-import { collection, query, where, limit, getDocs, startAfter, orderBy } from 'firebase/firestore';
+import { 
+  collection, query, where, limit, getDocs, 
+  startAfter, orderBy, doc, getDoc 
+} from 'firebase/firestore';
 import { hydrateProp } from '@/lib/enrichment/shared/normalize';
 
 const getCollectionPath = (league: 'nba' | 'nfl', season: number) => {
-  if (league === 'nfl') {
-    // NFL 2024 maps to your 'allProps' collection
-    return season === 2024 ? 'allProps' : `nflProps_${season}`;
-  }
-  
-  if (league === 'nba') {
-    // NBA 2025 maps to your 'nbaProps_2025' collection
-    return `nbaProps_${season}`;
-  }
-  
-  return 'allProps'; // Fallback
+  // Logic: 2025 NBA Season starts in 2025 but spans into 2026.
+  // Data is stored in nbaProps_2025.
+  if (league === 'nba') return `nbaProps_${season}`;
+  if (league === 'nfl') return season === 2024 ? 'allProps' : `nflProps_${season}`;
+  return 'allProps';
 };
 
 export async function fetchPaginatedProps(filters: any, pageParam: any) {
-  const { league, season, date, week } = filters;
-  
+  const { league, season, date, week, pageSize = 40 } = filters;
   const collectionName = getCollectionPath(league, season);
-  
   const constraints: any[] = [];
 
-  // Season match (Ensure UI '2025' matches DB 2025)
+  // 1. Basic Filters
   if (season) constraints.push(where('season', '==', Number(season)));
 
-  // NFL Week Filter
   if (league === 'nfl' && week && week !== 'All') {
     constraints.push(where('week', '==', Number(week)));
   }
 
-  // NBA Date Filter
   if (league === 'nba' && date) {
+    // Ensure date is string "YYYY-MM-DD"
     constraints.push(where('gameDate', '==', String(date))); 
   }
 
-  // ORDERING - This is the primary cause of empty results if indexes are missing.
+  // 2. Ordering - MUST HAVE COMPOSITE INDEX in Firebase
   constraints.push(orderBy('gameDate', 'desc'));
 
-  // PAGINATION
-  if (pageParam) constraints.push(startAfter(pageParam));
-  constraints.push(limit(40)); 
+  // 3. Pagination Fix: Convert ID to DocumentSnapshot
+  if (pageParam) {
+    const docRef = doc(db, collectionName, pageParam);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      constraints.push(startAfter(docSnap));
+    }
+  }
 
-  const q = query(collection(db, collectionName), ...constraints);
-  const snapshot = await getDocs(q);
+  constraints.push(limit(pageSize)); 
 
-  return {
-    docs: snapshot.docs.map(doc => hydrateProp(doc.data(), doc.id)),
-    lastVisible: snapshot.docs[snapshot.docs.length - 1] || null
-  };
+  try {
+    const q = query(collection(db, collectionName), ...constraints);
+    const snapshot = await getDocs(q);
+
+    return {
+      // Use doc.id for the hydrate helper to ensure keys are unique
+      docs: snapshot.docs.map(d => ({ 
+        ...hydrateProp(d.data(), d.id), 
+        id: d.id 
+      })),
+      // Pass the DocumentSnapshot back for the next cursor
+      lastVisible: snapshot.docs[snapshot.docs.length - 1] || null
+    };
+  } catch (error: any) {
+    // If you see "The query requires an index" here, follow the link in the console!
+    console.error("Firestore Query Failed:", error.message);
+    throw error;
+  }
 }

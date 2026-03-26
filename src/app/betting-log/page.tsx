@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 
 import { Bet } from '@/lib/types';
-import { normalizePlayerName } from '@/lib/enrichment/shared/normalize';
+import { normalizePlayerName } from '@/lib/shared/normalize';
 
 export default function BettingLogPage() {
   const [bets, setBets] = useState<Bet[]>([]);

@@ -224,7 +224,7 @@ export async function updateAllProps(
     const batch = db.batch();
     const chunk = updates.slice(i, i + BATCH_SIZE);
     for (const { id, data } of chunk) {
-      batch.set(col.doc(id), { ...data, _updatedAt: new Date().toISOString() }, { merge: true });
+      batch.set(col.doc(id), { ...data, updatedAt: new Date().toISOString() }, { merge: true });
     }
     await batch.commit();
     console.log(`   ✅ Batch ${Math.floor(i / BATCH_SIZE) + 1}: ${chunk.length} docs → allProps_${season}`);
@@ -319,7 +319,7 @@ export async function getPfrIdMap(): Promise<Record<string, string>> {
 export async function savePfrId(playerName: string, pfrId: string): Promise<void> {
   const docId = playerName.replace(/\s+/g, '_');
   await db.collection('static_pfrIdMap').doc(docId).set(
-    { player: playerName, pfrid: pfrId, _updatedAt: new Date().toISOString() },
+    { player: playerName, pfrid: pfrId, updatedAt: new Date().toISOString() },
     { merge: true }
   );
 }
@@ -430,4 +430,3 @@ export async function getTeamDefenseStats(
     return null;
   }
 }
-""

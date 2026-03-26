@@ -1,210 +1,152 @@
 'use client';
 
 import React, { useState, useMemo, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
 import { usePropsQuery } from '@/hooks/usePropsQuery';
-import { useBetSlip } from '@/context/betslip-context';
-import PropsTable from "@/components/bets/PropsTable";
-import { SyncPropsButton } from '@/components/bets/SyncPropsButton';
-import { BetBuilderUpload } from '@/components/bet-builder/bet-builder-upload';
-import { NormalizedProp } from '@/lib/types';
-import { 
-  RefreshCw, 
-  Zap, 
-  ChevronLeft, 
-  ChevronRight, 
-  Database, 
-  Activity, 
-  Search 
-} from 'lucide-react';
+import { getCurrentNFLWeek } from '@/lib/nfl/getCurrentWeek';
+import { getCurrentNflSeason } from '@/lib/season';
+import { RefreshCcw, Radio, Clock } from 'lucide-react';
+import { format } from 'date-fns';
+import { PropsTable } from '@/components/bets/PropsTable';
+import { PropData } from '@/lib/types';
 import { toast } from 'sonner';
 
-const THEME = {
-  nba: { accent: '#f97316', icon: '🏀', label: 'NBA' },
-  nfl: { accent: '#22c55e', icon: '🏈', label: 'NFL' },
-};
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-interface BetBuilderProps {
-  initialDate?: string;
-  season?: number;
-  league?: 'nfl' | 'nba';
+function getTodayLocal(): string {
+  return new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD in local timezone
 }
 
-export default function BetBuilderClient({
-  initialDate,
-  season = 2025,
-  league = 'nba',
-}: BetBuilderProps) {
-  const router = useRouter();
+// ─── Component ────────────────────────────────────────────────────────────────
 
-  const activeDate = useMemo(() => {
-    if (initialDate) return initialDate;
-    return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-  }, [initialDate]);
+export function BetBuilderClient() {
+  const [league, setLeague] = useState<'nba' | 'nfl'>('nba');
 
-  const [filters, setFilters] = useState({
-    week: 'all',
-    propType: 'all',
-    search: '',
+  // NBA: always today's date (live slate)
+  // User can nudge the date for same-day late games vs early games if needed
+  const [selectedDate, setSelectedDate] = useState<string>(getTodayLocal);
+
+  const nflSeason = useMemo(() => getCurrentNflSeason(), []);
+  const nflWeek = useMemo(() => getCurrentNFLWeek(nflSeason), [nflSeason]);
+
+  const { data, loading, refetch, error, loadMore, hasMore } = usePropsQuery({
     league,
-    date: activeDate,
-    season: String(season)
+    season: 2025,
+    date: league === 'nba' ? selectedDate : undefined,
+    week: league === 'nfl' ? nflWeek : undefined,
   });
 
-  const {
-    data,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-    isLoading,
-    isError,
-    refetch
-  } = usePropsQuery(filters);
+  const lastSync = useMemo(() => {
+    if (!data || data.length === 0) return null;
+    const times = data
+      .map((d) => new Date(d.updatedAt || 0).getTime())
+      .filter((t) => !isNaN(t) && t > 0);
+    return times.length > 0 ? new Date(Math.max(...times)) : null;
+  }, [data]);
 
-  const { selections, addLeg } = useBetSlip();
+  const handleAddLeg = useCallback((p: PropData) => {
+    toast.success(`${p.player} — ${p.prop} ${p.line} added to slip`);
+    // Wire to your BetSlipContext here
+  }, []);
 
-  const allProps = useMemo(() => 
-    data?.pages.flatMap((page: any) => page.docs) ?? [], 
-  [data]);
-
-  const slipIds = useMemo(() => 
-    new Set(selections.map((s: any) => String(s.propId || s.id))), 
-  [selections]);
-
-  const handleDateChange = (offset: number) => {
-    const d = new Date(activeDate + 'T12:00:00Z');
-    d.setDate(d.getDate() + offset);
-    const newDate = d.toISOString().split('T')[0];
-    
-    setFilters(prev => ({ ...prev, date: newDate }));
-    router.push(`/bet-builder?league=${league}&date=${newDate}&season=${season}`);
-  };
-
-  const handleAddToSlip = useCallback((prop: NormalizedProp) => {
-    const propId = String(prop.id);
-    if (slipIds.has(propId)) return toast.error(`${prop.player} already in slip`);
-    
-    addLeg({
-      ...prop,
-      id: propId,
-      propId: propId,
-      selection: prop.overUnder || 'Over',
-      odds: prop.bestOdds || -110,
-      status: 'pending'
-    });
-    toast.success(`${prop.player} added!`);
-  }, [addLeg, slipIds]);
-
-  const handleRefresh = async (date: string) => {
-    toast.loading(`Backfilling slate for ${date}...`);
-    
-    await fetch('/api/nba/enrich', {
-      method: 'POST',
-      body: JSON.stringify({ 
-        date, 
-        season: 2025, // Your constant for this season
-        league: 'nba',
-        mode: 'backfill' 
-      })
-    });
-    
-    refetch(); // Refresh the TanStack Query
-    toast.success(`Slate for ${date} is live.`);
-  };
-
-  const theme = THEME[league] || THEME.nba;
+  const handleLeagueChange = useCallback((l: 'nba' | 'nfl') => {
+    setLeague(l);
+    // Reset NBA date back to today when switching
+    if (l === 'nba') setSelectedDate(getTodayLocal());
+  }, []);
 
   return (
-    <div className="space-y-4 p-4 max-w-[1600px] mx-auto min-h-screen pb-20">
-      
-      <div className="bg-black/40 border border-white/5 p-2 px-4 rounded-xl flex items-center justify-between text-[10px] font-mono tracking-tighter">
-        <div className="flex gap-6 items-center">
-           <div className="flex items-center gap-2">
-             <Activity size={12} className={isLoading ? 'text-orange-400 animate-pulse' : 'text-emerald-500'}/>
-             <span className={isLoading ? 'text-orange-400' : 'text-emerald-400'}>
-               {isLoading ? 'SYNCING_FIRESTORE' : 'STREAM_ACTIVE'}
-             </span>
-           </div>
-           <div className="flex items-center gap-2 text-blue-400 border-l border-white/10 pl-4">
-             <Database size={12}/> <span>INDEX: {league.toUpperCase()}_PROPS_{season}</span>
-           </div>
-        </div>
-        <div className="hidden md:block text-slate-500">
-          LOADED_NODES: {allProps.length}
-        </div>
-      </div>
-
-      <div className="flex flex-col xl:flex-row justify-between gap-4 p-6 rounded-3xl bg-slate-900 border border-white/10 shadow-2xl">
-        <div className="flex items-center gap-5">
-          <div className="h-14 w-14 rounded-2xl flex items-center justify-center border border-white/10 text-3xl bg-white/5 shadow-inner">
-            {theme.icon}
+    <div className="max-w-[1600px] mx-auto space-y-5">
+      {/* Header */}
+      <div className="flex justify-between items-center bg-[#121214] p-8 rounded-[32px] border border-white/5 shadow-2xl">
+        <div className="flex items-center gap-6">
+          {/* Live pulse */}
+          <div className="relative flex items-center justify-center flex-shrink-0">
+            <Radio className="text-indigo-500 animate-pulse z-10" size={28} />
+            <div className="absolute inset-0 bg-indigo-500 blur-xl opacity-30 animate-pulse" />
           </div>
+
           <div>
-            <h2 className="text-2xl font-black italic uppercase tracking-tighter" style={{ color: theme.accent }}>
-              {theme.label} ANALYTICS
-            </h2>
-            <div className="flex items-center gap-2 mt-2 bg-black/40 rounded-xl p-1 px-3 border border-white/5">
-              <button onClick={() => handleDateChange(-1)} className="hover:text-white transition-colors"><ChevronLeft size={16}/></button>
-              <span className="font-mono text-xs font-bold w-24 text-center">{activeDate}</span>
-              <button onClick={() => handleDateChange(1)} className="hover:text-white transition-colors"><ChevronRight size={16}/></button>
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-black italic uppercase tracking-tighter">
+                Bet <span className="text-indigo-500">Builder</span>
+              </h1>
+              <span className="bg-indigo-500/10 text-indigo-400 text-[10px] font-black px-2 py-0.5 rounded border border-indigo-500/20 uppercase">
+                Live
+              </span>
+            </div>
+
+            <div className="flex items-center gap-4 mt-1">
+              <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-[0.2em]">
+                {league.toUpperCase()} Protocol •{' '}
+                {league === 'nba' ? selectedDate : `Week ${nflWeek}`}
+              </p>
+              {lastSync && (
+                <div className="flex items-center gap-1.5 text-emerald-500/60 text-[10px] font-bold uppercase tracking-widest">
+                  <Clock size={12} className="text-emerald-500/80" />
+                  Synced {format(lastSync, 'HH:mm:ss')}
+                </div>
+              )}
             </div>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="relative group">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-indigo-400 transition-colors" size={14} />
-            <input 
-              type="text"
-              placeholder="Filter players..."
-              className="bg-black/40 border border-white/5 rounded-xl py-2.5 pl-9 pr-4 text-xs font-bold outline-none focus:border-indigo-500/50 transition-all w-48 md:w-64"
-              onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
+        <div className="flex gap-3 items-center">
+          {/* NBA date nudge — useful for multi-timezone slates */}
+          {league === 'nba' && (
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500/50"
             />
-          </div>
-          <BetBuilderUpload onUploadComplete={() => refetch()} />
-          <SyncPropsButton league={league} date={activeDate} onComplete={() => refetch()} />
-          <button 
-            onClick={() => refetch()} 
-            className="p-3 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10 transition-colors"
+          )}
+
+          <button
+            onClick={() => refetch()}
+            disabled={loading}
+            className="group flex items-center gap-2 px-6 py-3 bg-white/5 hover:bg-indigo-500/10 border border-white/10 hover:border-indigo-500/30 rounded-2xl text-zinc-400 hover:text-white transition-all disabled:opacity-50"
           >
-            <RefreshCw size={20} className={isLoading ? 'animate-spin text-indigo-400' : ''}/>
+            <RefreshCcw
+              size={16}
+              className={loading ? 'animate-spin' : 'group-hover:rotate-180 transition-transform duration-500'}
+            />
+            <span className="text-[10px] font-black uppercase tracking-widest">Refresh Slate</span>
           </button>
+
+          <div className="flex bg-black/40 p-1 rounded-2xl border border-white/5">
+            {(['nba', 'nfl'] as const).map((l) => (
+              <button
+                key={l}
+                onClick={() => handleLeagueChange(l)}
+                className={`px-8 py-3 rounded-xl text-xs font-black uppercase transition-all ${
+                  league === l ? 'bg-white text-black shadow-lg' : 'text-zinc-500 hover:text-white'
+                }`}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      {isError && (
-        <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-2xl text-red-400 font-mono text-xs flex items-center gap-3">
-          <div className="h-2 w-2 rounded-full bg-red-500 animate-ping" />
-          CRITICAL_FETCH_ERROR: CHECK NETWORK OR FIRESTORE INDEXES
+      {/* Error */}
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 text-center">
+          <p className="text-red-400 font-bold text-sm">Data fetch error:</p>
+          <p className="text-red-500 text-xs mt-1 font-mono">{error}</p>
         </div>
       )}
 
-      <div className="bg-slate-900 rounded-3xl border border-white/10 overflow-hidden relative shadow-2xl min-h-[600px]">
-        <PropsTable 
-          props={allProps} 
-          league={league} 
-          isLoading={isLoading} 
-          onAddToSlip={handleAddToSlip} 
-          onEdit={(p: NormalizedProp) => console.log("Edit:", p)}
-          slipIds={slipIds} 
-          hasMore={hasNextPage}
-          onLoadMore={() => fetchNextPage()}
-          onRefresh={() => handleRefresh(filters.date)}
+      {/* Table */}
+      <div className="bg-[#121214]/60 rounded-[32px] border border-white/5 overflow-hidden min-h-[600px] backdrop-blur-sm">
+        <PropsTable
+          data={data}
+          isLoading={loading}
+          onAddLeg={handleAddLeg}
+          onLoadMore={loadMore}
+          hasMore={hasMore}
+          variant="bet-builder"
         />
-
-        {isLoading && allProps.length === 0 && (
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm z-30 flex flex-col items-center justify-center gap-4">
-            <RefreshCw className="animate-spin text-indigo-500" size={40} />
-            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-400 animate-pulse">Initializing Data Stream</span>
-          </div>
-        )}
-
-        {isFetchingNextPage && (
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-indigo-600 rounded-full shadow-2xl z-40 flex items-center gap-2 border border-white/20">
-            <RefreshCw size={12} className="animate-spin" />
-            <span className="text-[9px] font-black uppercase tracking-widest">Fetching Next Page</span>
-          </div>
-        )}
       </div>
     </div>
   );

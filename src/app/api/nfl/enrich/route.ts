@@ -1,47 +1,65 @@
-// src/app/api/enrich/route.ts
 import { NextResponse } from 'next/server';
+import { enrichAndSaveNFLCSV } from '@/lib/enrichment/nfl/enrichAndSaveNFLCSV';
 import { enrichPropsForWeek, enrichAllPropsCollection } from '@/lib/enrichment/nfl/enrichProps';
 
-export async function POST(req: Request) {
+async function triggerAutoScraper(
+  season: number,
+  week?: number,
+  collection?: string,
+  skipEnriched?: boolean
+) {
   try {
-    const { collection, season, week, skipEnriched } = await req.json();
-
-    if (!season) {
-      return NextResponse.json({ error: 'Season is required' }, { status: 400 });
-    }
-
     let updatedCount = 0;
-
     if (collection === 'all') {
-      // Logic for the historical allProps_{season} collection
       updatedCount = await enrichAllPropsCollection({
-        season: Number(season),
-        week: week ? Number(week) : undefined,
+        season,
+        week,
         skipEnriched: !!skipEnriched,
       });
     } else {
-      // Logic for the live weeklyProps_{season} collection
       if (!week) {
-        return NextResponse.json({ error: 'Week is required for weekly mode' }, { status: 400 });
+        throw new Error('Week is required for single-week auto-enrichment.');
       }
       updatedCount = await enrichPropsForWeek({
-        season: Number(season),
-        week: Number(week),
+        season,
+        week,
         skipEnriched: !!skipEnriched,
       });
     }
-
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       count: updatedCount,
-      message: `Successfully enriched ${updatedCount} props.` 
+      message: `Successfully triggered automated enrichment for ${updatedCount} NFL props.`
     });
-
   } catch (error: any) {
-    console.error('❌ Enrichment API Error:', error);
-    return NextResponse.json(
-      { error: error.message || 'Internal Server Error' },
-      { status: 500 }
-    );
+    throw new Error(`Auto-scraper failed: ${error.message}`);
+  }
+}
+
+export async function POST(req: Request) {
+  try {
+    const body = await req.json();
+    const { mode, csvString, season, week, collection, skipEnriched } = body;
+
+    const activeMode = mode === 'manual' && csvString ? 'manual' : 'auto';
+
+    const seasonNum = Number(season);
+    if (!seasonNum) {
+        return NextResponse.json({ error: 'Season is a required parameter.' }, { status: 400 });
+    }
+    const weekNum = week ? Number(week) : undefined;
+
+    if (activeMode === 'manual') {
+      if (!csvString) {
+          return NextResponse.json({ error: 'csvString is required for manual mode.' }, { status: 400 });
+      }
+      const result = await enrichAndSaveNFLCSV(csvString, season, String(week));
+      return NextResponse.json({ success: true, result });
+    } else {
+      return await triggerAutoScraper(seasonNum, weekNum, collection, skipEnriched);
+    }
+  } catch (error: any) {
+    console.error('🏈 NFL Enrichment Error:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
