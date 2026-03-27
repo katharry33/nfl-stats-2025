@@ -1,101 +1,114 @@
 'use client';
 
 import React from 'react';
+import { Eye } from 'lucide-react';
 import { PropDoc } from '@/lib/types';
-import { ResultBadge } from '@/components/ResultBadge';
-import { ScoreDiff } from '@/components/ScoreDiff';
-import { Plus, Pencil, Trash2 } from 'lucide-react';
 
 interface PropsTableProps {
   data: PropDoc[];
-  isLoading?: boolean;
-  onAddLeg?: (p: PropDoc) => void;
-  onEdit?: (p: PropDoc) => void;
-  onDelete?: (p: PropDoc) => void;
-  view?: 'table' | 'card';
+  isLoading: boolean;
+  view: 'table' | 'card';
+  onViewData: (p: PropDoc) => void;
 }
 
-export function PropsTable({
-  data,
-  isLoading,
-  onAddLeg,
-  onEdit,
-  onDelete,
-  view = 'table'
-}: PropsTableProps) {
+export function PropsTable({ data, isLoading, view, onViewData }: PropsTableProps) {
+  if (isLoading) {
+    return <div className="text-center text-zinc-500 text-xs py-10">Loading props…</div>;
+  }
 
-  // ─────────────────────────────────────────────
-  // MOBILE CARD VIEW
-  // ─────────────────────────────────────────────
+  if (!data.length) {
+    return <div className="text-center text-zinc-500 text-xs py-10">No props found.</div>;
+  }
+
+  // Helpers
+  const fmt = (v: any, d = 1) => (v == null ? '—' : isNaN(Number(v)) ? '—' : Number(v).toFixed(d));
+  const fmtPct = (v: any) => (v == null ? '—' : `${(Number(v) * 100).toFixed(0)}%`);
+  const fmtRaw = (v: any) => (v == null ? '—' : isNaN(Number(v)) ? '—' : Number(v));
+
+  const capWords = (s: string) =>
+    s.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+  const normalizeProp = (prop: string) => {
+    const key = prop.toLowerCase().replace(/[^a-z]/g, '');
+    const map: Record<string, string> = {
+      receivingyards: 'Receiving Yards',
+      receiving: 'Receiving Yards',
+      rushingyards: 'Rushing Yards',
+      rushing: 'Rushing Yards',
+      rushyards: 'Rush Yards',
+      rush: 'Rush Yards',
+      passingyards: 'Passing Yards',
+      passing: 'Passing Yards',
+      passattempts: 'Passing Attempts',
+      attempts: 'Attempts'
+    };
+    return map[key] || capWords(prop);
+  };
+
+  const formatMatchup = (m?: string) =>
+    m ? m.replace('@', ' @ ').replace(/\s+/g, ' ').toUpperCase() : '—';
+
+  const fmtDateFull = (iso?: string | null) =>
+    iso
+      ? new Date(iso).toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric'
+        })
+      : '—';
+
+  const formatDateOrWeek = (p: PropDoc) =>
+    p.league === 'nba'
+      ? fmtDateFull(p.gameDate)
+      : p.week != null
+        ? `Week ${p.week}`
+        : '—';
+
+  // CARD VIEW
   if (view === 'card') {
     return (
-      <div className="grid grid-cols-1 gap-3 p-3">
-        {data.map((p) => (
-          <div key={p.id} className="bg-zinc-900/60 border border-white/5 rounded-2xl p-4 space-y-2">
-
-            <div className="flex justify-between items-center">
-              <div className="text-xs font-black text-white uppercase tracking-wider">
-                {p.player}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {data.map((p) => {
+          const anyP = p as any;
+          return (
+            <div key={p.id} className="bg-zinc-900/50 border border-white/5 rounded-2xl p-4 space-y-3">
+              <div className="flex justify-between items-center">
+                <div className="text-white font-bold text-sm">{p.player}</div>
+                <button onClick={() => onViewData(p)} className="text-indigo-400 hover:text-indigo-300">
+                  <Eye size={16} />
+                </button>
               </div>
-              <button
-                onClick={() => onAddLeg?.(p)}
-                className="p-1.5 rounded-lg bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30"
-              >
-                <Plus size={14} />
-              </button>
-            </div>
 
-            <div className="text-[10px] text-zinc-500 uppercase tracking-widest">
-              {p.team} @ {p.opponent}
-            </div>
-
-            <div className="flex justify-between items-center">
-              <div className="text-xs text-white font-bold">
-                {p.prop} <span className="text-zinc-500">({p.line})</span>
+              <div className="text-xs text-zinc-400 uppercase tracking-widest">
+                {formatMatchup(anyP.matchup)}
               </div>
-              <ResultBadge v={p.result} />
-            </div>
 
-            <div className="flex justify-between text-[10px] text-zinc-400">
-              <span>Avg: {p.playerAvg ?? '—'}</span>
-              <ScoreDiff v={p.scoreDiff} />
-            </div>
+              <div className="text-xs text-zinc-300">
+                {normalizeProp(p.prop)} ({p.line})
+              </div>
 
-            <div className="flex justify-between text-[10px] text-zinc-400">
-              <span>Win %: {(p.modelProb * 100).toFixed(0)}%</span>
-              <span>Actual: {p.actual ?? '—'}</span>
-            </div>
+              <div className="grid grid-cols-3 gap-2 text-center text-[10px] text-zinc-400">
+                <div><div className="font-bold text-white">{fmt(anyP.playerAvg)}</div>AVG</div>
+                <div><div className="font-bold text-white">{fmt(anyP.scoreDiff)}</div>DIFF</div>
+                <div><div className="font-bold text-white">{fmtPct(anyP.modelProb)}</div>WIN%</div>
+              </div>
 
-            <div className="flex gap-2 pt-2">
-              <button
-                onClick={() => onEdit?.(p)}
-                className="p-1.5 rounded-lg bg-blue-600/20 text-blue-400 hover:bg-blue-600/30"
-              >
-                <Pencil size={14} />
-              </button>
-              <button
-                onClick={() => onDelete?.(p)}
-                className="p-1.5 rounded-lg bg-rose-600/20 text-rose-400 hover:bg-rose-600/30"
-              >
-                <Trash2 size={14} />
-              </button>
+              <div className="text-xs text-zinc-400">Actual: <span className="text-white">{fmtRaw(anyP.actual)}</span></div>
+              <div className="text-xs text-zinc-400">Result: <span className="text-white">{anyP.result || 'Pending'}</span></div>
             </div>
-
-          </div>
-        ))}
+          );
+        })}
       </div>
     );
   }
 
-  // ─────────────────────────────────────────────
-  // DESKTOP TABLE VIEW
-  // ─────────────────────────────────────────────
+  // TABLE VIEW
   return (
-    <div className="overflow-x-auto relative">
-      <table className="w-full text-xs text-left border-collapse">
-        <thead className="bg-zinc-900/80 text-zinc-400 uppercase tracking-widest text-[10px]">
+    <div className="overflow-x-auto rounded-2xl border border-white/5">
+      <table className="min-w-full text-xs text-left text-zinc-300">
+        <thead className="bg-zinc-900/60 text-[10px] uppercase tracking-widest text-zinc-500">
           <tr>
-            <th className="px-3 py-2">Date</th>
+            <th className="px-3 py-2">Date / Week</th>
             <th className="px-3 py-2">Player</th>
             <th className="px-3 py-2">Matchup</th>
             <th className="px-3 py-2">Prop</th>
@@ -104,55 +117,34 @@ export function PropsTable({
             <th className="px-3 py-2">Win%</th>
             <th className="px-3 py-2">Actual</th>
             <th className="px-3 py-2">Result</th>
-            <th className="px-3 py-2 text-right">Actions</th>
+            <th className="px-3 py-2">Actions</th>
           </tr>
         </thead>
 
         <tbody>
-          {data.map((p) => (
-            <tr key={p.id} className="border-b border-white/5 hover:bg-white/5">
-              <td className="px-3 py-2">{p.gameDate}</td>
-              <td className="px-3 py-2 font-bold text-white">{p.player}</td>
-              <td className="px-3 py-2 text-zinc-400">{p.team} @ {p.opponent}</td>
-              <td className="px-3 py-2 text-white">
-                {p.prop} <span className="text-zinc-500">({p.line})</span>
-              </td>
-              <td className="px-3 py-2">{p.playerAvg ?? '—'}</td>
-              <td className="px-3 py-2"><ScoreDiff v={p.scoreDiff} /></td>
-              <td className="px-3 py-2">{(p.modelProb * 100).toFixed(0)}%</td>
-              <td className="px-3 py-2">{p.actual ?? '—'}</td>
-              <td className="px-3 py-2"><ResultBadge v={p.result} /></td>
-
-              <td className="px-3 py-2 text-right flex gap-2 justify-end">
-                <button
-                  onClick={() => onAddLeg?.(p)}
-                  className="p-1.5 rounded-lg bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30"
-                >
-                  <Plus size={14} />
-                </button>
-                <button
-                  onClick={() => onEdit?.(p)}
-                  className="p-1.5 rounded-lg bg-blue-600/20 text-blue-400 hover:bg-blue-600/30"
-                >
-                  <Pencil size={14} />
-                </button>
-                <button
-                  onClick={() => onDelete?.(p)}
-                  className="p-1.5 rounded-lg bg-rose-600/20 text-rose-400 hover:bg-rose-600/30"
-                >
-                  <Trash2 size={14} />
-                </button>
-              </td>
-            </tr>
-          ))}
+          {data.map((p) => {
+            const anyP = p as any;
+            return (
+              <tr key={p.id} className="border-t border-white/5 hover:bg-white/5 transition">
+                <td className="px-3 py-2 text-white">{formatDateOrWeek(p)}</td>
+                <td className="px-3 py-2 text-white">{p.player}</td>
+                <td className="px-3 py-2">{formatMatchup(anyP.matchup)}</td>
+                <td className="px-3 py-2">{normalizeProp(p.prop)} ({p.line})</td>
+                <td className="px-3 py-2">{fmt(anyP.playerAvg)}</td>
+                <td className="px-3 py-2">{fmt(anyP.scoreDiff)}</td>
+                <td className="px-3 py-2">{fmtPct(anyP.modelProb)}</td>
+                <td className="px-3 py-2">{fmtRaw(anyP.actual)}</td>
+                <td className="px-3 py-2">{anyP.result || 'Pending'}</td>
+                <td className="px-3 py-2">
+                  <button onClick={() => onViewData(p)} className="text-indigo-400 hover:text-indigo-300">
+                    <Eye size={16} />
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
-
-      {isLoading && (
-        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center text-white text-xs">
-          Loading…
-        </div>
-      )}
     </div>
   );
 }

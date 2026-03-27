@@ -1,120 +1,228 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { PropsTableContainer } from '@/components/PropsTableContainer';
 import PropFilterBar from '@/components/PropFilterBar';
-import { ToggleLeft, ToggleRight } from 'lucide-react';
+import {
+  ToggleLeft,
+  ToggleRight,
+  PlusCircle,
+  Sparkles,
+  CheckCircle2
+} from 'lucide-react';
+import { DataInspectorModal } from '@/components/DataInspectorModal';
+import { AddPropModal } from '@/components/AddPropModal';
 
 export default function HistoricalPropsPage() {
-  // NFL-first defaults
   const [league, setLeague] = useState<'nba' | 'nfl'>('nfl');
-  const [season, setSeason] = useState<number>(2024); // legacy NFL
-  const [date, setDate] = useState<string>(''); // always visible
-  const [search, setSearch] = useState<string>('');
-  const [propFilter, setPropFilter] = useState<string>('all');
+  const [season, setSeason] = useState<number>(2024);
+
+  const [date, setDate] = useState<string>(''); // NBA only
+  const [week, setWeek] = useState<number | null>(null); // NFL only
+
+  const [search, setSearch] = useState('');
+  const [propFilter, setPropFilter] = useState('all');
   const [view, setView] = useState<'table' | 'card'>('table');
+
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [inspectorData, setInspectorData] = useState<any>(null);
+
+  const [addOpen, setAddOpen] = useState(false);
+
+  // Auto-load most recent week/date
+  useEffect(() => {
+    async function loadDefaults() {
+      if (league === 'nfl') {
+        const res = await fetch(`/api/props?league=nfl&season=${season}`);
+        const json = await res.json();
+        const weeks = json.props.map((p: any) => p.week).filter(Boolean);
+        const maxWeek = weeks.length ? Math.max(...weeks) : null;
+        setWeek(maxWeek);
+        setDate('');
+      } else {
+        const res = await fetch(`/api/props?league=nba&season=${season}`);
+        const json = await res.json();
+        const dates = json.props.map((p: any) => p.gameDate).filter(Boolean);
+        const maxDate = dates.length ? dates.sort().pop() : '';
+        setDate(maxDate);
+        setWeek(null);
+      }
+    }
+
+    loadDefaults();
+  }, [league, season]);
+
+  const openInspector = (p: any) => {
+    setInspectorData(p);
+    setInspectorOpen(true);
+  };
 
   return (
     <div className="p-6 space-y-6">
 
-      {/* Header */}
-      <div className="flex flex-col gap-4">
-        <h1 className="text-xl font-black text-white tracking-tight uppercase">
-          Historical Props Vault
-        </h1>
-        <p className="text-xs text-zinc-500 uppercase font-bold tracking-widest">
-          NFL-first • Full archive • Analytics-ready
-        </p>
-      </div>
+      {/* ===========================
+          HEADER
+      =========================== */}
+      <div className="bg-zinc-900/40 border border-white/5 rounded-2xl p-4 space-y-4">
 
-      {/* League + Season + Date + View Toggle */}
-      <div className="flex flex-wrap items-center gap-4 bg-zinc-900/50 p-4 rounded-2xl border border-white/5">
+        {/* League + Season */}
+        <div className="flex flex-wrap items-center justify-between gap-4">
 
-        {/* League Toggle */}
-        <div className="flex gap-2">
-          <button
-            onClick={() => { setLeague('nfl'); setSeason(2024); }}
-            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest ${
-              league === 'nfl'
-                ? 'bg-indigo-600 text-white'
-                : 'bg-white/5 text-zinc-300'
-            }`}
+          {/* League Toggle */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setLeague('nfl')}
+              className={`px-4 py-2 rounded-lg text-xs font-bold transition ${
+                league === 'nfl'
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+              }`}
+            >
+              NFL
+            </button>
+
+            <button
+              onClick={() => setLeague('nba')}
+              className={`px-4 py-2 rounded-lg text-xs font-bold transition ${
+                league === 'nba'
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+              }`}
+            >
+              NBA
+            </button>
+          </div>
+
+          {/* Season Selector */}
+          <select
+            value={season}
+            onChange={(e) => setSeason(Number(e.target.value))}
+            className="bg-zinc-800 text-zinc-300 text-xs px-3 py-2 rounded-lg border border-white/10"
           >
-            NFL
-          </button>
-
-          <button
-            onClick={() => { setLeague('nba'); setSeason(2025); }}
-            className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest ${
-              league === 'nba'
-                ? 'bg-indigo-600 text-white'
-                : 'bg-white/5 text-zinc-300'
-            }`}
-          >
-            NBA
-          </button>
+            <option value={2024}>2024</option>
+            <option value={2025}>2025</option>
+            <option value={2026}>2026</option>
+          </select>
         </div>
 
-        {/* Season Selector */}
-        <select
-          value={season}
-          onChange={(e) => setSeason(Number(e.target.value))}
-          className="px-3 py-2 bg-white/5 text-white text-xs rounded-xl border border-white/10"
-        >
-          {league === 'nfl' && (
-            <>
-              <option value={2024}>2024 (Legacy)</option>
-              <option value={2026}>2026 (Future)</option>
-            </>
-          )}
-          {league === 'nba' && (
-            <>
-              <option value={2025}>2025 Season</option>
-            </>
-          )}
-        </select>
+        {/* Week / Date + Search + View Toggle + Actions */}
+        <div className="flex flex-wrap items-center justify-between gap-4">
 
-        {/* Date Picker (always visible) */}
-        <input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className="px-3 py-2 bg-white/5 text-white text-xs rounded-xl border border-white/10"
-        />
+          {/* Week or Date */}
+          <div className="flex items-center gap-2">
+            {league === 'nfl' && (
+              <select
+                value={week ?? ''}
+                onChange={(e) => setWeek(Number(e.target.value))}
+                className="bg-zinc-800 text-zinc-300 text-xs px-3 py-2 rounded-lg border border-white/10"
+              >
+                <option value="">Select Week</option>
+                {Array.from({ length: 22 }).map((_, i) => (
+                  <option key={i + 1} value={i + 1}>
+                    Week {i + 1}
+                  </option>
+                ))}
+              </select>
+            )}
 
-        {/* Search */}
-        <input
-          placeholder="Search player or matchup"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="px-3 py-2 bg-white/5 text-white text-xs rounded-xl border border-white/10 flex-1"
-        />
+            {league === 'nba' && (
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="bg-zinc-800 text-zinc-300 text-xs px-3 py-2 rounded-lg border border-white/10"
+              />
+            )}
+          </div>
 
-        {/* View Toggle */}
-        <button
-          onClick={() => setView(view === 'table' ? 'card' : 'table')}
-          className="px-3 py-2 bg-white/5 text-white rounded-xl border border-white/10 flex items-center gap-2 text-xs font-black uppercase tracking-widest"
-        >
-          {view === 'table' ? (
-            <>
-              <ToggleRight size={14} /> Card View
-            </>
-          ) : (
-            <>
-              <ToggleLeft size={14} /> Table View
-            </>
-          )}
-        </button>
+          {/* Search */}
+          <input
+            type="text"
+            placeholder="Search players or matchups..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="flex-1 bg-zinc-800 text-zinc-300 text-xs px-3 py-2 rounded-lg border border-white/10"
+          />
+
+          {/* View Toggle */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setView('table')}
+              className={`p-2 rounded-lg ${
+                view === 'table'
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+              }`}
+            >
+              <ToggleLeft size={16} />
+            </button>
+
+            <button
+              onClick={() => setView('card')}
+              className={`p-2 rounded-lg ${
+                view === 'card'
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+              }`}
+            >
+              <ToggleRight size={16} />
+            </button>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setAddOpen(true)}
+              className="flex items-center gap-1 bg-green-600 text-white text-xs px-3 py-2 rounded-lg hover:bg-green-500"
+            >
+              <PlusCircle size={14} /> Add Prop
+            </button>
+
+            <button
+              className="flex items-center gap-1 bg-purple-600 text-white text-xs px-3 py-2 rounded-lg hover:bg-purple-500"
+            >
+              <Sparkles size={14} /> Enrich
+            </button>
+
+            <button
+              className="flex items-center gap-1 bg-blue-600 text-white text-xs px-3 py-2 rounded-lg hover:bg-blue-500"
+            >
+              <CheckCircle2 size={14} /> Grade
+            </button>
+          </div>
+        </div>
       </div>
 
-      {/* Prop Filter Bar */}
+      {/* ===========================
+          PROP FILTER BAR
+      =========================== */}
       <PropFilterBar onFilterChange={setPropFilter} />
 
-      {/* Props Table/Card Container */}
+      {/* ===========================
+          MAIN TABLE
+      =========================== */}
       <PropsTableContainer
-        initialSport={league}
-        // These props are passed down to usePropsQuery inside the container
-        // The container already handles search, sorting, pagination, etc.
+        league={league}
+        season={season}
+        date={date}
+        week={week}
+        search={search}
+        propFilter={propFilter}
+        view={view}
+        onViewData={openInspector}
+      />
+
+      <DataInspectorModal
+        isOpen={inspectorOpen}
+        onClose={() => setInspectorOpen(false)}
+        data={inspectorData}
+      />
+
+      <AddPropModal
+        isOpen={addOpen}
+        onClose={() => setAddOpen(false)}
+        league={league}
+        season={season}
       />
     </div>
   );

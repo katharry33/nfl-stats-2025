@@ -40,7 +40,7 @@ export interface Bet {
 }
 
 // -----------------------------------------------------------------------------
-// DEFENSE MAP (corrected shape)
+// DEFENSE MAP
 // -----------------------------------------------------------------------------
 
 export type DefenseMap = Record<
@@ -49,76 +49,35 @@ export type DefenseMap = Record<
 >;
 
 // -----------------------------------------------------------------------------
-// INGESTED PROP TYPES (NBA + NFL)
-// These represent the Firestore documents created by /api/*/ingest
+// CANONICAL PROP DOCUMENT (used everywhere: ingestion, enrichment, UI)
 // -----------------------------------------------------------------------------
-
-export interface BasePropDoc {
+export interface PropDoc {
   id: string;
-  uploadId: string;
-  rowHash: string;
-
-  rawRow: any;
-  ingestMeta: {
-    ingestedAt: string;
-    source: string;
-  };
-
   player: string;
-  team: string | null;
-  opponent: string | null;
-
+  team: string;
+  opponent?: string | null;
   prop: string;
   propNorm: string;
   line: number;
-  overUnder: string;
-
-  odds: number;
-  impliedProb: number;
-
-  gameDate: string;
+  overUnder?: 'over' | 'under' | null;
+  odds?: number | null;
+  impliedProb?: number | null;
+  gameDate?: string | null;
   season: number;
-  league: 'nba' | 'nfl';
-
-  status: 'pending' | 'enriched' | 'error';
-  enriched: boolean;
-  lastEnriched?: string;
-}
-
-// NBA-specific fields (if needed later)
-export interface NBAPropDoc extends BasePropDoc {
-  league: 'nba';
-}
-
-// NFL-specific fields (if needed later)
-export interface NFLPropDoc extends BasePropDoc {
-  league: 'nfl';
+  league: string;
+  status?: string;
+  enriched?: boolean;
+  lastEnriched?: string | null;
   week?: number | null;
+
+  // ⭐ Add these
+  overOdds?: number | null;
+  underOdds?: number | null;
+  bestOdds?: number | null;
+  bestBook?: string | null;
+  confidenceScore?: number | null;
 }
 
-// -----------------------------------------------------------------------------
-// ENRICHMENT OUTPUT FIELDS
-// These are added to the Firestore doc during enrichment
-// -----------------------------------------------------------------------------
-
-export interface EnrichedFields {
-  playerAvg?: number | null;
-  seasonHitPct?: number | null;
-
-  opponentRank?: number | null;
-  opponentAvgVsStat?: number | null;
-
-  modelProb?: number;
-  expectedValue?: number;
-  confidenceScore?: number;
-  bestEdge?: number;
-}
-
-// -----------------------------------------------------------------------------
-// FINAL PROP TYPE (what UI components consume)
-// -----------------------------------------------------------------------------
-
-export type PropDoc = BasePropDoc & EnrichedFields;
 
 // -----------------------------------------------------------------------------
 // UI TYPES
@@ -127,3 +86,37 @@ export type PropDoc = BasePropDoc & EnrichedFields;
 export interface PropCardViewProps {
   prop: PropDoc;
 }
+
+// -----------------------------------------------------------------------------
+// ENRICHED PROP (UI + ENRICHMENT LAYER)
+// -----------------------------------------------------------------------------
+
+export type EnrichedProp = PropDoc & {
+  matchup?: string;
+
+  playerAvg?: number | null;
+  modelProb?: number | null;
+  seasonHitPct?: number | null;
+
+  scoreDiff?: number | null;
+  winProbability?: number | null;
+  projWinPct?: number | null;
+
+  opponentRank?: number | null;
+  opponentAvgVsStat?: number | null;
+
+  yardsScore?: number | null;
+  totalScore?: number | null;
+  rankScore?: number | null;
+  scalingFactor?: number | null;
+
+  actual?: number | null;
+  result?: string | null;
+
+  updatedAt?: string | null;
+  lastPatched?: string | null;
+  gameStats?: number | null;
+  gameTime?: string | null;
+
+  migratedFrom?: string | null;
+};

@@ -1,52 +1,32 @@
-'use client';
-
-import { useState, useEffect } from 'react';
+import useSWR from 'swr';
 import { PropDoc } from '@/lib/types';
 
-type Sport = 'nba' | 'nfl';
-
-interface UsePropsQueryArgs {
-  league: Sport;
+export interface UsePropsQueryArgs {
+  league: 'nba' | 'nfl';
   season: number;
   date?: string;
+  week?: number | null;
 }
 
-export function usePropsQuery({ league, season, date }: UsePropsQueryArgs) {
-  const [data, setData] = useState<PropDoc[]>([]);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | undefined>(undefined);
+const fetcher = (url: string) => fetch(url).then((res) => res.json());
 
-  useEffect(() => {
-    async function load() {
-      try {
-        setLoading(true);
-        setError(undefined);
+export function usePropsQuery({ league, season, date, week }: UsePropsQueryArgs) {
+  const params = new URLSearchParams({
+    league,
+    season: String(season)
+  });
 
-        const params = new URLSearchParams({
-          league,
-          season: String(season),
-        });
+  if (league === 'nba' && date) params.set('date', date);
+  if (league === 'nfl' && week) params.set('week', String(week));
 
-        if (date) params.append('date', date);
+  const { data, error } = useSWR<{ props: PropDoc[] }>(
+    `/api/props?${params.toString()}`,
+    fetcher
+  );
 
-        const res = await fetch(`/api/props?${params.toString()}`);
-
-        if (!res.ok) {
-          const errJson = await res.json();
-          throw new Error(errJson.error || 'Failed to fetch props');
-        }
-
-        const json = await res.json();
-        setData(json.props || []);
-      } catch (err: any) {
-        setError(err.message || 'Unknown error');
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    load();
-  }, [league, season, date]);
-
-  return { data, loading, error };
+  return {
+    data: data?.props ?? [],
+    loading: !data && !error,
+    error
+  };
 }

@@ -1,69 +1,66 @@
 'use client';
 
 import React from 'react';
-import { PropsTable } from '@/components/PropsTable';
 import { usePropsQuery } from '@/hooks/usePropsQuery';
-import type { Sport } from '@/lib/types';
+import { PropsTable } from '@/components/PropsTable';
+import { PropDoc } from '@/lib/types';
 
 interface PropsTableContainerProps {
-  league: Sport;
+  league: 'nba' | 'nfl';
   season: number;
   date?: string;
-  search?: string;
-  propFilter?: string;
-  view?: 'table' | 'card';
-  onAddLeg?: (p: any) => void;
-  onEdit?: (p: any) => void;
-  onDelete?: (p: any) => void;
+  week?: number | null;
+  search: string;
+  propFilter: string;
+  view: 'table' | 'card';
+  onViewData: (p: PropDoc) => void;
 }
 
 export function PropsTableContainer({
   league,
   season,
   date,
-  search = '',
-  propFilter = 'all',
-  view = 'table',
-  onAddLeg,
-  onEdit,
-  onDelete
+  week,
+  search,
+  propFilter,
+  view,
+  onViewData
 }: PropsTableContainerProps) {
 
-  const { data, loading } = usePropsQuery({
-    league,
-    season,
-    date: date || undefined
-  });
+  // STRICT MODE
+  const queryArgs =
+    league === 'nfl'
+      ? { league, season, week }
+      : { league, season, date };
 
-  const filtered = React.useMemo(() => {
-    let rows = data || [];
+  const { data, loading } = usePropsQuery(queryArgs);
 
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      rows = rows.filter((p) =>
-        p.player?.toLowerCase().includes(q) ||
-        p.team?.toLowerCase().includes(q) ||
-        p.opponent?.toLowerCase().includes(q)
+  let rows = data;
+
+  // Search
+  if (search.trim()) {
+    const s = search.toLowerCase();
+    rows = rows.filter((p) => {
+      const anyP = p as any;
+      return (
+        p.player.toLowerCase().includes(s) ||
+        anyP.matchup?.toLowerCase?.().includes(s) ||
+        p.prop.toLowerCase().includes(s)
       );
-    }
+    });
+  }
 
-    if (propFilter !== 'all') {
-      rows = rows.filter((p) => p.propType === propFilter);
-    }
-
-    return rows;
-  }, [data, search, propFilter]);
+  // Prop filter
+  if (propFilter !== 'all') {
+    rows = rows.filter((p) => p.propNorm === propFilter);
+  }
 
   return (
-    <div className="relative">
-      <PropsTable
-        data={filtered}
-        isLoading={loading}
-        view={view}
-        onAddLeg={onAddLeg}
-        onEdit={onEdit}
-        onDelete={onDelete}
-      />
-    </div>
+    <PropsTable
+      data={rows}
+      isLoading={loading}
+      view={view}
+      onViewData={onViewData}
+    />
   );
 }

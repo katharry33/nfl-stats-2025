@@ -1,8 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Move it INSIDE experimental for Next.js 14
   experimental: {
-    serverExternalPackages: ['firebase-admin'],
     serverActions: {
       allowedOrigins: ['*'],
     },
@@ -20,17 +18,32 @@ const nextConfig = {
   },
 
   webpack: (config, { isServer }) => {
-    config.experiments = { ...config.experiments, asyncWebAssembly: true };
+    // Enable WASM
+    config.experiments = {
+      ...config.experiments,
+      asyncWebAssembly: true,
+    };
 
+    // Browser fallbacks
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,
-        fs: false, net: false, tls: false, http2: false,
-        child_process: false, perf_hooks: false, crypto: false,
-        stream: false, os: false, path: false, events: false, process: false,
+        fs: false,
+        net: false,
+        tls: false,
+        http2: false,
+        child_process: false,
+        perf_hooks: false,
+        crypto: false,
+        stream: false,
+        os: false,
+        path: false,
+        events: false,
+        process: false,
       };
     }
 
+    // Ignore JSON in /data
     config.module.rules.push({
       test: /data\/.*\.json$/,
       loader: 'ignore-loader',
