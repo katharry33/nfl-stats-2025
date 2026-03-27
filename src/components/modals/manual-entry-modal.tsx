@@ -60,7 +60,7 @@ export function ManualEntryModal({ isOpen, onClose, onAddLeg, activeLeague }: Ma
   const LABEL = "text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 mb-2 block";
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+    <div className="fixed inset-0 z-100 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
       <div className="bg-[#141414] border border-white/5 rounded-[32px] w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl">
         <div className="p-8 border-b border-white/5 flex justify-between items-center">
           <h2 className="text-2xl font-black italic uppercase tracking-tighter">Manual <span className="text-indigo-500">Entry</span></h2>

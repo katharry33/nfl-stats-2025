@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Play, Save, X, Edit2, Check, AlertTriangle } from 'lucide-react';
 
-interface PropData {
+interface PropDoc {
   id: string;
   player: string;
   team: string;
@@ -33,9 +33,9 @@ interface Props {
 }
 
 export default function ManualReviewPanel({ week, onResume }: Props) {
-  const [props, setProps] = useState<PropData[]>([]);
+  const [props, setProps] = useState<PropDoc[]>([]);
   const [editingProp, setEditingProp] = useState<string | null>(null);
-  const [editValues, setEditValues] = useState<Partial<PropData>>({});
+  const [editValues, setEditValues] = useState<Partial<PropDoc>>({});
   const [filterIssues, setFilterIssues] = useState(false);
   const [saving, setSaving] = useState(false);
   const [validationResults, setValidationResults] = useState<any>(null);
@@ -65,7 +65,7 @@ export default function ManualReviewPanel({ week, onResume }: Props) {
     }
   };
 
-  const startEdit = (prop: PropData) => {
+  const startEdit = (prop: PropDoc) => {
     setEditingProp(prop.id);
     setEditValues({
       playerAvg: prop.playerAvg,
@@ -108,7 +108,7 @@ export default function ManualReviewPanel({ week, onResume }: Props) {
     }
   };
 
-  const hasIssues = (prop: PropData): boolean => {
+  const hasIssues = (prop: PropDoc): boolean => {
     return (
       !prop.playerAvg ||
       !prop.opponentRank ||

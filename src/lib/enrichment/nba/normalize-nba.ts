@@ -1,12 +1,10 @@
-// src/lib/shared/normalize-nba.ts
-// NBA equivalent of the NFL normalize helpers.
-// Canonical prop names use simple lowercase words ("points", "rebounds", "threes").
-
 // ---------------------------------------------------------------------------
-// Aliases → canonical prop name
+// NBA PROP NORMALIZATION
+// Canonical prop names use lowercase words ("points", "rebounds", "threes").
 // ---------------------------------------------------------------------------
 
 const NBA_PROP_ALIASES: Record<string, string> = {
+  // Base stats
   'point': 'points', 'pts': 'points',
   'assist': 'assists', 'ast': 'assists',
   'rebound': 'rebounds', 'reb': 'rebounds', 'trb': 'rebounds',
@@ -14,57 +12,51 @@ const NBA_PROP_ALIASES: Record<string, string> = {
   'block': 'blocks', 'blk': 'blocks',
   '3pm': 'threes', '3s': 'threes', 'fg3': 'threes', 'three': 'threes',
   'turnover': 'turnovers', 'tov': 'turnovers',
-  'pra': 'pts_ast_reb',
-  'pts+ast': 'pts_ast', 'pts+reb': 'pts_reb', 'ast+reb': 'ast_reb',
-  'pts+ast+reb': 'pts_ast_reb', 'stl+blk': 'stl_blk'
-};
 
-const NBA_PROP_MAP: Record<string, string> = {
-  "Points": "Points",
-  "Pts + Re": "PointsRebounds",
-  "Pts + As": "PointsAssists",
-  "Pts + Re + As": "PointsReboundsAssists",
-  "Rebounds": "Rebounds",
-  "Assists": "Assists",
-  "Threes": "ThreePointers",
-  "Steals": "Steals",
-  "Blocks": "Blocks",
-  "Turnovers": "Turnovers",
-  "As + Reb": "AssistsRebounds",
-  "Stl + Blk": "StealsBlocks"
+  // Combos
+  'pra': 'pts_ast_reb',
+  'pts+ast': 'pts_ast',
+  'pts+reb': 'pts_reb',
+  'ast+reb': 'ast_reb',
+  'pts+ast+reb': 'pts_ast_reb',
+  'stl+blk': 'stl_blk'
 };
 
 export function normalizeNBAProp(raw: string): string {
-  const lower = raw.toLowerCase().trim();
-  // Check direct alias
+  if (!raw) return '';
+
+  let lower = raw.toLowerCase().trim();
+
+  // Normalize separators: +, -, /, spaces → underscore
+  lower = lower
+    .replace(/[\s]*\+[\s]*/g, '_')
+    .replace(/[\s]*\/[\s]*/g, '_')
+    .replace(/[\s]*-[\s]*/g, '_')
+    .replace(/\s+/g, '_');
+
+  // Direct alias match
   if (NBA_PROP_ALIASES[lower]) return NBA_PROP_ALIASES[lower];
-  // Handle space/plus variations (e.g., "Points + Assists")
-  const normalized = lower.replace(/\s*\+\s*/g, '_').replace(/\s+/g, '_');
-  return NBA_PROP_ALIASES[normalized] ?? normalized;
+
+  return lower;
 }
 
-  // ---------------------------------------------------------------------------
-  // Combo splitting
-  // ---------------------------------------------------------------------------
-  // Recognises prop strings joined by "+", "_", or "_and_".
-  // Returns null when there are no combo components (i.e. it's a base stat).
-  
-  const BASE_NBA_PROPS = new Set([
-    'points', 'assists', 'rebounds', 'steals', 'blocks', 'threes', 'turnovers',
-    // keep underscore aliases too
-    'pts', 'ast', 'reb', 'stl', 'blk', 'tov',
-  ]);
-  
-  export function splitNBACombo(propNorm: string): string[] | null {
-    // Already a known base stat — don't try to split it
-    if (BASE_NBA_PROPS.has(propNorm)) return null;
-  
-    // Try "+", then "_and_", then "_" as separators
-    for (const sep of ['+', '_and_', '_']) {
-      if (!propNorm.includes(sep)) continue;
-      const parts = propNorm.split(sep).map(s => s.trim()).filter(Boolean);
-      if (parts.length >= 2 && parts.every(p => p.length > 0)) return parts;
-    }
-  
-    return null;
+// ---------------------------------------------------------------------------
+// Combo splitting
+// ---------------------------------------------------------------------------
+
+const BASE_NBA_PROPS = new Set([
+  'points', 'assists', 'rebounds', 'steals', 'blocks', 'threes', 'turnovers',
+  'pts', 'ast', 'reb', 'stl', 'blk', 'tov'
+]);
+
+export function splitNBACombo(propNorm: string): string[] | null {
+  if (BASE_NBA_PROPS.has(propNorm)) return null;
+
+  for (const sep of ['+', '_and_', '_']) {
+    if (!propNorm.includes(sep)) continue;
+    const parts = propNorm.split(sep).map(s => s.trim()).filter(Boolean);
+    if (parts.length >= 2) return parts;
   }
+
+  return null;
+}

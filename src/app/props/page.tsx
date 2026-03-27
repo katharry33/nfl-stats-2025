@@ -7,7 +7,7 @@ import { usePropsQuery } from '@/hooks/usePropsQuery';
 import { toast } from 'sonner';
 import { Database, CheckCircle2, PlusCircle, X, Save } from 'lucide-react';
 import { PropsTable } from '@/components/bets/PropsTable';
-import { PropData } from '@/lib/types';
+import { PropDoc } from '@/lib/types';
 import { adminDb } from '@/lib/firebase/admin'; // only used server-side; client uses fetch
 
 // ─── Manual Add / Edit Modal ──────────────────────────────────────────────────
@@ -44,7 +44,7 @@ function PropFormModal({
   onSaved,
 }: {
   open: boolean;
-  initial?: Partial<PropData>;
+  initial?: Partial<PropDoc>;
   league: 'nba' | 'nfl';
   onClose: () => void;
   onSaved: () => void;
@@ -200,7 +200,7 @@ function DeleteConfirmModal({
   onClose,
   onDeleted,
 }: {
-  prop: PropData;
+  prop: PropDoc;
   league: 'nba' | 'nfl';
   season: number;
   onClose: () => void;
@@ -271,8 +271,8 @@ export default function HistoricalVaultPage() {
 
   // Modal state
   const [addOpen, setAddOpen] = useState(false);
-  const [editProp, setEditProp] = useState<PropData | null>(null);
-  const [deleteProp, setDeleteProp] = useState<PropData | null>(null);
+  const [editProp, setEditProp] = useState<PropDoc | null>(null);
+  const [deleteProp, setDeleteProp] = useState<PropDoc | null>(null);
 
   const { data, loading, hasMore, loadMore, refetch } = usePropsQuery({
     league,
@@ -297,7 +297,7 @@ export default function HistoricalVaultPage() {
     }
   };
 
-  const handleAdd = useCallback((p: PropData) => {
+  const handleAdd = useCallback((p: PropDoc) => {
     toast.info(`${p.player} added to slip`);
   }, []);
 
@@ -416,8 +416,8 @@ export default function HistoricalVaultPage() {
           data={data}
           isLoading={loading}
           onAddLeg={handleAdd}
-          onEdit={(p) => setEditProp(p)}
-          onDelete={(p) => setDeleteProp(p)}
+          onEdit={(p: PropDoc) => setEditProp(p)}
+          onDelete={(p: PropDoc) => setDeleteProp(p)}
           onLoadMore={loadMore}
           hasMore={hasMore}
           variant="historical-vault"

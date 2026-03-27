@@ -1,8 +1,8 @@
 import { ColumnDef } from '@tanstack/react-table';
-import { PropData } from '@/lib/types';
+import { PropDoc } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
 
-export const columns: ColumnDef<PropData>[] = [
+export const columns: ColumnDef<PropDoc>[] = [
   // 1. PLAYER & TEAM
   {
     accessorKey: 'player',

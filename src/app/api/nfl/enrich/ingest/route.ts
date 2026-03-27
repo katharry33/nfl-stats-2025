@@ -1,14 +1,12 @@
-// app/api/nba/ingest/route.ts
+// app/api/nfl/ingest/route.ts
 
 import { NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 import crypto from 'crypto';
 import Papa from 'papaparse';
-import { normalizeNBAProp } from '@/lib/enrichment/nba/normalize-nba';
+import { getCurrentNFLWeek } from '@/lib/enrichment/nfl/getCurrentWeek'; // your helper
+import type { NFLPropDoc } from '@/lib/types';
 
-/**
- * Computes a stable hash for a CSV row.
- */
 function computeRowHash(row: any) {
   return crypto
     .createHash('sha256')
@@ -29,7 +27,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // Parse CSV
     const parsed = Papa.parse(csvString, { header: true, skipEmptyLines: true });
     const rows = parsed.data as any[];
 
@@ -40,62 +37,56 @@ export async function POST(req: Request) {
       );
     }
 
-    const collectionName = `nbaProps_${season}`;
+    const collectionName = `nflProps_${season}`;
     const batch = adminDb.batch();
 
     let count = 0;
+    const week = getCurrentNFLWeek(season);
 
     for (const row of rows) {
-      if (!row.player || !row.prop || !row.line) continue;
+      const player = row.player || row.Player;
+      const prop = row.prop || row.Prop;
+      const line = Number(row.line ?? row.Line);
+      const odds = Number(row.odds ?? row.Odds) || -110;
 
-      const propNorm = normalizeNBAProp(row.prop);
+      if (!player || !prop || Number.isNaN(line)) continue;
+
       const rowHash = computeRowHash(row);
-
       const docId = `${uploadId}_${rowHash}`;
       const docRef = adminDb.collection(collectionName).doc(docId);
 
-      const line = Number(row.line);
-      const odds = Number(row.odds) || -110;
+      const overUnder = row.overUnder || row.OverUnder || 'over';
 
-      batch.set(
-        docRef,
-        {
-          id: docId,
-          uploadId,
-          rowHash,
-          rawRow: row,
-          ingestMeta: {
-            ingestedAt: new Date().toISOString(),
-            source: row.source || 'csv',
-          },
-
-          // Core fields
-          player: row.player,
-          team: row.team || null,
-          opponent: row.opponent || row.matchup || null,
-          gameDate: date,
-          season,
-          league: 'nba',
-
-          // Prop fields
-          prop: row.prop,
-          propNorm,
-          line,
-          overUnder: row.overUnder || 'over',
-
-          // Odds
-          odds,
-          impliedProb: odds < 0
+      const doc: Partial<NFLPropDoc> = {
+        id: docId,
+        uploadId,
+        rowHash,
+        rawRow: row,
+        ingestMeta: {
+          ingestedAt: new Date().toISOString(),
+          source: row.source || 'csv',
+        },
+        player,
+        team: row.team || row.Team || null,
+        opponent: row.opponent || row.Opponent || row.matchup || row.Matchup || null,
+        gameDate: date,
+        season,
+        league: 'nfl',
+        prop,
+        propNorm: prop.toLowerCase().trim(),
+        line,
+        overUnder,
+        odds,
+        impliedProb:
+          odds < 0
             ? Math.abs(odds) / (Math.abs(odds) + 100)
             : 100 / (odds + 100),
+        status: 'pending',
+        enriched: false,
+        week,
+      };
 
-          // Status
-          enriched: false,
-          status: 'pending',
-        },
-        { merge: true }
-      );
-
+      batch.set(docRef, doc, { merge: true });
       count++;
     }
 
@@ -104,10 +95,10 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       count,
-      message: `Ingested ${count} NBA props for ${date}`,
+      message: `Ingested ${count} NFL props for ${date}`,
     });
   } catch (err: any) {
-    console.error('NBA Ingest Error:', err);
+    console.error('NFL Ingest Error:', err);
     return NextResponse.json(
       { error: err.message || 'Internal Server Error' },
       { status: 500 }

@@ -1,29 +1,56 @@
+// app/api/nba/enrich/route.ts
+
 import { NextResponse } from 'next/server';
-import { enrichAndSaveNBACSV } from '@/lib/enrichment/nba/enrichAndSaveNBACSV'
-// Placeholder for the automated scraper trigger
-async function triggerAutoScraper(date?: string, season?: number) {
-  // In a real implementation, this would trigger a background job or a serverless function
-  console.log(`Automated scraper triggered for date: ${date}, season: ${season}`);
-  // For now, return a success response
-  return NextResponse.json({ success: true, message: "Automated scraper job started." });
-}
+import { runNBAEnrichmentForDate } from '@/lib/enrichment/nba/runEnrichmentForDate';
+import { adminDb } from '@/lib/firebase/admin';
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { mode, csvString, date, season } = body;
+    const { season, date } = body;
 
-    // Sanitize the mode or default to auto
-    const activeMode = mode === 'manual' && csvString ? 'manual' : 'auto';
-
-    if (activeMode === 'manual') {
-      const result = await enrichAndSaveNBACSV(csvString, season);
-      return NextResponse.json(result);
-    } else {
-      // Trigger your automated scraper here
-      return await triggerAutoScraper(date, season);
+    if (!season || !date) {
+      return NextResponse.json(
+        { error: 'Missing required fields: season, date' },
+        { status: 400 }
+      );
     }
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+
+    // Create a job entry for UI polling
+    const jobRef = adminDb.collection('jobs').doc();
+    await jobRef.set({
+      id: jobRef.id,
+      type: 'nba_enrich',
+      season,
+      date,
+      status: 'running',
+      createdAt: new Date().toISOString(),
+    });
+
+    // Run enrichment
+    const result = await runNBAEnrichmentForDate(season, date);
+
+    // Update job status
+    await jobRef.update({
+      status: 'complete',
+      enriched: result.enriched,
+      total: result.total,
+      finishedAt: new Date().toISOString(),
+    });
+
+    return NextResponse.json({
+      success: true,
+      jobId: jobRef.id,
+      enriched: result.enriched,
+      total: result.total,
+      message: result.message,
+    });
+  } catch (err: any) {
+    console.error('NBA Enrich Error:', err);
+
+    return NextResponse.json(
+      { error: err.message || 'Internal Server Error' },
+      { status: 500 }
+    );
   }
 }

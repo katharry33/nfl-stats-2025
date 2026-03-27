@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { PropData } from '@/lib/types';
+import { PropDoc } from '@/lib/types';
 
 type Sport = 'nba' | 'nfl';
 
@@ -28,7 +28,7 @@ export function usePropsQuery({
   sortDir,
   columns,
 }: UsePropsQueryArgs) {
-  const [data, setData] = useState<PropData[]>([]);
+  const [data, setData] = useState<PropDoc[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | undefined>(undefined);
   const [cursor, setCursor] = useState<string | null>(null);

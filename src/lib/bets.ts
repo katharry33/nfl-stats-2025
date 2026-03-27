@@ -3,7 +3,7 @@
 
 import type { BetLeg, Bet } from '@/lib/types';
 
-/** Build a BetLeg from a raw NFLProp / PropData document */
+/** Build a BetLeg from a raw NFLProp / PropDoc document */
 export function propToLeg(
   prop: any,
   selection: 'Over' | 'Under',

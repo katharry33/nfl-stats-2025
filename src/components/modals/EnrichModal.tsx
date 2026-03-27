@@ -5,7 +5,7 @@ import { X, Upload, Database, Zap, FileText, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { getCurrentNFLWeek } from '@/lib/nfl/getCurrentWeek';
-import { PropData } from '@/lib/types';
+import {PropDoc } from '@/lib/types';
 
 interface IngestModalProps {
   isOpen: boolean;
@@ -14,7 +14,7 @@ interface IngestModalProps {
   league: 'nba' | 'nfl';
   defaultDate: string;
   defaultSeason: number;
-  props?: PropData[]; // Optional: for previewing existing data
+  props?: PropDoc[]; // Optional: for previewing existing data
 }
 
 export function IngestEnrichModal({ 
@@ -146,7 +146,7 @@ export function IngestEnrichModal({
             />
             
             {csvContent ? (
-              <>
+              <div className="flex flex-col items-center justify-center gap-4">
                 <div className="bg-emerald-500/20 p-4 rounded-2xl">
                     <FileText className="text-emerald-500" size={32} />
                 </div>
@@ -159,9 +159,9 @@ export function IngestEnrichModal({
                         Remove and use Auto-Scraper
                     </button>
                 </div>
-              </>
+              </div>
             ) : (
-              <>
+              <div className="flex flex-col items-center justify-center gap-4">
                 <div className="bg-white/5 p-4 rounded-2xl group-hover:scale-110 transition-transform">
                     <Upload className="text-zinc-500 group-hover:text-orange-500" size={32} />
                 </div>
@@ -171,7 +171,7 @@ export function IngestEnrichModal({
                     Manual override for {league} lines
                   </p>
                 </div>
-              </>
+              </div>
             )}
           </div>
 
@@ -203,10 +203,10 @@ export function IngestEnrichModal({
                 Synchronizing...
               </span>
             ) : (
-              <>
+              <div className="flex items-center justify-center gap-3">
                 Commit to {league} Vault
                 <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
-              </>
+              </div>
             )}
           </button>
         </div>

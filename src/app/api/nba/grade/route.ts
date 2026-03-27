@@ -51,16 +51,16 @@ export async function POST(req: Request) {
 
     // 3. Grade each prop
     snapshot.docs.forEach((doc) => {
-      const propData = doc.data();
+      const PropDoc = doc.data();
       const playerStats = stats.find(
         (s: any) => 
-          s.player.first_name + ' ' + s.player.last_name === propData.player
+          s.player.first_name + ' ' + s.player.last_name === PropDoc.player
       );
 
       if (playerStats) {
-        const statValue = playerStats[propData.prop] || 0;
-        const isOver = propData.overUnder === 'Over';
-        const won = isOver ? statValue > propData.line : statValue < propData.line;
+        const statValue = playerStats[PropDoc.prop] || 0;
+        const isOver = PropDoc.overUnder === 'Over';
+        const won = isOver ? statValue > PropDoc.line : statValue < PropDoc.line;
 
         batch.update(doc.ref, {
           gameStat: statValue,

@@ -3,7 +3,7 @@
 import React, { useState, useMemo } from 'react';
 import debounce from 'lodash.debounce';
 import { PropsTable } from './PropsTable';
-import { PropData } from '@/lib/types';
+import { PropDoc } from '@/lib/types';
 import { usePropsQuery } from '@/hooks/usePropsQuery';
 
 type Sport = 'nba' | 'nfl';
@@ -32,7 +32,7 @@ export function PropsTableContainer({ initialSport = 'nba' as Sport }) {
     sortDir,
   });
 
-  const onAddLeg = (prop: PropData) => {
+  const onAddLeg = (prop: PropDoc) => {
     console.log('add to slip', prop);
   };
 
