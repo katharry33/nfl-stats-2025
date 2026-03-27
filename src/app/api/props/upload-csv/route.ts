@@ -1,34 +1,64 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/firebase/admin';
+import { adminDb } from '@/lib/firebase/admin';
+
+function normalizePropKey(prop: string) {
+  return prop.toLowerCase().replace(/[^a-z0-9]/g, "_");
+}
+
+function colName(league: string, season: number) {
+  if (league === "nba") return `nbaProps_${season}`;
+  if (league === "nfl" && season === 2024) return "allProps";
+  return `nflProps_${season}`;
+}
 
 export async function POST(req: NextRequest) {
   try {
     const { props, league, date, season } = await req.json();
-    const colName = league === 'nba' ? `nbaProps_${season}` : `allProps_${season}`;
-    const batch = db.batch();
+
+    const collection = colName(league, Number(season));
+    const batch = adminDb.batch();
+    const now = new Date().toISOString();
 
     props.forEach((p: any) => {
-      // Create a unique ID based on Player, Prop, and Date to prevent duplicates
-      const slug = `${p.Player}_${p.Prop}_${date}`.toLowerCase().replace(/\s+/g, '_');
-      const docRef = db.collection(colName).doc(slug);
+      const player = p.Player;
+      const prop = p.Prop;
+      const line = Number(p.Line);
+      const odds = p.Odds != null ? Number(p.Odds) : null;
 
-      batch.set(docRef, {
-        player:    p.Player,
-        matchup:   p.Matchup,
-        prop:      p.Prop,
-        line:      parseFloat(p.Line),
-        bestOdds:  parseInt(p.Odds),
-        gameDate:  date,
-        league:    league,
-        season:    season,
-        createdAt: new Date().toISOString(),
-        actualResult: null, // Ensure it's empty so it shows in Bet Builder
-      }, { merge: true });
+      const id = `${player}-${prop}-${line}-${date}`
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, "-");
+
+      const ref = adminDb.collection(collection).doc(id);
+
+      batch.set(
+        ref,
+        {
+          player,
+          team: p.Team ?? "",
+          opponent: p.Opponent ?? "",
+          prop,
+          propNorm: normalizePropKey(prop),
+          line,
+          overUnder: (p.OverUnder ?? "over").toLowerCase(),
+          odds,
+          gameDate: date,
+          season: Number(season),
+          league,
+          source: "csv",
+          rowHash: `${player}-${prop}-${line}-${date}`,
+          createdAt: now,
+          updatedAt: now,
+        },
+        { merge: true }
+      );
     });
 
     await batch.commit();
+
     return NextResponse.json({ success: true, count: props.length });
-  } catch (err: any) {
+  } catch (err) {
+    console.error("[upload-csv] Error:", err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

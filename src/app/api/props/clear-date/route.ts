@@ -1,35 +1,59 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminDb as db } from '@/lib/firebase/admin';
-import { FieldPath } from 'firebase-admin/firestore';
+import { adminDb } from '@/lib/firebase/admin';
 
-export async function POST(request: NextRequest) {
+function colName(league: string, season: number) {
+  if (league === "nba") return `nbaProps_${season}`;
+  if (league === "nfl" && season === 2024) return "allProps"; // legacy
+  return `nflProps_${season}`;
+}
+
+function normalizePropKey(prop: string) {
+  return prop.toLowerCase().replace(/[^a-z0-9]/g, "_");
+}
+
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
   try {
-    const { date, league } = await request.json();
+    const { id } = params;
+    const body = await req.json();
 
-    if (!date || !league) {
-      return NextResponse.json({ error: "Missing date or league" }, { status: 400 });
+    const { league, season } = body;
+    if (!league || !season) {
+      return NextResponse.json({ error: "league and season required" }, { status: 400 });
     }
 
-    const propsRef = db.collection("props");
-    const snapshot = await propsRef
-      .where("gameDate", "==", date)
-      .where("league", "==", league)
-      .get();
+    const update: Record<string, any> = {
+      updatedAt: new Date().toISOString(),
+    };
 
-    if (snapshot.empty) {
-      return NextResponse.json({ message: "No props found for this date" });
+    const allowed = [
+      "player",
+      "team",
+      "opponent",
+      "prop",
+      "line",
+      "odds",
+      "overUnder",
+      "gameDate",
+    ];
+
+    for (const key of allowed) {
+      if (key in body) update[key] = body[key];
     }
 
-    const batch = db.batch();
-    snapshot.docs.forEach((doc: FirebaseFirestore.QueryDocumentSnapshot) => {
-      batch.delete(doc.ref);
-    });
+    if (update.prop) update.propNorm = normalizePropKey(update.prop);
+    if (update.line != null) update.line = Number(update.line);
+    if (update.odds != null) update.odds = Number(update.odds);
+    if (update.overUnder) update.overUnder = update.overUnder.toLowerCase();
 
-    await batch.commit();
+    const ref = adminDb.collection(colName(league, Number(season))).doc(id);
+    await ref.update(update);
 
-    return NextResponse.json({ message: `Successfully cleared ${snapshot.size} props` });
-  } catch (error) {
-    console.error("Error clearing props:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json({ success: true, id });
+  } catch (err) {
+    console.error("[/api/props/:id] Error:", err);
+    return NextResponse.json({ error: "Failed to update prop" }, { status: 500 });
   }
 }

@@ -1,5 +1,6 @@
 import { initializeApp, getApps, cert, ServiceAccount } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
+import { getAuth } from 'firebase-admin/auth';   // ⭐ ADD THIS
 import path from 'path';
 import fs from 'fs';
 
@@ -27,3 +28,6 @@ if (!getApps().length) {
 
 export const db = getFirestore();
 export const adminDb = db;
+
+// ⭐ ADD THIS — REQUIRED FOR TOKEN VERIFICATION
+export const adminAuth = getAuth();

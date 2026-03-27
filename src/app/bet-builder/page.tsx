@@ -1,10 +1,13 @@
-import { BetBuilderClient } from '@/features/bet-builder-client';
+import BetBuilderClient from '@/features/bet-builder-client';
+import { PropDoc } from '@/lib/types';
 
-// 'default' is the key here to fix the "not a React Component" error
 export default function BetBuilderPage() {
+  const initialData: PropDoc[] = [];   // typed correctly
+  const league: 'nba' | 'nfl' = 'nba';
+
   return (
     <main className="min-h-screen bg-black text-white p-4">
-      <BetBuilderClient />
+      <BetBuilderClient initialData={initialData} league={league} />
     </main>
   );
 }

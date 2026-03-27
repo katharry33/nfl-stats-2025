@@ -4,8 +4,8 @@ import React from 'react';
 import { ColumnDef } from '@tanstack/react-table';
 import { NormalizedProp } from '@/lib/types';
 import { AddToBetslipButton } from '@/components/bets/add-to-betslip-button';
-import { ScoreDiff } from '@/components/bets/ScoreDiff';
-import { ResultBadge } from '@/components/bets/ResultBadge';
+import { ScoreDiff } from '@/components/ScoreDiff';
+import { ResultBadge } from '@/components/ResultBadge';
 import { fmt, fmtPct, formatBetDate } from '@/lib/utils/formatters';
 
 export const getVaultColumns = (league: 'nba' | 'nfl'): ColumnDef<NormalizedProp>[] => {
